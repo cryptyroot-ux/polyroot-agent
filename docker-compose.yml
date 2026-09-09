@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: polyroot-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: polyroot_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - polyroot_pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - polyroot-network
+
+  executor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: polyroot-executor
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/polyroot_dev
+      POLYMARKET_MODE: PAPER
+      EXECUTOR_PORT: 3001
+      LOG_LEVEL: debug
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - polyroot-network
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: polyroot-gateway
+    command: node dist/pm/control/index.js
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/polyroot_dev
+      GATEWAY_PORT: 3000
+      GATEWAY_HOST: 0.0.0.0
+      EXECUTOR_URL: http://executor:3001
+      LOG_LEVEL: debug
+      # Owner auth (set in .env for real use)
+      OWNER_API_KEY: dev-key-change-in-production
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      executor:
+        condition: service_started
+    networks:
+      - polyroot-network
+    restart: unless-stopped
+
+  # Optional: pgAdmin for dev
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: polyroot-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@polyroot.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - polyroot-network
+    profiles:
+      - tools
+
+volumes:
+  polyroot_pgdata:
+
+networks:
+  polyroot-network:
+    driver: bridge

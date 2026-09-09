@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Polyroot Release Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "release_id",
+    "timestamp_utc",
+    "git",
+    "node",
+    "npm",
+    "dependencies",
+    "polymarket",
+    "risk_policy"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "release_id": { "type": "string", "format": "uuid" },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "git": {
+      "type": "object",
+      "required": ["repo", "branch", "commit_sha", "tag", "dirty"],
+      "properties": {
+        "repo": { "type": "string" },
+        "branch": { "type": "string" },
+        "commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tag": { "type": "string" },
+        "dirty": { "type": "boolean" }
+      }
+    },
+    "upstream": {
+      "type": "object",
+      "required": ["repo", "commit_sha", "license"],
+      "properties": {
+        "repo": { "type": "string" },
+        "commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "license": { "type": "string" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["version", "engine_range"],
+      "properties": {
+        "version": { "type": "string" },
+        "engine_range": { "type": "string" }
+      }
+    },
+    "npm": {
+      "type": "object",
+      "required": ["version", "lockfile_sha256"],
+      "properties": {
+        "version": { "type": "string" },
+        "lockfile_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "polymarket": {
+      "type": "object",
+      "required": ["chain_id", "p_usd_address", "clob_version", "sdk_version"],
+      "properties": {
+        "chain_id": { "type": "integer" },
+        "p_usd_address": { "type": "string", "pattern": "^0x[a-fA-F0-9]{40}$" },
+        "clob_version": { "type": "string" },
+        "sdk_version": { "type": "string" }
+      }
+    },
+    "risk_policy": {
+      "type": "object",
+      "required": [
+        "order_cap_share",
+        "market_cap_share",
+        "event_group_cap_share",
+        "portfolio_cap_share",
+        "daily_loss_stop_share",
+        "drawdown_stop_share",
+        "min_edge_per_share"
+      ],
+      "properties": {
+        "order_cap_share": { "type": "number", "minimum": 0, "maximum": 1 },
+        "market_cap_share": { "type": "number", "minimum": 0, "maximum": 1 },
+        "event_group_cap_share": { "type": "number", "minimum": 0, "maximum": 1 },
+        "portfolio_cap_share": { "type": "number", "minimum": 0, "maximum": 1 },
+        "daily_loss_stop_share": { "type": "number", "minimum": 0, "maximum": 1 },
+        "drawdown_stop_share": { "type": "number", "minimum": 0, "maximum": 1 },
+        "min_edge_per_share": { "type": "number", "minimum": 0 }
+      }
+    },
+    "sbom": {
+      "type": "object",
+      "required": ["format", "sha256"],
+      "properties": {
+        "format": { "type": "string", "enum": ["spdx-json", "cyclonedx-json"] },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

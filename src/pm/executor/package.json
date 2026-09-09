@@ -1,0 +1,36 @@
+{
+  "name": "@polyroot/executor",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -w -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src --ext .ts",
+    "test": "node --test --import tsx --import ../../../tests/helpers/test-setup.ts tests/pm/executor/**/*.test.ts",
+    "test:unit": "npm run test",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@polyroot/domain": "workspace:*",
+    "@polyroot/risk": "workspace:*",
+    "@polyroot/venue": "workspace:*",
+    "@polyroot/ledger": "workspace:*",
+    "zod": "^3.22.4",
+    "decimal.js": "^10.4.3"
+  },
+  "devDependencies": {
+    "@polyroot/tsconfig": "workspace:*",
+    "@types/node": "^20.19.0",
+    "typescript": "^5.5.0"
+  }
+}

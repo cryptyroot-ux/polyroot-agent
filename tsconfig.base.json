@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2024"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": false,
+    "baseUrl": ".",
+    "paths": {
+      "@polyroot/domain/*": ["src/pm/domain/*"],
+      "@polyroot/data/*": ["src/pm/data/*"],
+      "@polyroot/intelligence/*": ["src/pm/intelligence/*"],
+      "@polyroot/strategy/*": ["src/pm/strategy/*"],
+      "@polyroot/risk/*": ["src/pm/risk/*"],
+      "@polyroot/executor/*": ["src/pm/executor/*"],
+      "@polyroot/venue/*": ["src/pm/venue/*"],
+      "@polyroot/ledger/*": ["src/pm/ledger/*"],
+      "@polyroot/control/*": ["src/pm/control/*"],
+      "@polyroot/observability/*": ["src/pm/observability/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+}

@@ -1,0 +1,81 @@
+version: 2
+updates:
+  # npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "cryptyroot-ux"
+    labels:
+      - "dependencies"
+      - "npm"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      dev-dependencies:
+        patterns:
+          - "@types/*"
+          - "eslint*"
+          - "prettier*"
+          - "typescript*"
+          - "tsx"
+          - "turbo"
+          - "husky"
+          - "changesets"
+        update-types:
+          - "minor"
+          - "patch"
+      prod-dependencies:
+        patterns:
+          - "zod"
+          - "ulid"
+          - "pg"
+          - "drizzle-orm"
+          - "drizzle-kit"
+          - "@anthropic-ai/sdk"
+          - "openai"
+          - "ethers"
+          - "@polymarket/client"
+          - "decimal.js"
+          - "pino"
+          - "pino-pretty"
+          - "prom-client"
+          - "express"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"

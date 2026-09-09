@@ -1,0 +1,67 @@
+{
+  "name": "polyroot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Polyroot Agent — autonomous AI trading agent for Polymarket (fork of CloddsBot, controlled autonomy)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cryptyroot-ux/polyroot-agent"
+  },
+  "license": "MIT",
+  "author": "Crypty Root <cryptyroot@gmail.com>",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "npm@11.16.0",
+  "workspaces": [
+    "src/pm/*"
+  ],
+  "scripts": {
+    "prepare": "husky || true",
+    "build": "turbo run build --filter=!@polyroot/cloddybot",
+    "build:all": "turbo run build",
+    "dev": "turbo run dev --filter=!@polyroot/cloddybot",
+    "dev:executor": "npm run dev --workspace=@polyroot/executor",
+    "dev:gateway": "npm run dev --workspace=@polyroot/control",
+    "typecheck": "turbo run typecheck --filter=!@polyroot/cloddybot",
+    "lint": "turbo run lint --filter=!@polyroot/cloddybot",
+    "test": "turbo run test --filter=!@polyroot/cloddybot",
+    "test:unit": "turbo run test:unit --filter=!@polyroot/cloddybot",
+    "test:contract": "turbo run test:contract --filter=!@polyroot/cloddybot",
+    "test:property": "turbo run test:property --filter=!@polyroot/cloddybot",
+    "migrate": "node --import tsx scripts/migrate.ts",
+    "migrate:latest": "npm run migrate -- latest",
+    "migrate:rollback": "npm run migrate -- rollback",
+    "db:seed": "node --import tsx scripts/seed.ts",
+    "db:studio": "npx drizzle-kit studio",
+    "generate:types": "turbo run generate:types",
+    "clean": "turbo run clean && rm -rf node_modules dist .turbo",
+    "ci": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "release": "changeset publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "changesets": "^2.27.0",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.0.0",
+    "prettier": "^3.2.0",
+    "turbo": "^2.1.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.5.0"
+  },
+  "overrides": {
+    "axios": "^1.13.5",
+    "undici": "^6.23.0",
+    "nanoid": "^3.3.8",
+    "ajv": "^8.18.0",
+    "minimatch": "^10.2.1",
+    "qs": "^6.15.0",
+    "bigint-buffer": "npm:@vekexasia/bigint-buffer2@^1.0.4"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
