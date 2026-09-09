@@ -24,7 +24,7 @@
     "@polyroot/domain": "workspace:*",
     "@polyroot/executor": "workspace:*",
     "@polyroot/ledger": "workspace:*",
-    "express": "^4.18.2",
+    "express": "^5.2.1",
     "zod": "^3.22.4",
     "pino": "^8.18.0",
     "pino-pretty": "^10.3.1"
