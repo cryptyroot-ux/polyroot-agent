@@ -35,6 +35,8 @@ import type {
 import { ExecutionPermitSchema } from "@polyroot/domain";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import { venueActionGate } from "@polyroot/venue";
+import { cashNeededFor } from "@polyroot/risk";
+import { decimalToBase } from "@polyroot/signer";
 
 export type { ExecutionPermit, SignedOrder, OrderResult };
 export type {
@@ -137,6 +139,24 @@ export class Executor {
   }
 
   /**
+   * True when the order keeps within the permit reservation in exact base
+   * units: share size ≤ max_qty AND required cash ≤ max_cash. Uses the shared
+   * exact converters (`decimalToBase`, `cashNeededFor`) so float drift can
+   * never inflate an order past its reservation.
+   */
+  private permitCoversOrder(
+    order: SignedOrder,
+    permit: ExecutionPermit,
+  ): boolean {
+    const sizeBase = decimalToBase(order.size);
+    if (sizeBase > decimalToBase(permit.max_qty)) return false;
+    const priceBase = decimalToBase(order.price);
+    const cashBase = cashNeededFor(sizeBase, priceBase);
+    if (cashBase > decimalToBase(permit.max_cash)) return false;
+    return true;
+  }
+
+  /**
    * Submit a signed order exactly-once-per-order-id. Refuses duplicates, covers
    * permit-TTL expiry, and applies the venue mode gate before any network call.
    */
@@ -177,16 +197,29 @@ export class Executor {
       };
     }
 
-    // Track as in-flight before the network call (dedupe against concurrent submits).
-    this.deps.seen.add(order.order_id, "SUBMITTING");
+    // 3. The order must stay within the permit's reservation (share quota and
+    //    cash ceiling). A signed order that exceeds its permit is refused —
+    //    this is the reserve-then-spend enforcement, never loosened by a tier.
+    if (!this.permitCoversOrder(order, permit)) {
+      return {
+        outcome: "PERMIT_INVALID",
+        code: "AMOUNT_EXCEEDS_PERMIT",
+        reason: "order exceeds permit reservation",
+      };
+    }
 
-    // 3. Venue-mode gate — fail closed before any network call.
+    // 4. Venue-mode gate — fail closed before any network call. The order is
+    //    NOT marked in-flight until this passes, so a gate-blocked order can
+    //    still be retried cleanly (no false duplicate lock).
     const gate = venueActionGate(this.deps.adapter.mode, "ORDER_SUBMIT");
     if (!gate.allowed) {
       return { outcome: "MODE_FORBIDS", code: gate.code, reason: gate.reason };
     }
 
-    // 4. Submit exactly once. Consume the permit regardless of outcome (a used
+    // Mark in-flight right before the network call (dedupe concurrent submits).
+    this.deps.seen.add(order.order_id, "SUBMITTING");
+
+    // 5. Submit exactly once. Consume the permit regardless of outcome (a used
     //    single-use permit must never be reusable for a re-submit).
     const res: SubmitOutcome = await this.deps.adapter.placeOrder(order);
     await this.deps.markPermitUsed(permit.permit_id, order.order_id);

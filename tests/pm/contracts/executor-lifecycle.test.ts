@@ -194,4 +194,47 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PR-EXE-03..
       "DEFINITIVE_REJECT",
     );
   });
+
+  it("does not lock an order as SUBMITTING when the mode gate refuses it", async () => {
+    const adapter = new FakeAdapter();
+    adapter.setMode("UNAVAILABLE"); // submit blocked by gate
+    const { deps, seen } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    const order = makeSignedOrder("ord_gate");
+    const res = await ex.submit(order, makePermit());
+    assert.equal(res.outcome, "MODE_FORBIDS");
+    // The order must NOT have been locked as SUBMITTING: a valid retry is possible.
+    assert.equal(seen.get("ord_gate"), undefined);
+  });
+
+  it("refuses to submit an order whose size exceeds the permit quota (permit→order enforcement)", async () => {
+    const adapter = new FakeAdapter();
+    const { deps, seen } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    // permit max_qty = 100 shares; order is sized 150 shares (> quota).
+    const order = { ...makeSignedOrder("ord_big"), size: 150 };
+    const res = await ex.submit(order, makePermit());
+    assert.equal(res.outcome, "PERMIT_INVALID");
+    if (res.outcome === "PERMIT_INVALID")
+      assert.equal(res.code, "AMOUNT_EXCEEDS_PERMIT");
+    assert.equal(seen.get("ord_big"), undefined);
+    // It never reached the adapter.
+    adapter.placeOrderFn = async () => {
+      throw new Error("should not be called");
+    };
+  });
+
+  it("refuses when the order's cash value exceeds the permit cash ceiling (cash path)", async () => {
+    const adapter = new FakeAdapter();
+    const { deps, seen } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    // permit max_qty=100, max_cash=50. size=60 is within the share quota, but
+    // cash = 60 * 1.0 = 60 > 50 — the cash dimension must reject it.
+    const order = { ...makeSignedOrder("ord_cash"), size: 60, price: 1.0 };
+    const res = await ex.submit(order, makePermit());
+    assert.equal(res.outcome, "PERMIT_INVALID");
+    if (res.outcome === "PERMIT_INVALID")
+      assert.equal(res.code, "AMOUNT_EXCEEDS_PERMIT");
+    assert.equal(seen.get("ord_cash"), undefined);
+  });
 });

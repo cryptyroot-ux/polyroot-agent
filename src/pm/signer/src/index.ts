@@ -185,14 +185,16 @@ export class SignerVault {
       };
     }
 
-    // 4. Exact amount within permit reservation and hard cap. We use decimal
-    //    string comparison from the canonical number fields (exact, no float drift).
+    // 4. Exact amount within permit reservation. `amountBase` is a SHARE
+    //    quantity, so the bound is the permit's share quota (`max_qty`) — NOT
+    //    the cash cap (`max_cash`, a money value in a different dimension).
+    //    Comparing shares against cash would let an over-quota order pass when
+    //    it stays under the cash ceiling.
     const maxQtyBn = decimalToBase(request.permit.max_qty);
-    const maxCashBn = decimalToBase(request.permit.max_cash);
-    if (request.amountBase > maxQtyBn && request.amountBase > maxCashBn) {
+    if (request.amountBase > maxQtyBn) {
       return {
         ok: false,
-        reason: "amount exceeds permit cap",
+        reason: "amount exceeds permit share quota",
         code: "AMOUNT_EXCEEDS_PERMIT",
       };
     }

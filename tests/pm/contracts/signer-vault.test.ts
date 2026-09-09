@@ -135,6 +135,20 @@ describe("Signer Vault — TABLE 8 pre-sign invariants (PR-WAL-07)", () => {
     if (!res.ok) assert.equal(res.code, "AMOUNT_EXCEEDS_PERMIT");
   });
 
+  it("refuses when amount exceeds the share quota even if it stays under max_cash (dimension check)", async () => {
+    const v = vault();
+    // max_qty = 100 shares, max_cash = 1000 pUSD. amount of 150 shares is over
+    // the share quota yet below the cash cap — the quota must still reject it.
+    const res = await v.sign(
+      validReq({
+        permit: makePermit({ max_qty: 100, max_cash: 1000 }),
+        amountBase: 150_000_000n /* 150 shares * 1e6 */,
+      }),
+    );
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "AMOUNT_EXCEEDS_PERMIT");
+  });
+
   it("treats the crypto-signer error as a typed refusal, never leaks the secret", async () => {
     const v = new SignerVault({
       cryptoSigner: async () => {
