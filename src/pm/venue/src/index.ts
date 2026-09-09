@@ -82,6 +82,8 @@ export interface VenueAdapter {
   placeOrder(order: SignedOrder): Promise<SubmitOutcome>;
   /** Cancel by venue order id, subject to the mode gate. */
   cancelOrder(orderId: string): Promise<SubmitOutcome>;
+  /** Query the venue for the current status of a submitted order. Returns null if the venue has no record. */
+  getOrderStatus(orderId: string): Promise<OrderResult | null>;
   /** Set the current operational mode (narrowed by the supervisor). */
   setMode(mode: VenueMode): void;
 }

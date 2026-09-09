@@ -10,6 +10,7 @@ import type {
   ExecutionPermit,
   SignedOrder,
   MarketSnapshot,
+  OrderResult,
   VenueMode,
 } from "@polyroot/domain";
 import { ulid } from "ulid";
@@ -33,6 +34,7 @@ class FakeAdapter implements VenueAdapter {
       timestamp: new Date(),
     },
   });
+  getOrderStatusFn: (id: string) => Promise<OrderResult | null> = async () => null;
   setMode(m: VenueMode) {
     this.mode = m;
   }
@@ -44,6 +46,9 @@ class FakeAdapter implements VenueAdapter {
   }
   async cancelOrder(id: string) {
     return this.cancelOrderFn(id);
+  }
+  async getOrderStatus(id: string) {
+    return this.getOrderStatusFn(id);
   }
 }
 
@@ -71,7 +76,7 @@ function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
   };
 }
 
-function makeSignedOrder(id = "ord_1"): SignedOrder {
+function makeSignedOrder(id = "ord_1", permitId?: string): SignedOrder {
   return {
     schema_version: "1.1",
     order_id: id,
@@ -83,7 +88,7 @@ function makeSignedOrder(id = "ord_1"): SignedOrder {
     signature: "sig_1",
     signer: "0xSIGNER",
     signed_at: new Date("2026-01-01T00:00:30Z"),
-    permit_id: "permit_1",
+    permit_id: permitId,
   };
 }
 
@@ -236,5 +241,105 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PR-EXE-03..
     if (res.outcome === "PERMIT_INVALID")
       assert.equal(res.code, "AMOUNT_EXCEEDS_PERMIT");
     assert.equal(seen.get("ord_cash"), undefined);
+  });
+
+  it("refuses when order.permit_id does not match the permit (binding enforcement)", async () => {
+    const adapter = new FakeAdapter();
+    const { deps, seen } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    const permit = makePermit();
+    // Order carries a different permit_id than the one presented.
+    const order = makeSignedOrder("ord_mismatch", "permit_WRONG");
+    const res = await ex.submit(order, permit);
+    assert.equal(res.outcome, "PERMIT_INVALID");
+    if (res.outcome === "PERMIT_INVALID")
+      assert.equal(res.code, "PERMIT_MISMATCH");
+    assert.equal(seen.get("ord_mismatch"), undefined);
+  });
+
+  it("allows order without permit_id for backwards compatibility", async () => {
+    const adapter = new FakeAdapter();
+    const { deps } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    // No permit_id set — the binding check is skipped.
+    const order = makeSignedOrder("ord_nopermit");
+    const res = await ex.submit(order, makePermit());
+    assert.equal(res.outcome, "SUBMITTED");
+  });
+
+  it("reconcile: SUBMISSION_UNKNOWN → venue ACKNOWLEDGED → updates to ACKNOWLEDGED", async () => {
+    const adapter = new FakeAdapter();
+    // First submit returns UNKNOWN.
+    adapter.placeOrderFn = async () => ({
+      ok: false,
+      code: "SUBMISSION_UNKNOWN",
+      reason: "outcome unknown",
+    });
+    const { deps } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    const res = await ex.submit(makeSignedOrder("ord_r1"), makePermit());
+    assert.equal(res.outcome, "NEEDS_RECONCILIATION");
+    // Venue now reports the order was acknowledged.
+    adapter.getOrderStatusFn = async () => ({
+      success: true,
+      submit_status: "ACKNOWLEDGED",
+      order_status: "LIVE",
+      timestamp: new Date(),
+    });
+    const state = await ex.reconcile("ord_r1");
+    assert.equal(state, "ACKNOWLEDGED");
+  });
+
+  it("reconcile: SUBMISSION_UNKNOWN → venue CANCELED → DEFINITIVE_REJECT", async () => {
+    const adapter = new FakeAdapter();
+    adapter.placeOrderFn = async () => ({
+      ok: false,
+      code: "SUBMISSION_UNKNOWN",
+      reason: "outcome unknown",
+    });
+    const { deps } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    await ex.submit(makeSignedOrder("ord_r2"), makePermit());
+    // Venue reports the order was canceled.
+    adapter.getOrderStatusFn = async () => ({
+      success: true,
+      submit_status: "ACKNOWLEDGED",
+      order_status: "CANCELED",
+      timestamp: new Date(),
+    });
+    const state = await ex.reconcile("ord_r2");
+    assert.equal(state, "DEFINITIVE_REJECT");
+  });
+
+  it("reconcile: SUBMISSION_UNKNOWN → venue null → stays SUBMISSION_UNKNOWN", async () => {
+    const adapter = new FakeAdapter();
+    adapter.placeOrderFn = async () => ({
+      ok: false,
+      code: "SUBMISSION_UNKNOWN",
+      reason: "outcome unknown",
+    });
+    const { deps } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    await ex.submit(makeSignedOrder("ord_r3"), makePermit());
+    // Venue still has no record — getOrderStatusFn defaults to null.
+    const state = await ex.reconcile("ord_r3");
+    assert.equal(state, "SUBMISSION_UNKNOWN");
+  });
+
+  it("reconcile: non-UNKNOWN order → returns current state without querying venue", async () => {
+    const adapter = new FakeAdapter();
+    let queried = false;
+    adapter.getOrderStatusFn = async () => {
+      queried = true;
+      return null;
+    };
+    const { deps } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    // Submit successfully → state becomes ACKNOWLEDGED.
+    await ex.submit(makeSignedOrder("ord_r4"), makePermit());
+    queried = false;
+    const state = await ex.reconcile("ord_r4");
+    assert.equal(state, "ACKNOWLEDGED");
+    assert.equal(queried, false, "must not query venue for non-UNKNOWN order");
   });
 });

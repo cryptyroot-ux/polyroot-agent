@@ -16,6 +16,10 @@
  *     re-checked for expiry and single-use status against a live clock. An
  *     expired or already-used permit aborts submission.
  *
+ *  3b. **Permit–order binding**: when the signed order carries a permit_id it
+ *     must match the presented permit exactly — prevents cross-market permit
+ *     reuse.
+ *
  *  4. **Per-order cancel (EXE-06)**: cancels are routed per order id and gated
  *     by the venue-mode matrix (CANCEL_ONLY/RESTARTING permit cancels).
  *
@@ -197,7 +201,18 @@ export class Executor {
       };
     }
 
-    // 3. The order must stay within the permit's reservation (share quota and
+    // 3. Permit–order binding: when the signed order carries a permit_id it
+    //    MUST match the presented permit. This prevents a permit issued for
+    //    market A from being used to submit an order bound to market B.
+    if (order.permit_id && order.permit_id !== permit.permit_id) {
+      return {
+        outcome: "PERMIT_INVALID",
+        code: "PERMIT_MISMATCH",
+        reason: "order.permit_id does not match the presented permit",
+      };
+    }
+
+    // 4. The order must stay within the permit's reservation (share quota and
     //    cash ceiling). A signed order that exceeds its permit is refused —
     //    this is the reserve-then-spend enforcement, never loosened by a tier.
     if (!this.permitCoversOrder(order, permit)) {
@@ -208,7 +223,7 @@ export class Executor {
       };
     }
 
-    // 4. Venue-mode gate — fail closed before any network call. The order is
+    // 5. Venue-mode gate — fail closed before any network call. The order is
     //    NOT marked in-flight until this passes, so a gate-blocked order can
     //    still be retried cleanly (no false duplicate lock).
     const gate = venueActionGate(this.deps.adapter.mode, "ORDER_SUBMIT");
@@ -219,7 +234,7 @@ export class Executor {
     // Mark in-flight right before the network call (dedupe concurrent submits).
     this.deps.seen.add(order.order_id, "SUBMITTING");
 
-    // 5. Submit exactly once. Consume the permit regardless of outcome (a used
+    // 6. Submit exactly once. Consume the permit regardless of outcome (a used
     //    single-use permit must never be reusable for a re-submit).
     const res: SubmitOutcome = await this.deps.adapter.placeOrder(order);
     await this.deps.markPermitUsed(permit.permit_id, order.order_id);
@@ -261,7 +276,34 @@ export class Executor {
   async reconcile(orderId: string): Promise<OrderLifecycleState> {
     const current = this.deps.seen.get(orderId) ?? "NOT_SEEN";
     // Reconciliation must never turn an unknown order back into a live submit.
-    return current === "SUBMISSION_UNKNOWN" ? "SUBMISSION_UNKNOWN" : current;
+    if (current !== "SUBMISSION_UNKNOWN") return current;
+
+    // Query the venue for the real status of the previously-unknown order.
+    try {
+      const result = await this.deps.adapter.getOrderStatus(orderId);
+      if (result === null) return "SUBMISSION_UNKNOWN"; // venue has no record yet
+      // Order-level terminal states take precedence: a canceled / rejected /
+      // expired order will never fill — mark it definitively done.
+      if (
+        result.order_status === "CANCELED" ||
+        result.order_status === "REJECTED" ||
+        result.order_status === "EXPIRED"
+      ) {
+        this.deps.seen.add(orderId, "DEFINITIVE_REJECT");
+        return "DEFINITIVE_REJECT";
+      }
+      // Venue acknowledged the submission — the order is working (LIVE /
+      // PARTIAL / MATCHED). No blind re-submit.
+      if (result.submit_status === "ACKNOWLEDGED") {
+        this.deps.seen.add(orderId, "ACKNOWLEDGED");
+        return "ACKNOWLEDGED";
+      }
+      // Still indeterminate — keep the unknown state rather than guess.
+      return "SUBMISSION_UNKNOWN";
+    } catch {
+      // Venue unreachable — keep the unknown state rather than guess.
+      return "SUBMISSION_UNKNOWN";
+    }
   }
 }
 
