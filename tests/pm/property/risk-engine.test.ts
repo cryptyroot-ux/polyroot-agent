@@ -5,7 +5,9 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { fc } from "@fast-check/jest"; // or import from "fast-check" directly
+// NOTE (Sprint 2): property bodies below will use `fast-check`
+// (`npm i -D fast-check`) once EVCalculator/SizingEngine are implemented
+// (T-PR-VAL-02). The import stays commented until the dependency lands.
 
 // These will be imported when implemented
 // import { EVCalculator, SizingEngine } from "@polyroot/risk";

@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PolyRoot Release Manifest",
+  "description": "B17.1 gate artifact. Minimum fields: fork SHA, lock/dependency hashes, SDK/runtime/image digests, schema/migrations, wallet/contract registry, strategy/model versions, policy version, gate report refs, disposition summary.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "release_id",
+    "timestamp_utc",
+    "git",
+    "upstream",
+    "runtime",
+    "dependencies",
+    "image",
+    "sdk",
+    "contracts",
+    "schema_migrations",
+    "strategies",
+    "policy",
+    "gate_reports",
+    "fork_disposition"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "release_id": { "type": "string", "format": "uuid" },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "git": {
+      "type": "object",
+      "required": ["repo", "branch", "commit_sha", "tag", "dirty"],
+      "properties": {
+        "repo": { "type": "string" },
+        "branch": { "type": "string" },
+        "commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tag": { "type": "string" },
+        "dirty": { "type": "boolean" }
+      }
+    },
+    "upstream": {
+      "type": "object",
+      "required": ["repo", "commit_sha", "license"],
+      "properties": {
+        "repo": { "type": "string" },
+        "commit_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "version": { "type": "string" },
+        "license": { "type": "string" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "node_version",
+        "node_engine_range",
+        "npm_version",
+        "lockfile_sha256"
+      ],
+      "properties": {
+        "node_version": { "type": "string" },
+        "node_engine_range": { "type": "string" },
+        "npm_version": { "type": "string" },
+        "lockfile_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "description": "Exact pinned dependency versions/digests for the LIVE image.",
+      "additionalProperties": { "type": "string" }
+    },
+    "image": {
+      "type": "object",
+      "required": ["digest"],
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": "string" },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    },
+    "sdk": {
+      "type": "object",
+      "required": ["package", "version"],
+      "description": "Exact official SDK package/version frozen at G0 after contract checks.",
+      "properties": {
+        "package": { "type": "string" },
+        "version": { "type": "string" },
+        "digest": { "type": "string" }
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "required": ["chain_id", "registry_version"],
+      "description": "Wallet/contract registry reference. Addresses live in the versioned registry, not in source (B18).",
+      "properties": {
+        "chain_id": { "type": "integer" },
+        "registry_version": { "type": "string" },
+        "registry_hash": { "type": "string" }
+      }
+    },
+    "schema_migrations": {
+      "type": "object",
+      "required": ["schema_version", "migrations"],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "migrations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "strategies": {
+      "type": "object",
+      "description": "Exact LIVE-qualified strategy/model versions, not strategy names.",
+      "additionalProperties": { "type": "string" }
+    },
+    "policy": {
+      "type": "object",
+      "required": ["policy_version", "policy_hash"],
+      "properties": {
+        "policy_version": { "type": "string" },
+        "policy_hash": { "type": "string" }
+      }
+    },
+    "gate_reports": {
+      "type": "array",
+      "description": "Refs to gate_reports rows or test_report.json artifacts per gate.",
+      "items": { "type": "string" }
+    },
+    "fork_disposition": {
+      "type": "string",
+      "description": "Ref to fork_disposition.csv: every upstream module with KEEP/ADAPT/REWRITE/REMOVE/QUARANTINE."
+    },
+    "sbom": {
+      "type": "object",
+      "required": ["format", "sha256"],
+      "properties": {
+        "format": { "type": "string", "enum": ["spdx-json", "cyclonedx-json"] },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

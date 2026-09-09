@@ -4,7 +4,9 @@
  */
 
 // Re-export domain types
-export type { TradeIntent, Forecast, MarketSnapshot } from "@polyroot/domain";
+import type { TradeIntent, Forecast, MarketSnapshot } from "@polyroot/domain";
+
+export type { TradeIntent, Forecast, MarketSnapshot };
 
 /** Placeholder for EvidenceDirectionalV1 — to be implemented */
 export interface EvidenceDirectionalV1 {

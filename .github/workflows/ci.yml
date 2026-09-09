@@ -6,10 +6,10 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '0 3 * * 1'  # Weekly on Monday
+    - cron: "0 3 * * 1" # Weekly on Monday
 
 env:
-  NODE_VERSION: '24'
+  NODE_VERSION: "24"
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/polyroot_test
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -40,6 +40,9 @@ jobs:
 
       - name: Check formatting
         run: npx prettier --check .
+
+      - name: Traceability gate (PRD↔Blueprint 96 IDs, P12.1)
+        run: npm run traceability
 
   # ─── Unit & Contract Tests ───
   test:
@@ -67,7 +70,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -102,7 +105,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -151,7 +154,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -206,7 +209,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -228,7 +231,7 @@ jobs:
 
       - name: Verify manifest schema
         run: |
-          npx ajv validate -s release_manifest.json -d release_manifest.json
+          npx --yes ajv-cli validate --spec=draft2020 --validate-formats=false -s release_manifest.schema.json -d release_manifest.json
 
   # ─── Notify ───
   notify:

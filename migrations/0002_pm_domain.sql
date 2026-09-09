@@ -1,4 +1,4 @@
--- Migration 0002: Polyroot domain tables (markets, events, snapshots)
+-- Migration 0002: PolyRoot domain tables (markets, events, snapshots)
 -- Created: 2026-09-09
 
 -- ─── Events (Polymarket events = groups of markets) ───

@@ -4,11 +4,22 @@
  */
 
 // Re-export domain types
-export type { TradeIntent, RiskDecision, RiskPolicy, Portfolio } from "@polyroot/domain";
+import type {
+  TradeIntent,
+  RiskDecision,
+  RiskPolicy,
+  Portfolio,
+} from "@polyroot/domain";
+
+export type { TradeIntent, RiskDecision, RiskPolicy, Portfolio };
 
 /** Placeholder for RiskEngine — to be implemented */
 export interface RiskEngine {
-  evaluate(intent: TradeIntent, policy: RiskPolicy, portfolio: Portfolio): Promise<RiskDecision>;
+  evaluate(
+    intent: TradeIntent,
+    policy: RiskPolicy,
+    portfolio: Portfolio,
+  ): Promise<RiskDecision>;
 }
 
 /** Placeholder for EVCalculator — to be implemented */

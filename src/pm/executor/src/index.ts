@@ -4,7 +4,14 @@
  */
 
 // Re-export domain types
-export type { TradeIntent, RiskDecision, SignedOrder, OrderResult } from "@polyroot/domain";
+import type {
+  TradeIntent,
+  RiskDecision,
+  SignedOrder,
+  OrderResult,
+} from "@polyroot/domain";
+
+export type { TradeIntent, RiskDecision, SignedOrder, OrderResult };
 
 /** Placeholder for Executor — to be implemented */
 export interface Executor {

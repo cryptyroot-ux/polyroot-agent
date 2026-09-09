@@ -4,7 +4,9 @@
  */
 
 // Re-export domain types
-export type { LedgerEvent, LedgerEventType } from "@polyroot/domain";
+import type { LedgerEvent, LedgerEventType } from "@polyroot/domain";
+
+export type { LedgerEvent, LedgerEventType };
 
 /** Placeholder for EventStore — to be implemented */
 export interface EventStore {

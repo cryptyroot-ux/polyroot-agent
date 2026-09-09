@@ -4,7 +4,13 @@
  */
 
 // Re-export domain types
-export type { MarketSnapshot, SignedOrder, OrderResult } from "@polyroot/domain";
+import type {
+  MarketSnapshot,
+  SignedOrder,
+  OrderResult,
+} from "@polyroot/domain";
+
+export type { MarketSnapshot, SignedOrder, OrderResult };
 
 /** Placeholder for VenueAdapter — to be implemented */
 export interface VenueAdapter {

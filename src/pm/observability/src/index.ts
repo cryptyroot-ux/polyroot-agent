@@ -4,7 +4,9 @@
  */
 
 // Re-export domain types
-export type { LedgerEvent } from "@polyroot/domain";
+import type { LedgerEvent } from "@polyroot/domain";
+
+export type { LedgerEvent };
 
 /** Placeholder for Metrics — to be implemented */
 export interface Metrics {
@@ -29,5 +31,8 @@ export interface AlertManager {
 
 /** Placeholder for HealthCheck — to be implemented */
 export interface HealthCheck {
-  check(): Promise<{ status: "healthy" | "degraded" | "unhealthy"; details: Record<string, unknown> }>;
+  check(): Promise<{
+    status: "healthy" | "degraded" | "unhealthy";
+    details: Record<string, unknown>;
+  }>;
 }

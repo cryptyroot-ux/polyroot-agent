@@ -4,7 +4,15 @@
  */
 
 // Re-export domain types
-export type { TradeIntent, RiskDecision, RiskPolicy, Portfolio, LedgerEvent } from "@polyroot/domain";
+import type {
+  TradeIntent,
+  RiskDecision,
+  RiskPolicy,
+  Portfolio,
+  LedgerEvent,
+} from "@polyroot/domain";
+
+export type { TradeIntent, RiskDecision, RiskPolicy, Portfolio, LedgerEvent };
 
 /** Placeholder for ControlServer — to be implemented */
 export interface ControlServer {

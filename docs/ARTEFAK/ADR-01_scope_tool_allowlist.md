@@ -1,82 +1,91 @@
-# ADR-01: Agent Scope & Tool Allowlist
+# ADR-01: Fork Reduction, Dependency Allowlist and Production Tool/Capability Model
 
-**Status:** Accepted  
-**Date:** 2026-09-09  
-**Deciders:** Crypty Root (Tech Lead)  
-**Technical Story:** PRD PM-GOV-01…03, Blueprint B2 §3 (Agent graph), B3 §3 (Domain)
+**Status:** Accepted
+**Date:** 2026-09-09 (updated to PRD/Blueprint v1.1)
+**Deciders:** Crypty Root (Tech Lead)
+**Technical Story:** PR-GOV-01, PR-SEC-06, PR-EXE-01; Blueprint B1 (fork disposition), B2 (trust boundaries)
 
 ---
 
 ## Context
 
-Polyroot adopts a **controlled autonomy** architecture: the AI agent reasons about
-markets, constructs evidence, and *proposes* `TradeIntent` objects. It **never**
-holds private keys and **never** signs or submits orders. A separate deterministic
-`Executor` performs all on-chain operations.
+PolyRoot is a fork of CloddsBot (pinned commit `715fd4a6`, v1.9.0, MIT). The
+upstream is a large multi-venue trading terminal: its tool registry exposes a
+630+ dynamic tool universe spanning trading, shell, SQL, Docker, messaging and
+multiple venues (Blueprint S05). That surface is incompatible with least
+privilege for a LIVE financial runtime. Its dependency graph pulls unrelated
+exchanges, DeFi SDKs, messaging stacks and install scripts (PR-SEC-06).
 
-To enforce this boundary at the code level, the agent graph must be restricted
-to a **read / learn / propose** tool allowlist. Any tool that could mutate state,
-sign transactions, or bypass the risk engine is forbidden from the agent's
-call graph.
-
----
+Rewriting everything wastes useful concepts (risk taxonomy, provider routing);
+reusing everything inherits dangerous assumptions (direct signing, broad retry,
+manual signer without wallet type 3). Every upstream subsystem therefore needs
+an explicit disposition, and the production runtime needs an explicit
+dependency allowlist plus a minimal tool/capability model.
 
 ## Decision
 
-The agent's tool registry (`src/agents/tool-registry.ts` in upstream) will be
-replaced with an **allowlist-only** registry that exposes exactly three
-categories:
+### 1. Fork disposition (Blueprint B1)
 
-| Category | Tools | Purpose |
-|----------|-------|---------|
-| **Read** | `getMarketSnapshot`, `getOrderBook`, `getRecentTrades`, `getFundingRate`, `getPositions` | Pure queries — no side effects |
-| **Learn** | `ingestEvidence`, `runCalibration`, `fetchNews`, `queryKnowledgeBase` | Write to *evidence store* only (append-only, no trading) |
-| **Propose** | `proposeIntent` | Emit a `TradeIntent` DTO → routed to `Executor` |
+Every retained upstream area gets one disposition — KEEP, ADAPT, REWRITE,
+REMOVE or QUARANTINE — recorded in `docs/ARTEFAK/fork_disposition.csv`
+(required before G1). Key rulings already fixed:
 
-**Forbidden** (removed from agent graph, kept only in Executor / Control):
-- `signOrder`, `submitOrder`, `cancelOrder`, `modifyOrder`
-- `transferFunds`, `withdraw`, `deposit`
-- `setRiskPolicy`, `overrideSizing`, `emergencyStop` (these are owner-only commands via Control API)
-- Any tool that accepts a private key or signer object
+| Upstream area                              | Disposition            | Rule                                                                 |
+| ------------------------------------------ | ---------------------- | -------------------------------------------------------------------- |
+| `src/agents/tool-registry.ts` (630+ tools) | REPLACE FOR PRODUCTION | Intelligence gets explicit read/research/propose capabilities only   |
+| `src/execution/index.ts`                   | REPLACE HOT PATH       | New executor uses durable intent/permit/unknown-state protocol       |
+| `src/utils/polymarket-order-signer.ts`     | RETIRE / QUARANTINE    | Lacks wallet type 3 / POLY_1271; official SDK adapter is the default |
+| `src/trading/kelly.ts`                     | REWRITE                | Verbal-confidence and win-streak sizing are rejected (see ADR-07)    |
+| `src/strategies/hft-divergence/*`          | QUARANTINE             | Not in first LIVE release                                            |
+| `src/arbitrage/*`                          | RESEARCH ONLY          | No direct execution path                                             |
+| Unrelated venues / DeFi / messaging        | REMOVE                 | Amputated from the LIVE image                                        |
+| SQLite/chat persistence                    | NON-FINANCIAL ONLY     | PostgreSQL is the sole financial truth                               |
 
----
+### 2. Dependency allowlist (PR-SEC-06)
+
+The LIVE image installs only the exact pinned dependencies needed by the
+PolyRoot runtime. Unrelated trading/shell packages fail the build gate
+(T-PR-SEC-06). Exact lock/digests, SBOM/provenance and vulnerability/secret
+scans are release inputs, recorded in the release manifest.
+
+### 3. Production tool/capability model
+
+Intelligence and strategy code receive exactly three capability classes —
+**read** (market snapshots, books, positions), **research** (normalized
+evidence via the quarantine boundary, ADR-06) and **propose** (structured
+`TradeIntent`, never a financial effect). No production intelligence path may
+reach signing, submission, policy mutation, shell, raw financial SQL, host env
+or secrets. Owner governance (pause, policy change, emergency stop) lives
+exclusively in the authenticated Control API with audit (ADR-04).
 
 ## Consequences
 
 ### Positive
-- **Enforceable boundary**: TypeScript + CI can verify no forbidden tool is
-  reachable from the agent entry point.
-- **Auditability**: Every proposal is a logged `TradeIntent` with traceability
-  to the evidence that produced it.
-- **Compliance**: Matches PRD PM-GOV-01 (no private keys in agent) and
-  Blueprint B3 §3 (intent-only output).
+
+- Forbidden financial paths are provably unreachable, not merely undocumented.
+- Upstream concepts worth keeping (risk taxonomy, provider routing ideas) are
+  adapted behind new boundaries instead of inherited wholesale.
+- The LIVE supply-chain surface is minimal and auditable.
 
 ### Negative
-- **More upfront work**: Must wrap all Polymarket SDK calls in read-only adapters.
-- **No "quick fix" via agent**: If a market edge requires a complex multi-step
-  order (bracket, TWAP), the *strategy* must encode it as a structured intent;
-  the agent cannot improvise.
 
-### Neutral
-- Owner commands (pause, policy update, emergency stop) move to the Control API
-  with auth + audit log — this is a feature, not a limitation.
-
----
+- Disposition matrix and amputated builds are upfront work before any strategy
+  can reach a financial endpoint.
+- Upstream syncs must re-run the disposition for every touched module.
 
 ## Validation
 
-- **Contract test** (`tests/pm/contracts/tool-allowlist.test.ts`):  
-  Assert that the agent's tool registry contains *only* the allowlisted tools.
-- **Static analysis** (CI):  
-  `grep -r "signOrder\|submitOrder\|privateKey" src/pm/intelligence src/pm/strategy` must return zero hits.
-- **Runtime guard**: Agent entry point throws if injected tool registry contains
-  any forbidden tool name.
-
----
+- `fork_disposition.csv` exists; every upstream module has a disposition
+  (T-PR-GOV-01 blocks release on hash/drift).
+- Call-graph/security tests find no active direct order/sign path outside the
+  executor boundary (T-PR-EXE-01).
+- Reintroducing an unrelated trading/shell package into the LIVE image fails
+  the dependency allowlist gate (T-PR-SEC-06).
+- Static analysis: no `signOrder`/`submitOrder`/private-key material reachable
+  from intelligence/strategy packages.
 
 ## Related
 
-- ADR-02 (SDK / wallet / collateral)
-- Blueprint B2 §3 (Agent graph changes)
-- Blueprint B3 §3 (Domain: TradeIntent, RiskDecision)
-- PRD PM-GOV-01, PM-GOV-02, PM-GOV-03
+- ADR-02 (SDK / wallet / registry), ADR-08 (deployment/security)
+- Blueprint B1 (full disposition table), B2 (process/role can/cannot matrix)
+- PR-GOV-01, PR-SEC-06, PR-EXE-01

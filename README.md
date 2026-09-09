@@ -1,4 +1,4 @@
-# Polyroot Agent
+# PolyRoot Agent
 
 **Autonomous AI trading agent for Polymarket** — a fork of
 [CloddsBot](https://github.com/alsk1992/CloddsBot) built with a **controlled
@@ -13,11 +13,11 @@ keys.
 
 ## What it is
 
-Polyroot is an open, auditable prediction-market trading agent. It watches the
+PolyRoot is an open, auditable prediction-market trading agent. It watches the
 Polymarket order book, feeds evidence into an LLM that proposes trading
 intents, and routes those intents through a risk-gated, deterministic executor.
-Separation of *reasoning* (AI) from *execution* (code) is the core safety
-property that distinguishes Polyroot from "ChatGPT-trades-my-wallet" bots.
+Separation of _reasoning_ (AI) from _execution_ (code) is the core safety
+property that distinguishes PolyRoot from "ChatGPT-trades-my-wallet" bots.
 
 ## Architecture overview
 
@@ -41,7 +41,8 @@ property that distinguishes Polyroot from "ChatGPT-trades-my-wallet" bots.
 ```
 
 Key invariants:
-- **AI never holds private keys** — it can only *propose* intents.
+
+- **AI never holds private keys** — it can only _propose_ intents.
 - **Every intent passes the same validator** — read / learn / propose only.
 - **Executor is deterministic + auditable** — every order is a signed,
   logged, recoverable ledger event.
@@ -49,14 +50,14 @@ Key invariants:
 
 ## Requirements
 
-| # | Decision | Value |
-|---|----------|-------|
-| 1 | Upstream baseline | `alsk1992/CloddsBot` @ `715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8` (MIT, v1.9.0) |
-| 2 | Runtime | Node.js **24 LTS** + TypeScript (strict) |
-| 3 | Ledger DB | PostgreSQL (dev 16 / prod 17) |
-| 4 | Build | npm workspaces (monorepo), Docker multi-stage, non-root |
-| 5 | LLM providers | Anthropic + OpenAI (adapter-compatible) |
-| 6 | Execution mode | `PAPER` by default; `LIVE` only after G4+ owner mandate |
+| #   | Decision          | Value                                                                           |
+| --- | ----------------- | ------------------------------------------------------------------------------- |
+| 1   | Upstream baseline | `alsk1992/CloddsBot` @ `715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8` (MIT, v1.9.0) |
+| 2   | Runtime           | Node.js **24 LTS** + TypeScript (strict)                                        |
+| 3   | Ledger DB         | PostgreSQL (dev 16 / prod 17)                                                   |
+| 4   | Build             | npm workspaces (monorepo), Docker multi-stage, non-root                         |
+| 5   | LLM providers     | Anthropic + OpenAI (adapter-compatible)                                         |
+| 6   | Execution mode    | `PAPER` by default; `LIVE` only after G4+ owner mandate                         |
 
 ## Documentation
 
@@ -78,7 +79,7 @@ npm run dev          # starts gateway + executor in PAPER mode
 ```
 src/
 ├── cloddybot/          # pinned upstream fork (patch base)
-└── pm/                 # Polyroot domain code
+└── pm/                 # PolyRoot domain code
     ├── domain/         # entities: EvidenceItem, MarketSnapshot, Forecast, TradeIntent, ...
     ├── data/           # Postgres models + market-data/provider adapters
     ├── intelligence/   # LLM provider adapters + forecast service
@@ -96,4 +97,4 @@ tests/pm/               # contracts / property / fixtures
 ## License
 
 MIT — see [`LICENSE`](LICENSE). Original work from CloddsBot
-(c) 2026 alsk1992, plus Polyroot modifications (c) 2026 Crypty Root.
+(c) 2026 alsk1992, plus PolyRoot modifications (c) 2026 Crypty Root.

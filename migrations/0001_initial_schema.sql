@@ -1,4 +1,4 @@
--- Migration 0001: Initial schema for Polyroot ledger and core tables
+-- Migration 0001: Initial schema for PolyRoot ledger and core tables
 -- Created: 2026-09-09
 
 -- Enable extensions

@@ -4,7 +4,9 @@
  */
 
 // Re-export domain types
-export type { MarketSnapshot, EvidenceItem } from "@polyroot/domain";
+import type { MarketSnapshot, EvidenceItem } from "@polyroot/domain";
+
+export type { MarketSnapshot, EvidenceItem };
 
 /** Placeholder for MarketDataAdapter — to be implemented */
 export interface MarketDataAdapter {

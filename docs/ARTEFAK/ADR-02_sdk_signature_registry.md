@@ -1,148 +1,102 @@
-# ADR-02: SDK Signature Registry, Wallet & Collateral
+# ADR-02: Official SDK/Version, Wallet Support, Asset/Approval Registry and Credential Lifecycle
 
-**Status:** Accepted  
-**Date:** 2026-09-09  
-**Deciders:** Crypty Root (Tech Lead)  
-**Technical Story:** PRD PM-GOV-04, PM-RISK-01…04, Blueprint B2 §8 (Signer), B4 §4 (Venue), B8 (Security)
+**Status:** Accepted
+**Date:** 2026-09-09 (updated to PRD/Blueprint v1.1)
+**Deciders:** Crypty Root (Tech Lead)
+**Technical Story:** PR-WAL-01…08; Blueprint B5 (wallet/signer), B10 (VenueAdapter)
 
 ---
 
 ## Context
 
-Polyroot must interact with the Polymarket CLOB (Central Limit Order Book) on
-Polygon (chain ID 137). The official TypeScript SDK is `@polymarket/client`,
-which provides:
-- `ClobClient` for order placement, cancellation, and query
-- `NegRiskClient` for neg-risk (complement) markets
-- Order signing via `Signer` (ethers v6 `Wallet` or `JsonRpcSigner`)
-
-Upstream CloddsBot uses `unofficial-opinion-clob-sdk` (v0.1.10) and a custom
-`polymarket-order-signer.ts` that assumes `negRisk` fee = 25/0 bps — a bug per
-Blueprint research. We must migrate to the official SDK and define our own
-signer adapter.
-
-**Critical constraints from Blueprint:**
-- **Executor only** holds the signing key (AI never sees it).
-- Wallet type is **owner-configured** (hardware wallet via Clef, HSM, or
-  encrypted keystore — not a plaintext `.env` private key).
-- Collateral is **pUSD** (Polygon USDC bridged, token `0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`).
-- All order signing must go through a **signature registry** that validates
-  order structure, checks risk reservations, and emits a signed payload — no
-  direct SDK `signOrder` calls in business logic.
-
----
+CLOB V2 is the production reality; current official examples use the unified
+TypeScript client (`@polymarket/client`, observed 0.9.0 at research cut, Node
+≥ 24). The pinned upstream uses `unofficial-opinion-clob-sdk` plus a manual
+signer that explicitly lacks the wallet type 3 / POLY_1271 path — so the
+manual signer cannot be the production authority. Deposit Wallet is the
+current default account wallet (wallet type 3). pUSD is the trading
+collateral; a nominal USDC/USDC.e balance is not automatically spendable pUSD.
+Matching-engine realities (HTTP 425 restarts, post-only/cancel-only modes,
+rate-limit queueing, category-dependent fees, dynamic rebates) mean every
+SDK name, endpoint, fee table and contract address is a research baseline
+that G0 must revalidate — never an eternal constant (Blueprint B18).
 
 ## Decision
 
-### 1. Official SDK Pin
-Pin `@polymarket/client` at a specific version (to be determined in Sprint 2
-after compatibility testing). Do **not** use `unofficial-opinion-clob-sdk`.
+### 1. Official SDK behind a pinned VenueAdapter (PR-WAL-01, PR-EXE-02)
 
-### 2. Venue Adapter (`@polyroot/venue`)
-Wrap `ClobClient` / `NegRiskClient` in a **venue adapter** with the interface:
+Business logic never calls the SDK directly. A `VenueAdapter` wraps the exact
+pinned official SDK/runtime (frozen at G0 after contract checks) and exposes
+one capability contract: market data, canonical order construction, submit
+(ACK / DEFINITIVE_REJECT / UNKNOWN — ACK is not a fill), order/trade lookup,
+cancel/cancelAll with per-order results, streams/heartbeat, balances /
+allowances / positions, and settlement/redeem. Unsupported behavior is an
+explicit fail-closed state, and an SDK upgrade that changes a method/schema
+fails the adapter contract test before release (T-PR-WAL-01).
 
-```ts
-interface VenueAdapter {
-  // Read
-  getOrderBook(marketId: string): Promise<OrderBook>;
-  getMarkets(params: MarketFilter): Promise<Market[]>;
-  getPositions(address: string): Promise<Position[]>;
+### 2. Wallet support (PR-WAL-02/03)
 
-  // Write (Executor only)
-  placeOrder(order: SignedOrder): Promise<OrderResult>;
-  cancelOrder(orderId: string): Promise<CancelResult>;
-  cancelAll(marketId?: string): Promise<CancelResult[]>;
-}
-```
+Deposit Wallet / wallet type 3 is the default modern account model; EOA,
+legacy Proxy and Safe are supported only when contract tests prove
+compatibility. Signer address, account/deposit wallet, funder/collateral
+owner and wallet type are modelled as separate verified identifiers
+(`wallets` table) — never inferred from one address field. Swapping signer
+and wallet in a fixture must fail before any financial side effect
+(T-PR-WAL-03).
 
-All write methods **require** a `SignedOrder` produced by the Signature Registry.
-The adapter never sees the private key.
+### 3. Asset and approval registry (PR-WAL-06)
 
-### 3. Signature Registry (`src/pm/executor/signature-registry.ts`)
-A pure function (no side effects) that:
+pUSD, USDC/USDC.e and outcome tokens are distinct assets in `asset_registry`
+(chain, contract, decimals, symbol) with an `approvals` table for
+allowance/operator state. Spendable balance = verified settled pUSD minus
+active reservations; a wallet with nominal balance but missing allowance
+reports lower free cash and entries are rejected until setup is valid
+(T-PR-WAL-06). Contract addresses live in the versioned registry, never
+hardcoded in source.
 
-```ts
-interface SignatureRegistry {
-  signOrder(
-    unsigned: UnsignedOrder,
-    riskDecision: RiskDecision,
-    wallet: WalletAdapter
-  ): Promise<SignedOrder>;
-}
-```
+### 4. Credential lifecycle (PR-WAL-04/05)
 
-- Validates `UnsignedOrder` against Zod schema (market, side, price, size,
-  fee tier, expiration, nonce).
-- Verifies `riskDecision.reservationId` exists and is **active** (ledger check).
-- Delegates actual signing to `WalletAdapter` (see below).
-- Returns `SignedOrder` with `signature`, `signer`, `signedAt`.
+L1 authentication, CLOB L2 API credentials and Relayer/Builder credentials
+are stored and scoped separately (`credentials` table: kind, scope,
+creation/derivation, rotation, revocation, health, last verification) with no
+secret material in the ledger, logs, prompts, exports or backups. Revoked or
+rotated L2 credentials safely transition the executor and can never authorize
+new requests (T-PR-WAL-04). Relayer/builder keys are isolated from ordinary
+order execution and invisible to research containers (T-PR-WAL-05).
 
-### 4. Wallet Adapter (`src/pm/executor/wallet-adapter.ts`)
-Abstraction over the owner's key material. Implementations:
+### 5. Narrow Signer Vault (PR-WAL-07)
 
-| Type | Description | Status |
-|------|-------------|--------|
-| `ClefWallet` | Ethereum Clef (external signer process) | **Preferred for prod** |
-| `HsmWallet` | AWS CloudHSM / Azure Key Vault / GCP KMS (via ethers `ExternalSigner`) | **Preferred for prod** |
-| `KeystoreWallet` | Encrypted JSON keystore (scrypt, password from env) | **Dev / fallback** |
-| `TestWallet` | In-memory `ethers.Wallet` (random key) | **Test only** |
-
-**Plaintext private key in `.env` is forbidden** — CI secret scan (Gitleaks) will
-fail the build if detected.
-
-### 5. Collateral & Chain Constants
-Hardcode in `@polyroot/domain/constants.ts` (not env):
-
-```ts
-export const POLYMARKET = {
-  CHAIN_ID: 137,
-  P_USD: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
-  CLOB_ADDRESS: "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E",
-  NEG_RISK_CLOB: "0x5F47C39E8B7e7d2e4E8d8D8d8D8d8D8d8D8d8D8d8",
-  FEE_TIERS: { maker: 0, taker: 2 } as const, // bps, per official docs
-} as const;
-```
-
-### 6. NegRisk Fee Fix
-Replace upstream's hardcoded 25/0 bps with official fee tiers (maker 0, taker 2
-bps for standard; neg-risk uses same schedule). This is tracked as a **patch
-to upstream** and documented in the release manifest.
-
----
+Private signing capability lives in a minimal signer boundary that accepts
+only typed, allowlisted Polymarket operations bound to an unexpired execution
+permit, policy hash, chain/contract and amount limits. Arbitrary calldata,
+mismatched amounts or policy hashes are refused and audited (T-PR-WAL-07).
+Funding, bridging, withdrawal and key-compromise evacuation are a separate
+governance/break-glass workflow, never strategy autonomy (PR-WAL-08).
 
 ## Consequences
 
 ### Positive
-- **Single signing path**: All orders flow through `SignatureRegistry` → auditable.
-- **Wallet flexibility**: Owner can swap Clef ↔ HSM ↔ Keystore without code changes.
-- **SDK upgrade safety**: Venue adapter isolates SDK breaking changes.
-- **Fee correctness**: NegRisk fee bug eliminated.
+
+- One signing path, fully auditable; wallet/credential upgrades don't touch
+  strategy code.
+- Fee/rebate/address drift is caught by contract checks at G0, not by
+  production failures.
 
 ### Negative
-- **More indirection**: Extra layer vs. direct SDK calls.
-- **Clef/HSM setup**: Requires owner infrastructure (documented in ops runbook).
 
-### Neutral
-- Test wallet enables deterministic CI tests without secrets.
-
----
+- VenueAdapter + registry + vault is more indirection than direct SDK calls.
+- G0 must run live read-only contract checks — mocks alone never qualify a
+  release (T-PR-VAL-01).
 
 ## Validation
 
-- **Contract test** (`tests/pm/contracts/signature-registry.test.ts`):
-  - Invalid order → rejected
-  - Missing risk reservation → rejected
-  - Valid order + TestWallet → produces valid `SignedOrder` verifiable by SDK
-- **Integration test** (against Polygon Amoy testnet):
-  - Place + cancel order via full stack (Executor → Registry → Wallet → Adapter)
-- **Secret scan** (CI): Gitleaks rule for `PRIVATE_KEY`, `MNEMONIC`, `SEED_PHRASE`
-
----
+- Adapter contract tests against current read-only API/SDK; mismatch blocks
+  release (T-PR-EXE-02, T-PR-VAL-01).
+- Wallet-type fixtures incl. unsupported-signature refusal (T-PR-WAL-02).
+- Allowance-missing fixture rejects entry (T-PR-WAL-06).
+- Arbitrary-calldata signing fixture refused + audited (T-PR-WAL-07).
 
 ## Related
 
-- ADR-01 (Agent scope)
-- Blueprint B2 §8 (`src/utils/polymarket-order-signer.ts` changes)
-- Blueprint B4 §4 (VenueAdapter interface)
-- Blueprint B8 (Security: secret isolation)
-- PRD PM-GOV-04, PM-RISK-01…04
+- ADR-01 (fork/allowlist), ADR-03 (schemas/permits), ADR-08 (signer deployment)
+- Blueprint B5, B10; PR-WAL-01…08

@@ -5,7 +5,11 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { setupTestDb, cleanTestDb, teardownTestDb } from "../helpers/test-setup.ts";
+import {
+  setupTestDb,
+  cleanTestDb,
+  teardownTestDb,
+} from "../../helpers/test-setup.ts";
 
 // These will be implemented when the agent graph is built
 const ALLOWED_TOOLS = new Set([

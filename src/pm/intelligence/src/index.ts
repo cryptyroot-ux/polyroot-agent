@@ -4,7 +4,9 @@
  */
 
 // Re-export domain types
-export type { EvidenceItem, Forecast, MarketSnapshot } from "@polyroot/domain";
+import type { EvidenceItem, Forecast, MarketSnapshot } from "@polyroot/domain";
+
+export type { EvidenceItem, Forecast, MarketSnapshot };
 
 /** Placeholder for AnthropicAdapter — to be implemented */
 export interface AnthropicAdapter {

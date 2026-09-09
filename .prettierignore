@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+package-lock.json
+docs/*.txt
+docs/*.docx
+migrations/
+*.tsbuildinfo
