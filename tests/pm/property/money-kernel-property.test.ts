@@ -1,5 +1,5 @@
 /**
- * Property-based checks for the Money Kernel cash exactness (PR-LED-02).
+ * Property-based checks for the Money Kernel cash exactness (PM-LED-02).
  * Uses a deterministic grid rather than fast-check (not yet installed); the
  * invariants hold for every valid (shares, price) pair and are verified over a
  * wide sweep, catching any float-drift regression.
@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { cashNeededFor } from "@polyroot/risk";
 
-describe("Money Kernel — exact cash arithmetic (PR-LED-02)", () => {
+describe("Money Kernel — exact cash arithmetic (PM-LED-02)", () => {
   it("cashNeededFor equals shares * price / 1e6 for a large deterministic grid", () => {
     // Sweep share counts and per-share prices in integer base units (1e6).
     const shareCounts = [
@@ -55,5 +55,31 @@ describe("Money Kernel — exact cash arithmetic (PR-LED-02)", () => {
 
   it("zero or negative shares always require zero cash (never negative)", () => {
     assert.equal(cashNeededFor(0n, 500_000n), 0n);
+  });
+
+  it("cashNeededFor is exact integer truncation with no float drift at any input", () => {
+    // PM-LED-02: the pure function must stay exact integer division for every
+    // bigint pair. A negative price yields a negative cashNeed here BY
+    // DESIGN — that value is exactly what the kernel guard (PRICE_RANGE) must
+    // refuse before any commitment. This property pins the math; the guard
+    // is pinned by the contract tests in money-kernel.test.ts.
+    const shareCounts = [
+      0n, 1_000_000n, 7_777_777n, 1_000_000_000n,
+    ];
+    const prices = [
+      -1_000_000n, -1n, 0n, 1n, 500_000n, 1_000_000n, 1_000_001n, 9_000_000n,
+    ];
+    for (const shares of shareCounts) {
+      for (const price of prices) {
+        const got = cashNeededFor(shares, price);
+        assert.equal(got, (shares * price) / 1_000_000n,
+          `identity shares=${shares} price=${price}`);
+        if (price >= 0n) {
+          assert.ok(got >= 0n, `non-negative for valid price ${price}`);
+          assert.ok(got * 1_000_000n <= shares * price,
+            `never above product for price ${price}`);
+        }
+      }
+    }
   });
 });

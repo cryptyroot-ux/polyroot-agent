@@ -1,0 +1,416 @@
+[
+  {
+    "id": "R01",
+    "title": "CloddsBot LICENSE",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/LICENSE",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "MIT permits modification with notices retained",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R02",
+    "title": "CloddsBot package.json",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/package.json",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "80 direct production dependencies and postinstall scripts",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R03",
+    "title": "CloddsBot gateway wiring",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/gateway/index.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "SafetyManager and risk engine wired, context coverage differs",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R04",
+    "title": "CloddsBot risk engine",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/risk/engine.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "Existing checks and optional dependencies need hardening",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R05",
+    "title": "CloddsBot trading safety",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/trading/safety.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "Persistent safety state plus auto-resume and heuristic correlation",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R06",
+    "title": "CloddsBot manual order signer",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/utils/polymarket-order-signer.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "POLY_1271 explicitly unsupported in manual signer",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R07",
+    "title": "CloddsBot Kelly sizing",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/trading/kelly.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "Heuristic probability/default odds/minimum Kelly",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R08",
+    "title": "CloddsBot market links",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/opportunity/links.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "Existing persistent market linking subsystem",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R09",
+    "title": "CloddsBot combinatorial arbitrage",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/opportunity/combinatorial.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "Existing structural ideas with fee/exhaustiveness gaps",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R10",
+    "title": "CloddsBot plugins",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/plugins/index.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "Same-process dynamic import, not isolation",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R11",
+    "title": "CloddsBot copy trading",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/trading/copy-trading.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "Success is mapped to filled, requiring lifecycle rewrite",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R12",
+    "title": "CloddsBot market making strategy",
+    "publisher": "alsk1992 / GitHub",
+    "url": "https://github.com/alsk1992/CloddsBot/blob/715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8/src/trading/market-making/strategy.ts",
+    "version": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+    "claim": "Cancel failures can be swallowed while IDs cleared",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R13",
+    "title": "TypeScript SDK",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/getting-started/typescript",
+    "version": "Diakses 9 September 2026",
+    "claim": "Official unified client surface",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R14",
+    "title": "Migrating from previous SDKs",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/getting-started/migrate-from-previous-sdks",
+    "version": "Diakses 9 September 2026",
+    "claim": "Current unified migration and constructor side effects",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R15",
+    "title": "Wallets and authentication",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/trading/wallets-auth",
+    "version": "Diakses 9 September 2026",
+    "claim": "Deposit Wallet, L1/L2, owner and account wallet",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R16",
+    "title": "Trading quickstart",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/trading/quickstart",
+    "version": "Diakses 9 September 2026",
+    "claim": "Setup and approvals lifecycle",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R17",
+    "title": "Predictions changelog",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/changelog/predictions",
+    "version": "Diakses 9 September 2026",
+    "claim": "Apr 28 2026 CLOB V2 migration and later market changes",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R18",
+    "title": "SDK changelog",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/changelog/sdks",
+    "version": "Diakses 9 September 2026",
+    "claim": "0.9 assetId, PolyV2/ExchangeV3, maxSpend estimation, session semantics",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R19",
+    "title": "Placing orders",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/trading/place-orders",
+    "version": "Diakses 9 September 2026",
+    "claim": "GTD offset/minimum; post-only; current maxSpend wording conflict",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R20",
+    "title": "Managing orders",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/trading/manage-orders",
+    "version": "Diakses 9 September 2026",
+    "claim": "Version-sensitive heartbeat and cancellation",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R21",
+    "title": "Matching engine restarts",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/trading/matching-engine",
+    "version": "Diakses 9 September 2026",
+    "claim": "425 downtime and post-only recovery",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R22",
+    "title": "Error codes",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/resources/error-codes",
+    "version": "Diakses 9 September 2026",
+    "claim": "Raw order and venue mode errors",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R23",
+    "title": "Fees",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/trading/fees",
+    "version": "Diakses 9 September 2026",
+    "claim": "Match-time fee settings and maker/taker differences",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R24",
+    "title": "Maker rebates",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/programs/maker-rebates",
+    "version": "Diakses 9 September 2026",
+    "claim": "Eligible fills, pool distribution and pUSD payouts",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R25",
+    "title": "Liquidity rewards",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/programs/liquidity-rewards",
+    "version": "Diakses 9 September 2026",
+    "claim": "Separate order-liquidity incentive program",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R26",
+    "title": "Taker rebates",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/programs/taker-rebates",
+    "version": "Diakses 9 September 2026",
+    "claim": "Separate optional incentive program",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R27",
+    "title": "pUSD",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/concepts/pusd",
+    "version": "Diakses 9 September 2026",
+    "claim": "Current collateral identity",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R28",
+    "title": "Bridge deposits",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/trading/bridge/deposit",
+    "version": "Diakses 9 September 2026",
+    "claim": "Funding conversion lifecycle separate from collateral readiness",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R29",
+    "title": "API rate limits",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/api-reference/rate-limits",
+    "version": "Diakses 9 September 2026",
+    "claim": "Cloudflare IP queue and throttling",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R30",
+    "title": "CLOB trading rate limits",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/api-reference/trading-rate-limits",
+    "version": "Diakses 9 September 2026",
+    "claim": "Per-signer order/cancel token buckets; rollout-phase caveat",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R31",
+    "title": "Contracts",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/resources/contracts",
+    "version": "Diakses 9 September 2026",
+    "claim": "Address and protocol registry to verify at profile freeze",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R32",
+    "title": "Session keys beta",
+    "publisher": "Polymarket",
+    "url": "https://docs.polymarket.com/trading/session-keys",
+    "version": "Diakses 9 September 2026",
+    "claim": "Optional scoped session flow, requires current contract testing",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R33",
+    "title": "client 0.9.0 registry metadata",
+    "publisher": "Polymarket / npm",
+    "url": "https://registry.npmjs.org/@polymarket%2fclient/0.9.0",
+    "version": "Published 3 September 2026",
+    "claim": "Version, Node >=24 and package integrity",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R34",
+    "title": "clob-client-v2 1.1.0 registry metadata",
+    "publisher": "Polymarket / npm",
+    "url": "https://registry.npmjs.org/@polymarket%2fclob-client-v2/1.1.0",
+    "version": "Published 17 July 2026",
+    "claim": "Candidate version and integrity; extracted heartbeat/signature source",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R35",
+    "title": "builder-relayer-client 0.0.10 metadata",
+    "publisher": "Polymarket / npm",
+    "url": "https://registry.npmjs.org/@polymarket%2fbuilder-relayer-client/0.0.10",
+    "version": "Published 28 May 2026",
+    "claim": "Relayer compatibility candidate, not runtime approval",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R36",
+    "title": "SSRF Prevention Cheat Sheet",
+    "publisher": "OWASP",
+    "url": "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+    "version": "Diakses 9 September 2026",
+    "claim": "DNS, redirects, private network and layered egress prevention",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R37",
+    "title": "Node.js permissions",
+    "publisher": "Node.js",
+    "url": "https://nodejs.org/api/permissions.html",
+    "version": "Diakses 9 September 2026",
+    "claim": "Permission model does not protect against malicious code",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R38",
+    "title": "LLM Prompt Injection Prevention",
+    "publisher": "OWASP",
+    "url": "https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html",
+    "version": "Diakses 9 September 2026",
+    "claim": "Separate untrusted data, tools and authority",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R39",
+    "title": "Strictly Proper Scoring Rules Prediction and Estimation",
+    "publisher": "Gneiting and Raftery / JASA",
+    "url": "https://sites.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf",
+    "version": "2007",
+    "claim": "Probability scoring and calibration foundations",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R40",
+    "title": "Time series cross-validation",
+    "publisher": "Hyndman and Athanasopoulos",
+    "url": "https://otexts.com/fpp3/tscv.html",
+    "version": "Forecasting Principles and Practice 3rd edition",
+    "claim": "Rolling-origin validation",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R41",
+    "title": "Leakage and the Reproducibility Crisis in ML-based Science",
+    "publisher": "Kapoor and Narayanan",
+    "url": "https://arxiv.org/abs/2207.07048",
+    "version": "2022 preprint; version reviewed in v1.0 research",
+    "claim": "Data leakage and evaluation limits",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R42",
+    "title": "The Probability of Backtest Overfitting",
+    "publisher": "Bailey et al.",
+    "url": "https://www.davidhbailey.com/dhbpapers/backtest-prob.pdf",
+    "version": "Author manuscript",
+    "claim": "Multiple trials and selection bias",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R43",
+    "title": "Risk-Constrained Kelly Gambling",
+    "publisher": "Busseti Ryu and Boyd / Journal of Investing",
+    "url": "https://web.stanford.edu/~boyd/papers/kelly.html",
+    "version": "2016",
+    "claim": "Optimization with drawdown constraint; not proof for Polyroot forecasts",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R44",
+    "title": "Unravelling the Probabilistic Forest Arbitrage in Prediction Markets",
+    "publisher": "Saguillo et al. / arXiv",
+    "url": "https://arxiv.org/abs/2508.03474",
+    "version": "5 August 2025 v1",
+    "claim": "Structural/rebalancing arbitrage research; no guarantee for new bot",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R45",
+    "title": "Transaction isolation",
+    "publisher": "PostgreSQL",
+    "url": "https://www.postgresql.org/docs/17/transaction-iso.html",
+    "version": "PostgreSQL 17",
+    "claim": "Serializable conflicts require transaction retry without blind network retry",
+    "kind": "PRIMARY"
+  },
+  {
+    "id": "R46",
+    "title": "Continuous archiving and PITR",
+    "publisher": "PostgreSQL",
+    "url": "https://www.postgresql.org/docs/17/continuous-archiving.html",
+    "version": "PostgreSQL 17",
+    "claim": "Backup/restore design foundations",
+    "kind": "PRIMARY"
+  }
+]

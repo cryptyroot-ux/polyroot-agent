@@ -112,7 +112,7 @@ function makeDeps(
   return { deps, used, seen };
 }
 
-describe("Executor — order lifecycle, idempotency, no-blind-retry (PR-EXE-03..06)", () => {
+describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..06)", () => {
   it("submits a fresh order exactly once and moves to ACKNOWLEDGED", async () => {
     const adapter = new FakeAdapter();
     const { deps } = makeDeps(adapter);

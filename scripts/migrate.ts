@@ -5,7 +5,7 @@
  *
  * Rollback is intentionally unsupported: financial migrations are
  * forward-only; incompatible-schema rollback is refused by gate
- * (T-PR-OPS-07). Revert via a new forward migration.
+ * (T-PM-OPS-07). Revert via a new forward migration.
  */
 
 import pg from "pg";

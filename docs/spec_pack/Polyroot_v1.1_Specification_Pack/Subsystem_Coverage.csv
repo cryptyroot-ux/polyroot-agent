@@ -1,0 +1,119 @@
+﻿subsystem,files,bytes,lines,dispositions,semantic_review_files,production_admitted
+.dockerignore,1,150,22,"{""QUARANTINE"": 1}",0,0
+.env.example,1,7361,234,"{""QUARANTINE"": 1}",0,0
+.github,3,2927,120,"{""QUARANTINE"": 3}",0,0
+.gitignore,1,1401,88,"{""QUARANTINE"": 1}",0,0
+.npmignore,1,711,79,"{""QUARANTINE"": 1}",0,0
+.npmrc,1,42,3,"{""QUARANTINE"": 1}",0,0
+@types,4,5067,156,"{""QUARANTINE"": 4}",0,0
+AUDIT.md,1,2224,48,"{""RESEARCH-ONLY"": 1}",0,0
+CHANGELOG.md,1,28103,589,"{""RESEARCH-ONLY"": 1}",0,0
+CONTRIBUTING.md,1,4390,164,"{""RESEARCH-ONLY"": 1}",0,0
+Dockerfile,1,1071,35,"{""REWRITE"": 1}",1,0
+LICENSE,1,1065,22,"{""KEEP"": 1}",1,0
+README.md,1,30749,643,"{""RESEARCH-ONLY"": 1}",0,0
+SECURITY.md,1,4841,146,"{""RESEARCH-ONLY"": 1}",0,0
+acp,8,209693,6714,"{""REMOVE"": 8}",0,0
+agents,25,1103502,29696,"{""REWRITE"": 25}",0,0
+alerts,2,31696,1052,"{""ADAPT"": 2}",0,0
+arbitrage,1,22262,738,"{""QUARANTINE"": 1}",0,0
+assets,7,565885,50,"{""RESEARCH-ONLY"": 1, ""ADAPT"": 6}",0,0
+audit-ci.jsonc,1,3289,62,"{""QUARANTINE"": 1}",0,0
+auth,5,55432,1994,"{""ADAPT"": 5}",0,0
+auto-reply,1,17722,608,"{""REMOVE"": 1}",0,0
+automation,4,23800,873,"{""REWRITE"": 4}",0,0
+bankr,2,7181,269,"{""REMOVE"": 2}",0,0
+base,2,5340,189,"{""REMOVE"": 2}",0,0
+bin,1,4545,145,"{""REWRITE"": 1}",0,0
+bittensor,8,43756,1517,"{""REMOVE"": 8}",0,0
+bridge,1,18705,519,"{""REMOVE"": 1}",0,0
+browser,1,17439,580,"{""REMOVE"": 1}",0,0
+cache,1,12166,486,"{""ADAPT"": 1}",0,0
+canvas,1,18143,530,"{""REMOVE"": 1}",0,0
+channels,21,305177,9620,"{""REMOVE"": 21}",0,0
+cli,8,243938,6792,"{""ADAPT"": 8}",0,0
+commands,2,153246,4237,"{""REWRITE"": 2}",0,0
+config,1,59727,1787,"{""ADAPT"": 1}",0,0
+credentials,1,11074,343,"{""REWRITE"": 1}",1,0
+cron,2,56791,1682,"{""ADAPT"": 2}",0,0
+daemon,1,5284,173,"{""REWRITE"": 1}",0,0
+db,2,219078,6481,"{""ADAPT"": 2}",0,0
+docker,1,20823,723,"{""QUARANTINE"": 1}",0,0
+docker-compose.yml,1,316,18,"{""REWRITE"": 1}",1,0
+docs,26,463472,17058,"{""RESEARCH-ONLY"": 26}",0,0
+doctor,1,13732,460,"{""REWRITE"": 1}",0,0
+embeddings,1,18286,592,"{""QUARANTINE"": 1}",0,0
+evm,12,172050,5314,"{""REMOVE"": 12}",0,0
+exchanges,7,143303,5195,"{""REMOVE"": 7}",0,0
+execution,13,344739,10872,"{""REWRITE"": 11, ""ADAPT"": 2}",4,0
+extensions,10,124648,4016,"{""REWRITE"": 10}",0,0
+farcaster,2,11794,393,"{""REMOVE"": 2}",0,0
+feeds,30,456510,14877,"{""ADAPT"": 15, ""REMOVE"": 6, ""RESEARCH-ONLY"": 8, ""KEEP+HARDEN"": 1}",4,0
+gateway,27,425604,10906,"{""REWRITE"": 27}",1,0
+history,1,16314,563,"{""ADAPT"": 1}",0,0
+hooks,1,35580,1162,"{""REWRITE"": 1}",0,0
+i18n,5,37858,1271,"{""ADAPT"": 5}",0,0
+identity,2,22173,710,"{""ADAPT"": 2}",0,0
+infra,2,33792,1230,"{""ADAPT"": 2}",0,0
+ledger,6,52530,1879,"{""REMOVE"": 1, ""ADAPT"": 5}",1,0
+link-understanding,1,12576,392,"{""QUARANTINE"": 1}",0,0
+logging,1,10836,368,"{""ADAPT"": 1}",0,0
+macos,1,19572,686,"{""REMOVE"": 1}",0,0
+markdown,1,11361,404,"{""ADAPT"": 1}",0,0
+market-index,1,23700,745,"{""ADAPT"": 1}",0,0
+mcp,4,60408,1957,"{""REWRITE"": 4}",0,0
+media,1,30539,930,"{""REMOVE"": 1}",0,0
+memory,4,43705,1464,"{""ADAPT"": 4}",0,0
+messages,1,2474,87,"{""REMOVE"": 1}",0,0
+ml-pipeline,4,25506,742,"{""ADAPT"": 4}",0,0
+models,3,9043,325,"{""ADAPT"": 3}",0,0
+monitoring,4,64090,2300,"{""ADAPT"": 4}",0,0
+nodes,1,20242,557,"{""REMOVE"": 1}",0,0
+opportunity,11,254202,8165,"{""ADAPT"": 8, ""REWRITE"": 2, ""QUARANTINE"": 1}",4,0
+package-lock.json,1,908527,24544,"{""REWRITE"": 1}",1,0
+package.json,1,5969,182,"{""REWRITE"": 1}",1,0
+pairing,1,18787,626,"{""REWRITE"": 1}",0,0
+payments,4,50701,1626,"{""REMOVE"": 4}",0,0
+percolator,11,50151,1479,"{""REMOVE"": 11}",0,0
+permissions,1,34310,1245,"{""REWRITE"": 1}",0,0
+plugins,1,19579,645,"{""REWRITE"": 1}",1,0
+portfolio,1,42275,1291,"{""ADAPT"": 1}",0,0
+presence,1,4793,187,"{""REMOVE"": 1}",0,0
+process,1,14707,532,"{""REWRITE"": 1}",0,0
+providers,3,66712,2307,"{""ADAPT"": 3}",1,0
+public,10,338160,5273,"{""RESEARCH-ONLY"": 1, ""ADAPT"": 9}",0,0
+queue,5,30814,1104,"{""ADAPT"": 5}",0,0
+remote,1,17121,649,"{""REMOVE"": 1}",0,0
+risk,7,63052,2022,"{""ADAPT"": 6, ""KEEP+HARDEN"": 1}",6,0
+routing,1,13848,535,"{""ADAPT"": 1}",0,0
+rust,5,48716,1825,"{""QUARANTINE"": 5}",0,0
+scripts,10,57504,1837,"{""RESEARCH-ONLY"": 1, ""QUARANTINE"": 9}",0,0
+search,1,6151,226,"{""ADAPT"": 1}",0,0
+security,8,72571,1795,"{""ADAPT"": 7, ""REWRITE"": 1}",1,0
+services,20,140363,4705,"{""REWRITE"": 20}",0,0
+session,1,17418,610,"{""REWRITE"": 1}",0,0
+sessions,1,21627,668,"{""REWRITE"": 1}",0,0
+signal-router,3,20148,588,"{""ADAPT"": 3}",0,0
+skills,249,2404542,75667,"{""RESEARCH-ONLY"": 121, ""REMOVE"": 120, ""REWRITE"": 1, ""QUARANTINE"": 7}",1,0
+solana,23,534453,16857,"{""REMOVE"": 23}",0,0
+src,2,55350,1905,"{""QUARANTINE"": 2}",0,0
+strategies,13,124154,3923,"{""RESEARCH-ONLY"": 11, ""ADAPT"": 1, ""QUARANTINE"": 1}",2,0
+streaming,1,12188,418,"{""ADAPT"": 1}",0,0
+tailscale,1,11291,409,"{""REMOVE"": 1}",0,0
+telemetry,1,19130,697,"{""ADAPT"": 1}",0,0
+terminal,1,17195,637,"{""REMOVE"": 1}",0,0
+tests,46,338838,10895,"{""RESEARCH-ONLY"": 46}",0,0
+token-security,1,10272,288,"{""REMOVE"": 1}",0,0
+tools,19,159960,5676,"{""REWRITE"": 19}",0,0
+trading,29,613860,19736,"{""QUARANTINE"": 20, ""RESEARCH-ONLY"": 1, ""REWRITE"": 3, ""ADAPT"": 4, ""KEEP+HARDEN"": 1}",9,0
+tsconfig.json,1,559,23,"{""QUARANTINE"": 1}",0,0
+tts,1,2330,92,"{""REMOVE"": 1}",0,0
+tui,1,19244,683,"{""REMOVE"": 1}",0,0
+types,1,1992,58,"{""ADAPT"": 1}",0,0
+usage,1,8883,323,"{""ADAPT"": 1}",0,0
+utils,15,119837,3938,"{""QUARANTINE"": 14, ""REWRITE"": 1}",1,0
+voice,1,20145,717,"{""REMOVE"": 1}",0,0
+weather,4,38987,1242,"{""ADAPT"": 4}",0,0
+web,1,21822,785,"{""REWRITE"": 1}",0,0
+wizard,1,4939,185,"{""REMOVE"": 1}",0,0
+workspace,1,13847,525,"{""REMOVE"": 1}",0,0

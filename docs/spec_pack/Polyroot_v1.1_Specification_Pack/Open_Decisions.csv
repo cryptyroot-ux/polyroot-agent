@@ -1,0 +1,11 @@
+﻿id,decision,owner,tests,closure_evidence,gate,status
+OD-01,SDK and profile selection,Execution,"CT-01–06,11–16,21–22,32","Exact lock, contract/code profile, narrow encoder-vault bridge",G0,OPEN
+OD-02,POLY_1271 setup/auth,Wallet,"CT-06–10,30",Existing/new deposit wallet and allowance confirmation,G0/G4,OPEN
+OD-03,Hard debit bound,Risk,CT-15,Actual max debit proof for match-time fee change,G0/G4,OPEN
+OD-04,Heartbeat/GTD behavior,Execution,"CT-16,21,22","Versioned route, ID scope, timing and expiry effects",G0/G4,OPEN
+OD-05,Dependency and semantic admission,Security,"PM-FORK-02,PM-SEC-06",Review every ported symbol and production closure,G1,OPEN
+OD-06,Source/graph data,Intelligence,"PM-INTEL-02,PM-GRAPH-02","Availability, rights, resolution proof and event context",G2,OPEN
+OD-07,Experiment policy per strategy,Research,"PM-EXP-03,PM-SIZE-02","Primary metrics, valid tests, thresholds and budget",G3,OPEN
+OD-08,Fill and settlement reality,Execution,"CT-17–29,PM-EXP-06",Micro-LIVE coverage and reality-gap confidence bounds,G4,OPEN
+OD-09,Session key beta,Wallet,CT-31,"Scope/lifetime/revocation finality, if opted in",Optional profile,OPEN
+OD-10,Restore and fault readiness,Platform,Fault_Matrix.csv,Required faults and measured RPO/RTO with reconciliation,G1/G4,OPEN

@@ -66,7 +66,7 @@ function req(over = {}) {
   };
 }
 
-describe("Money Kernel — atomic reservation + permit (PR-RISK-03, TABLE 14)", () => {
+describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", () => {
   it("reserves funds and issues a single-use permit atomically", async () => {
     const balance = new FakeBalanceStore(1_000_000_000n); // 1000 pUSD
     const sink = new FakeSink();
@@ -145,6 +145,34 @@ describe("Money Kernel — atomic reservation + permit (PR-RISK-03, TABLE 14)", 
     const second = await kernel.reserve(req());
     assert.equal(second.ok, false);
     if (!second.ok) assert.equal(second.code, "RESERVATION_LIMIT");
+  });
+
+  it("rejects negative or out-of-range per-share price (no money creation)", async () => {
+    const balance = new FakeBalanceStore(1_000_000_000n);
+    const sink = new FakeSink();
+    const kernel = new MoneyKernel({
+      balance,
+      sink,
+      chainId: 137,
+    });
+    for (const badPrice of [-1n, 0n, 1_000_001n, 2_000_000n]) {
+      const res = await kernel.reserve(req({ perSharePriceBase: badPrice }));
+      assert.equal(res.ok, false, `price ${badPrice} must be refused`);
+      if (!res.ok) assert.equal(res.code, "PRICE_RANGE");
+      assert.equal(balance.committed, 0n, "no funds may be committed on refusal");
+      assert.ok(!sink.events.some((e) => e.topic === "RESERVATION_CREATED"));
+    }
+  });
+
+  it("rejects non-canonical venue modes on the permit", async () => {
+    const kernel = new MoneyKernel({
+      balance: new FakeBalanceStore(1_000_000_000n),
+      sink: new FakeSink(),
+      chainId: 137,
+    });
+    const res = await kernel.reserve(req({ venueMode: "RESTARTING" as never }));
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "VENUE_MODE");
   });
 
   it("releases committed funds back to available on release", async () => {

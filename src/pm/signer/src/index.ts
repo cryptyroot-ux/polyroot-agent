@@ -1,5 +1,5 @@
 /**
- * @polyroot/signer — Signer Vault (PR-WAL-07, Blueprint B5 / TABLE 8).
+ * @polyroot/signer — Signer Vault (PM-WALLET-07, Blueprint B5 / TABLE 8).
  *
  * The Signer Vault is the **smallest possible** secret-scope boundary. It holds
  * no private key in process memory except transiently inside the injected
@@ -43,14 +43,14 @@ export type SignerAction = (typeof SIGNER_ALLOWED_ACTIONS)[number];
 /**
  * Canonical, signed, typed action request. This is the ONLY shape the vault
  * accepts — no arbitrary calldata, no free-form destination, no raw SDK
- * payload from the business layer (PR-WAL-07).
+ * payload from the business layer (PM-WALLET-07).
  */
 export interface SignRequest {
   schema_version: string;
   action: SignerAction;
   permit: ExecutionPermit;
   wallet: WalletIdentity;
-  /** Exact amount in integer base units (never float; PR-LED-02). */
+  /** Exact amount in integer base units (never float; PM-LED-02). */
   amountBase: bigint;
   /** Canonical domain-level order/action id being signed. */
   actionId: string;

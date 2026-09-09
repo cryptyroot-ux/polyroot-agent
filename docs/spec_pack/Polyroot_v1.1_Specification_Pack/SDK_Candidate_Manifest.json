@@ -1,0 +1,90 @@
+[
+  {
+    "package": "@polymarket/client",
+    "version": "0.9.0",
+    "registry_url": "https://registry.npmjs.org/@polymarket%2fclient",
+    "sha256_registry": "18c71dea602d83bbbaee29b780f37c0aa47e6a4583bcc1e78b41212ba8a6c9f8",
+    "dist": {
+      "shasum": "09b96dea30b4fd1eae570f065fb1945e2433ec7b",
+      "tarball": "https://registry.npmjs.org/@polymarket/client/-/client-0.9.0.tgz",
+      "fileCount": 30,
+      "integrity": "sha512-v1PuTbBsf7iySKbPaJZF/yR3GrCmZ7lCjg5+hc+vyKYdZ+Xp5obBFDP6NR/HttlkynCWSxQ+zvni2f9SDLpHhg==",
+      "signatures": [
+        {
+          "sig": "MEUCIByxWaH32jU1nDl85Rd8iJCbEdIzSSYYw2mRw9ugpYaxAiEAvDcb45Mz6J5n27P9rG326B2IE9UEGpp0QhivleeJAVY=",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@polymarket%2fclient@0.9.0",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      },
+      "unpackedSize": 2133363
+    },
+    "engines": {
+      "node": ">=24"
+    },
+    "published": "2026-09-03T22:39:29.601Z",
+    "candidate_status": "CANDIDATE_NOT_FROZEN",
+    "integrity_verified": true,
+    "contract_result": "NOT_RUN"
+  },
+  {
+    "package": "@polymarket/clob-client-v2",
+    "version": "1.1.0",
+    "registry_url": "https://registry.npmjs.org/@polymarket%2fclob-client-v2",
+    "sha256_registry": "395fe6306151329104aea2b67e12386cee62023f9dae1cebf504c604d5a5dc51",
+    "dist": {
+      "shasum": "b4e540c4c98ecbc5bbf09c38ddc81bb2f3c54e31",
+      "tarball": "https://registry.npmjs.org/@polymarket/clob-client-v2/-/clob-client-v2-1.1.0.tgz",
+      "fileCount": 205,
+      "integrity": "sha512-hVeKSZCIG4T3tmgmVHjd9FAo9Iq7K2bCLTtxlFrnASjOZmTre6Y60QNgcZ+wREMC4Wur7S+7YaMcmTRyTmeCvg==",
+      "signatures": [
+        {
+          "sig": "MEUCIQDn8bVpAigCqa+PORbcnbC5LpMft58Q6kgpoh1tbTl9oQIgDXkBTp98RD8gw2l00iFAIT4taogaai+XJVvbwll5S24=",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@polymarket%2fclob-client-v2@1.1.0",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      },
+      "unpackedSize": 645391
+    },
+    "engines": {
+      "node": ">=20.10"
+    },
+    "published": "2026-07-17T11:38:12.801Z",
+    "candidate_status": "CANDIDATE_NOT_FROZEN",
+    "integrity_verified": true,
+    "contract_result": "NOT_RUN"
+  },
+  {
+    "package": "@polymarket/builder-relayer-client",
+    "version": "0.0.10",
+    "registry_url": "https://registry.npmjs.org/@polymarket%2fbuilder-relayer-client",
+    "sha256_registry": "ef7ec33efead81c72ea00bcd8925a68a11b56179646fc2cd70a5e5abecd3b8a9",
+    "dist": {
+      "shasum": "6daa58d845249b0b344cf589b31ab72ea747f8c9",
+      "tarball": "https://registry.npmjs.org/@polymarket/builder-relayer-client/-/builder-relayer-client-0.0.10.tgz",
+      "fileCount": 54,
+      "integrity": "sha512-TarpcWWHI+wiqz5MYxqL3NawCs2gEPSZNFfLmWZ6EYxXvmi2RYgGNYXObo9AsC97J95dZ9+9RGNF/V2QZ59+Rg==",
+      "signatures": [
+        {
+          "sig": "MEYCIQDvGB9ZuCUZTW+mhtgRks5qOmoWhUGGYo90kDAoCF1MOAIhAMtJPGxHA83LXF1Hv0jqIsyYEynjeU+7wGQTsJhnO97g",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "unpackedSize": 123538
+    },
+    "engines": null,
+    "published": "2026-05-28T18:45:54.731Z",
+    "candidate_status": "CANDIDATE_NOT_FROZEN",
+    "integrity_verified": true,
+    "contract_result": "NOT_RUN"
+  }
+]

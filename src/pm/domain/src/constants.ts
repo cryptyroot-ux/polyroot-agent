@@ -10,7 +10,7 @@
  */
 
 export const POLYMARKET = {
-  /** Polygon Mainnet — venue chain for v1 LIVE (PR-GOV-02). */
+  /** Polygon Mainnet — venue chain for v1 LIVE (PM-GOV-02). */
   CHAIN_ID: 137,
 
   /**
@@ -24,7 +24,7 @@ export const POLYMARKET = {
   /**
    * Documented maker/taker baseline from the research cut. The live fee
    * schedule is category/market dependent and must be read from versioned
-   * venue metadata (PR-DATA-04); pre-trade EV assumes no rebate unless
+   * venue metadata (PM-DATA-04); pre-trade EV assumes no rebate unless
    * the registry proves eligibility (Blueprint B9.1).
    */
   FEE_BASELINE_BPS: {
@@ -49,7 +49,7 @@ export const SDK_BASELINE = {
   node_engine: ">=24.0.0",
 } as const;
 
-/** Pinned upstream fork baseline (PR-GOV-01). */
+/** Pinned upstream fork baseline (PM-GOV-01). */
 export const UPSTREAM_BASELINE = {
   repo: "alsk1992/CloddsBot",
   commit: "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",

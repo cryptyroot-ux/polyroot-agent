@@ -1,301 +1,202 @@
-# ANALISA MENDALAM V2: PERBANDINGAN CROSS-DOKUMEN
+# ANALISA MENDALAM V2: POLYROOT v1.1 CROSS-REFERENCE
+# ════════════════════════════════════════════════════════
+# Basis: 9 September 2026
+# Sumber: PRD v1.1 + Blueprint v1.1 + Spec Pack artefak
+#         CloddsBot commit 715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8
+#         Polymarket docs (live, 12+ halaman diekstrak)
+#         3 kandidat SDK (SHA512 terverifikasi)
+# ════════════════════════════════════════════════════════
 
-## 1. Ringkasan Eksekutif
+## STATUS VERIFIKASI PER TEMUAN
 
-Draf baru PolyRoot v1.1 menghadirkan **perbaikan penting** pada PRD/Blueprint dari kloning CloddsBot 1.9.0 (commit 715fd4a6) untuk memenuhi audit **30 poin** yang user lakukan sebelumnya.
-
-## 2. Temuan Kritis dari Source Code CloddsBot (kebocoran)
-
-### 2.1 Sistem Tanda Tangan (EIP-712)
-
-```typescript
-Order struct V2:
-  (salt, maker, signer, tokenId, makerAmount, takerAmount,
-   side, signatureType, timestamp, metadata, builder)
-
-enum SignatureType { EOA=0, POLY_PROXY=1, GNOSIS_SAFE=2, POLY_1271=3 }
-```
-
-**P0**: CloddsBot memiliki **dukungan indikatif** untuk POLYGON 1271 tetapi **belum diimplementasikan**:
-
-- `if (signatureType === SignatureType.POLY_1271) { throw new Error('POLY_1271 signing not implemented...'); }`
-- Ini menunjukkan **KESENANGAN**: Menyatakan dukungan tetapi tidak mengimplementasinya.
-
-### 2.2 Tata Letak Risiko
-
-**R1**: Risiko Engine diimplementasikan sebagai:
-
-- Pengelola verifikasi keselamatan, penalaran risk, dan pencegahan gagal
-- Mengelola 9 domain keselamatan: kill switch, sirkuit breaker, ukuran pesanan, batas eksposur, drawdown harian, konsentrasi, VaR, volatilitas, Kelly
-- **P0**: Saat ini belum memiliki **logika kompensasi untuk lari cepat** untuk posisi delta + harga besar yang terintegrasi dengan Poli Market CLOB V2 yang baru
-
-### 2.3 Sistem Subsystems (layanan kode lengkap)
-
-```
-src/gateway              (WebSocket control/UI)
-src/execution          (CLOB order placement)
-src/feeds/polymarket    (Real-time market data + user WebSocket)
-src/risk                (Kill switches, stress, VaR, volatilitas)
-src/opportunity         (Arbitrage, mencari peluang)
-src/agents/handlers     (Per-platform: polymarket, kalshi, solana, dll.)
-src/strategies/hft-divergence (Pasar berjalan, lebih tinggi)
-src/skills/bundled/trading-polymarket (CLI Skill)
-```
-
-**Temuan P0**:
-
-- CloddsBot menyediakan **28+ platform**, **630+ skills**
-- Blueprint (v1.0) hanya menyantumkan **9 saja**
-- Ini adalah **pita pengukur `terlalu dangkal`** yang user catat
-
-## 3. Ketidakcocokan Cross-Dokumen Utama (v1.0 → v1.1)
-
-### 3.1 Produk Identity
-
-| Dimensions      | v1.0 (Polymarket AI Trader)                                                    | v1.1 (PolyRoot)                                                      |
-| --------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| **Nama produk** | "Polymarket AI Trader"                                                         | "Modular Autonomous Prediction-Market Intelligence & Trading System" |
-| **Scope**       | Satu wallet, satu strategi (`evidence_directional_v1`), satu execution service | Modular autonomous, multi-strategy intelligence & trading system     |
-| **Tujuan**      | Directional trading dengan AI                                                  | Sistem prediksi pasarg secara otonom dengan banyak strategi          |
-
-**Validasi**: v1.0 **belum memenuhi** spesifikasi PolyRoot, v1.1 **memenuhi**
-
-### 3.2 Arsitektur
-
-**v1.0**: "Satu bot directional dengan AI"
-**v1.1**: "Modular autonomous prediction-market intelligence & trading system"
-
-- **Kerangka konseptual**: Penanganan risiko, koordinasi platform, safety kernel, execution service
-- **User menyetujui**: Kecukupan safety dan eksekusi v1.0; tetapi tidak sesuai dengan arsitektur akhir PolyRoot
-
-### 3.3Wallet & Sistem Tanda Tangan
-
-**Temuan P0**: CloddsBot hanya mendukung **EOA, POLY_PROXY, GNOSIS_SAFE**
-**Kebutuhan**: **POLY_1271** dan **Deposit Wallet (wallet type=3)** untuk CLOB V2
-
-### 3.4Integrasi CLOB
-
-**Temuan**: CloddsBot **memiliki** `getCurrentPolymarketOrderVersion()` tetapi **tidak digunakan**
-**Kebutuhan**:
-
-- **CLOB V2** contract addresses
-- **EIP-712 domain** v2 (pUSD, builder, metadata)
-- **Serde/V2** order strukture (timestamp, builder)
-
-### 3.5Kesenjangan Kebijakan
-
-| Domains                               | v1.0                                      | v1.1                                                                                      |
-| ------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Eksklusi strategi**                 | Arbitrase, copy trading, weather, HFT, LP | **Modular** (mendukung banyak strategi)                                                   |
-| **Kesenjangan prioritas keselamatan** | Fokus pada konsistensi internal           | Autonomi yang dibatasi oleh program mandat dasar (Auth --> Money Kernel --> Signer Vault) |
-| **Eksperimen**                        | Tidak ada                                 | **Eksperimen** (`PAPER/SHADOW` untuk bebas regulasi)                                      |
-
-## 4. Roadmap Item/Kesenjangan Berdasarkan Perbaikan Lanjutan
-
-### 4.1Implementasi Tanda Tangan POLYGON 1271 (P0)
-
-```typescript
-if (signatureType === SignatureType.POLY_1271) {
-  // NEW IMPLEMENTATION:
-  // 1. Deteksi tipe wallet melalui RPC:
-  const walletType = await provider.getWalletType(address);
-  if (walletType !== "DEPOSIT_WALLET") {
-    throw new Error("POLY_1271 requires wallet type 3");
+### 1. POLY_1271 — Deposit Wallet Signing
+**Klaim v1.1:** CloddsBot menolak POLY_1271; Polyroot harus implement full deposit-wallet path.
+**Bukti source:** CONFIRMED. Line 604-609 `polymarket-order-signer.ts`:
+  ```
+  if (signatureType === SignatureType.POLY_1271) {
+    throw new Error('POLY_1271 (smart-contract wallet) signing is not implemented...');
   }
-  // 2. Tanda tangan menggunakan ekstensi EIP-6492 (validator per metadata) atau EIP-3770 + agregator relayer;
-}
-```
+  ```
+**Bukti Polymarket docs:** Deposit Wallet (type 3) adalah default untuk semua wallet baru sejak 4 Mei 2026.
+**Verdict:** ✅ KLAIM VALID. Ini P0 blocker nyata. Fresh user tidak bisa trading tanpa ini.
 
-**Rencana**: 5+ hari
+---
 
-### 4.2Rute Penyesuaian Platform (P0)
+### 2. V2 Order Struct — Contract Address & Domain
+**Klaim v1.1:** CloddsBot sudah punya V2 signing, tapi perlu verifikasi.
+**Bukti source:** CONFIRMED. CloddsBot punya:
+  - V2 contract addresses: `0xE111180000d2663C0091e4f400237545B87B996B` (CTF V2)
+  - V2 EIP-712 domain: `{name: "Polymarket CTF Exchange", version: "2", chainId: 137}`
+  - V2 type string: `Order(uint256 salt,address maker,address signer,uint256 tokenId,uint256 makerAmount,uint256 takerAmount,uint8 side,uint8 signatureType,uint256 timestamp,bytes32 metadata,bytes32 builder)`
+  - V2 removes: taker, expiration(struct), nonce, feeRateBps
+  - V2 adds: timestamp, metadata, builder
+**Bukti Polymarket docs:** Matches. V2 production sejak 28 April 2026.
+**Verdict:** ✅ KLAIM VALID. V2 signing sudah ada di CloddsBot. Yang missing hanya POLY_1271 wrapper.
 
-| Targets                    | v1.0                                                                                            | Rencana v1.1                                                                                                                                                                                                |
-| -------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Platform yang didukung** | 28+                                                                                             | • CLOB V2 (polymarket) • Kalshi • Betfair • Solana DEX • Traditional finance pasar (CBOE, CME)                                                                                                              |
-| **Sumber data**            | WebSocket, REST                                                                                 | Mengimplementasikan sistem pipelines: • PolygMarket WebSocket • Alpha • API • Feeds • Komunitas • Weather • Ekonomi • Kecelakaan                                                                            |
-| **Pemetaan SDK**           | `src/agents/handlers/polymarket` • `src/agents/handlers/kalshi` • `src/agents/handlers/betfair` | **VenueAdapter** framework yang kuat: • Mengikat ke @polymarket/client v0.9.0 • @polymarket/clob-client-v2 untuk margin-trading • @kalshi/js-client • @betfair/js-api • @jupiter-ag/token • Solana web3 SDK |
+---
 
-### 4.3Struktur Fork Matrix (P0)
+### 3. SDK Candidate Matrix
+**Klaim v1.1:** 3 kandidat diverifikasi SHA512: @polymarket/client 0.9.0, clob-client-v2 1.1.0, builder-relayer-client 0.0.10.
+**Bukti spec pack:** SDK_Candidate_Matrix.csv menunjukkan ketiga kandidat dengan SHA512 hash.
+**Bukti live docs:** Polymarket mengarahkan migrasi ke unified @polymarket/client.
+**Status implementasi:** NOT_RUN — belum ada acceptance test.
+**Verdict:** ✅ KLAIM VALID (riset). ⚠️ IMPLEMENTASI BELUM ADA. Ini benar — spec pack jujur menyatakan NOT_RUN.
 
-**Cakupan saat ini**: Hanya **9 path** (feeds, penyedia, agent/tool, eksekusi, trading skill, HFT divergence, persistensi, penandatanganan, gateway)
-**Kebutuhan**: **Byte-level Fork Disposition Matrix** dari **semua** subsistem
+---
 
-**Kategori**:
+### 4. maxSpend Ambiguity
+**Klaim v1.1:** maxSpend changelog = "estimated spending", tapi order prose = "cap". Tidak boleh jadi hard cap.
+**Bukti source:** maxSpend TIDAK DITEMUKAN di CloddsBot source. Ini field Polymarket API, bukan CloddsBot.
+**Bukti PRD v1.1:** "path LIVE harus menunjukkan batas debit yang dapat ditegakkan"
+**Verdict:** ✅ KLAIM VALID. Polymarket API ambiguity yang harus ditangani. CloddsBot tidak memakai maxSpend — ini masalah baru yang harus dipecahkan.
 
-- `KEEP` (Sistem saat ini memiliki keamanan, skalabilitas, kompatibilitas yang tepat)
-- `KEEP+HARDEN` (Pertahankan tetapi perkuat keamanan, error handling, ketahanan)
-- `ADAPT` (Sesuaikan dengan CLOB V2, pUSD, POLYGON 1271)
-- `REWRITE` (Tulis ulang untuk CLOB V2 atau berdasarkan kebijakan baru)
-- `REMOVE` (Hapus)/`QUARANTINE` (Tempatkan dalam area terisolasi)
-- `RESEARCH-ONLY` (Lanjutkan penelitian, jangan diintegrasikan)
+---
 
-### 4.4Penyesuaian Keamanan/Alpha P0 (Berisiko tinggi)
+### 5. Dependency Amputation — 245 REMOVE
+**Klaim v1.1:** 89 packages, 245 files REMOVE, hanya 13 packages production-admitted.
+**Bukti source:** Dependency_Disposition.csv mencatat:
+  - REMOVE: Solana, DeFi (Orca, Raydium, Meteora, Jupiter, Kamino, Drift), messaging (Discord, Slack, WhatsApp), exchanges (Binance, Bybit, Hyperliquid), Polkadot, Wormhole, PumpFun, PredictFun
+  - KEEP+HARDEN: pino (structured logging)
+  - ADAPT: ws, zod, @anthropic-ai/sdk, TypeScript
+  - RESEARCH-ONLY: dotenv, tsx, pino-pretty
+**Verdict:** ✅ KLAIM VALID. Amputation masif ini justified — CloddsBot multi-chain/multi-exchange, Polyroot hanya Polymarket.
 
-**Subsystems**
+---
 
-- **Signer Vault**: Implementasi isolasi penuh (L1 --> L2 --> Signer) dan tipe wallet pemeriksaan
-- **SSRF**: Membatasi panggilan HTTP eksternal, melarang IPv4 internal, validasi header, reject redirect ke luar jaringan
-- **Sandbox Plugin**: Isolasi `Process` vs `worker threads` (Node), Konteks terbatas (`--disable-parent` pada ts-node)
-- **Dependency Amputation**: Hapus dependensi yang tidak diperlukan ke Solana, Drift, Marginfi, Kamino, Orca, Raydium, Jup, Pump.fun, Bittensor, dll. (Pertahankan hanya untuk platform yang diperlukan)
-- **Rate Governor**: Menerapkan tingkat ke, memvalidasi `deadline` dan `queueAge` sebelum submit
+### 6. Risk Engine — Selective Reuse
+**Klaim v1.1:** CloddsBot punya SafetyManager + risk engine, tapi perlu hardening.
+**Bukti source:** CONFIRMED. `src/risk/engine.ts` punya 10-layer checks:
+  1. Kill switch (safety.ts)
+  2. Circuit breaker (8 trip reasons, cooldown, auto-reset)
+  3. Max order size
+  4. Exposure limits
+  5. Daily loss limit
+  6. Max drawdown
+  7. Concentration limit
+  8. VaR limit (parametric + historical)
+  9. Volatility regime (LOW/NORMAL/HIGH/EXTREME)
+  10. Kelly sizing
+**Masalah yang ditemukan v1.1:**
+  - initialBankroll masih bernilai contoh (hardcoded)
+  - Copy success = filled (tidak accounted unfilled)
+  - Cancel error menghapus local ID meski cancel gagal
+**Verdict:** ✅ KLAIM VALID. Risk engine kuat tapi ada bug lifecycle yang harus di-REWRITE.
 
-### 4.5CLOB V2+POLY_1271 Integration (P0)
+---
 
-**Implementasi**
+### 7. Circuit Breaker — Venue-Specific
+**Klaim v1.1:** CloddsBot circuit breaker Polymarket-agnostic; perlu venue mode state machine.
+**Bukti source:** CONFIRMED. Circuit breaker punya 8 trip reasons:
+  - max_loss, max_loss_pct, consecutive_losses, high_error_rate
+  - max_position, max_daily_trades, manual, system_error
+  - Tidak ada: POST_ONLY mode, CANCEL_ONLY mode, 425 handling, venue downtime
+**Verdict:** ✅ KLAIM VALID. Venue mode (NORMAL/POST_ONLY/CANCEL_ONLY/READ_ONLY/UNAVAILABLE) belum ada.
 
-1. **Adaptasi SDK**: @polymarket/client 0.9.0 + @polymarket/clob-client-v2 v2 (status)
-2. **Adaptor baru**: `CLOBV2Adapter`:
+---
 
-   ```typescript
-   async placeOrder(order: OrderV2): Promise<OrderResult> {
-     // 1. Tambahkan cek signatureType
-     // 2. Set deposit wallet (walletType=3)
-     // 3. Gunakan ctf-exchange-v2 contract (0xE111...)
-     // 4. Tanda tangan metadata builder
-     // 5. Hit /order pada CLOB V2 API
-   }
-   ```
+### 8. Fee Handling V1 vs V2
+**Klaim v1.1:** V2 menghilangkan feeRateBps dari order struct; fee handling berubah.
+**Bukti source:** CONFIRMED.
+  - V1 struct: punya `feeRateBps` field (line 94)
+  - V2 struct: TIDAK punya `feeRateBps` — replaced by timestamp/metadata/builder
+  - CloddsBot masih punya `feeRateBps` di V1 signing
+  - V2 signing: `feeRateBps` tidak ada di `PostOrderBodyV2`
+  - Smart router mencatat: "Polymarket: 0 fees on most markets; 15-min crypto markets have dynamic fees"
+**Verdict:** ✅ KLAIM VALID. Fee semantics berubah signifikan dari V1 ke V2.
 
-3. **Tangani kasus**:
-   - Mengambil Tager Rebate dari API
-   - Menerapkan kecerdasan pembuat dan penerima
+---
 
-### 4.6Struktur Strategies Ecosystem (P1)
+### 9. Maker Rebate / Incentive Attribution
+**Klaim v1.1:** Maker rebate, liquidity reward, dan taker incentive terpisah; tidak boleh dicampur.
+**Bukti source:** CloddsBot punya:
+  - `src/trading/logger.ts`: feePaid, rebateEarned (positive), isMaker
+  - `src/skills/bundled/execution/SKILL.md`: "-0.5% maker rebate" (klaim lama)
+  - Smart router: "0 fees on most markets" vs "up to ~315bps at 50/50 odds"
+**Bukti v1.1:** "receipt/profile asset identity, no symbol guessing"
+**Verdict:** ✅ KLAIM VALID. Fee/rebate attribution belum terstruktur dengan benar.
 
-**Untuk persyaratan v1.1**:
+---
 
-- **Inteligensi multi-sinyal**: Market graph (berdasarkan kontrak/hasil)
-- **Source Intelligence**: Berita, mikro makro, utama (kemampuan dasar)
-- **Market Intelligence**: Orderbook depth, spread, harga, likuiditas, velocity, orderflow
-- **Position Sizer**: Mengukur kelicinan, Kelly, batas portofolio
-- **Correlator Engine**: Cross asset, cross market, korelasi
-- **Strategy Sandboxes**: Isolasi terpisah untuk setiap strategi
+### 10. Strategy Ecosystem Expansion
+**Klaim v1.1:** 8 keluarga strategi (vs 1 di v1.0).
+**Bukti source:** CloddsBot punya:
+  - `src/solana/swarm-strategies.ts`: 50+ StrategyType (solana-specific)
+  - `src/skills/bundled/trading-futures/SKILL.md`: RSIStrategy
+  - `src/trading/futures/index.ts`: StrategyEngine
+  - Tidak ada Polymarket prediction-market strategy framework
+**Verdict:** ✅ KLAIM VALID. CloddsBot strategies = multi-chain DeFi/futures. Polymarket prediction strategies = REWRITE baru.
 
-### 4.7Funds Safe Kernel (P0)
+---
 
-**Mekanisme**
+### 11. Market Graph & Correlation
+**Klaim v1.1:** MarketRelation, RelationProof, GraphSnapshot, conservative risk grouping.
+**Bukti source:** CloddsBot punya:
+  - `src/market-link-service/`: persistence, canonical links, market relations
+  - Tapi: regex-based correlation, combinatorial assumptions tanpa proof
+**Bukti v1.1:** Versioned relation proof, verified exhaustive/exclusive, MarketRelation object dengan provenance.
+**Verdict:** ✅ KLAIM VALID. Upstream punya dasar, tapi proof layer = REWRITE.
 
-```
-Owner  --> Auth (Creatable signers: L1, L2, Builder) --> Money Kernel (Vault) --> SignerVault (Narrow)
-                                             ^
-                                             |
-                                             +--> Restrict # ... (Only signed per-model permmissions) --> Execution (Designated agents)
-```
+---
 
-**Validasi**:
+### 12. Ledger & Double-Entry
+**Klaim v1.1:** Decision ledger upstream bukan double-entry financial journal.
+**Bukti source:** CloddsBot punya:
+  - `src/ledger/`: hash chain, anchoring, audit trail
+  - Tapi: event-based logging, bukan double-entry accounting
+**Verdict:** ✅ KLAIM VALID. Financial ledger = REWRITE.
 
-- Autentikasi pemohon penandatanganan
-- Logika: Token EIP-712 untuk deposit wallet
-- Kompatibilitas: Tidak membocorkan hash
+---
 
-### 4.8Observability & Recovery (P1)
+### 13. Signer Vault Isolation
+**Klaim v1.1:** Signer Vault proses terpisah, verifikasi typed SignRequest.
+**Bukti source:** CloddsBot signer = inline function di `polymarket-order-signer.ts`, tidak ada process isolation.
+**Verdict:** ✅ KLAIM VALID. Vault isolation = REWRITE total.
 
-**Rencana**: Implementasikan **Runtime Supervisor** (V1 tidak memiliki):
+---
 
-- Liveness monitoring (service, feed, platform)
-- Scheduler (triggers, operasi)
-- Backpressure & backstop recovery
-- Service failover state
+## TEMUAN YANG TIDAK DITEMUKAN DI v1.1
 
-## 5. Rencana Persiapan Implementasi (G0 → BETA)
+### A. WebSocket Reconnection Strategy
+CloddsBot punya WebSocket market data feed (`src/feeds/polymarket/`). v1.1 tidak secara eksplisit membahas reconnection, backoff, atau stale detection strategy untuk WS.
 
-### 5.1G0: Persiapan Fork (6-10 hari)
+### B. Order Persistence & Recovery
+CloddsBot punya order persistence di DB. v1.1 menyebut "cancel/fill race" dan "recovery" tapi detail implementasi masih DESIGN.
 
-1. **Implementasi Fork Matrix** untuk subsistem `~130`
-2. **Adaptasi SDK**: Tidak perlu membangun client baru, tetapi **menghapus** `dst/contract lama`
-3. **Penyesuaian Keamanan**:
-   - Signer Vault
-   - SSRF
-   - Sandbox
-   - Dependency
-4. **Diuji dengan sandbox kecil**: `node ./test-polyroot-v1.1.js`
+### C. Multi-Wallet Nonce Management
+v1.1 menyebut "many wallet actors" tapi tidak detail tentang nonce management concurrent wallets.
 
-### 5.2G0+ : Core Implementation (45-60 hari)
+### D. Paper Trading Simulator
+v1.1 menyebut PAPER mode tapi calibrated simulator belum terdefinisi detail.
 
-| Components        | Tim                 | Owner       |
-| ----------------- | ------------------- | ----------- |
-| **Core**          | Backend             | Tokitsukaze |
-| **Frontend**      | UI/UX               | Potro       |
-| **Keamanan**      | Secure + Audit      | Sugoi       |
-| **Ops**           | CI/CD               | Lotus       |
-| **Keberlanjutan** | ETL + Observability | Liubert     |
+---
 
-### 5.3Rute Release (BETA, ALPHA)
+## RINGKASAN SKOR
 
-1. **BETA** (G1-G2): CLOB V2, POLY_1271, SDK V2
-2. **ALPHA** (G3): Market graph, multi-signal intelligence, strategy ecosystem
-3. **LIVENGROUND** (G4-G5): Observability, pemulihan, komite risiko, kombinasi perbankan
+| Aspek | v1.0 Gap | v1.1 Addressed | Source Verified | Status |
+|-------|----------|----------------|-----------------|--------|
+| POLY_1271 | ❌ Missing | ✅ P0 req | ✅ Line 604-609 | VALID |
+| CLOB V2 | ❌ Boundary | ✅ Verified | ✅ Contract match | VALID |
+| SDK Matrix | ❌ Tidak ada | ✅ 3 kandidat SHA512 | ✅ Registry match | VALID |
+| Dependency | ❌ 80+ packages | ✅ 245 REMOVE | ✅ CSV evidence | VALID |
+| Risk Hardening | ⚠️ Partial | ✅ 10-layer + bugs | ✅ engine.ts match | VALID |
+| Venue Mode | ❌ Tidak ada | ✅ State machine | ✅ No 425 handler | VALID |
+| Fee Semantics | ⚠️ V1 only | ✅ V1→V2 delta | ✅ struct match | VALID |
+| Market Graph | ⚠️ Regex only | ✅ Proof layer | ✅ market-link match | VALID |
+| Strategy Ecosystem | ❌ 1 strategy | ✅ 8 families | ✅ No PM strategy | VALID |
+| Signer Vault | ❌ Inline | ✅ Process isolation | ✅ No vault class | VALID |
+| Ledger | ⚠️ Event log | ✅ Double-entry | ✅ ledger/ match | VALID |
+| Rebate Attribution | ⚠️ Mixed | ✅ Separated | ✅ logger.ts match | VALID |
 
-## 6. Bukti Pengembalian
+**Kesimpulan:** Semua 12 P0 gap dari v1.0 audit **VALID** dan **dibuktikan** oleh source code + Polymarket live docs. v1.1 spec pack **bukan klaim kosong** — setiap temuan punya locator sumber (R01–R46) dan bukti konkret.
 
-**Path perbaikan**
+**Tapi:** Status semua = DESIGN/NOT_RUN. Belum ada satu baris kode Polyroot yang ditulis. Spec pack adalah **riset dan desain yang solid**, bukan implementasi.
 
-```
-/PRD_v1.1_clean.txt
-/BLUEPRINT_v1.1_clean.txt
-/src/feeds/polymarket
-/src/utils/polymarket-order-signer.ts
-/src/risk/engine.ts
-/src/execution/circuit-breaker.ts
-/src/opportunity/index.ts
-/src/skills/bundled/trading-polymarket
+---
 
-Required fix calls:
-1. copy documents into /root/projects/PolyRoot/docs/
-2. Run docx-extract untuk kedua file
-3. Hasil analisis disimpan di /root/projects/PolyRoot/docs/ANALISA_MENDALAM_V2.md
-```
+## REKOMENDASI LANGKAH SELANJUTNYA
 
-## 7. Autonomi dan Etika
-
-**Ketidak-pastian**:
-
-- Tidak menjanjikan profit, edge, atau kinerja yang dijamin (asas "kontrak cerdas, tidak ada janji janji)"
-- Kejelasan: Autonomi atas mandat, tidak atas modal; Owner tetap memiliki hak penuh atas Hak Pribadi
-- Tidak ada noaa
-- Geoblok memerlukan pihak berwenang
-- Perbaikan hanya “ex-periment” (PAPER/SHADOW)
-
-## 8. Autentikasi dan Signer yang Aman
-
-**Kerangka konseptual**
-
-```
-Owner (L1) --> Signer --> Money Kernel --> SignerVault --> Execution
-   ^
-   |
-   +--> Auth (L2) – Buat kunci L2 + API API builder (tokenized)
-```
-
-**Tujuan**
-
-- L1: Non-custodial, pemilik yang ditandatangani
-- L2: Small trust, role-based, origin verification
-- SignerVault: Narrow kernel, hanya sign tipe yang diizinkan
-- Keamanan: Kunci terisolasi, tipe wallet, penandatanganan EIP-1271
-
-## 9. Integrasi Platform/Pasar Baru
-
-**Design**
-
-1. **Venue Adapter** : Platform interface dengan batasan
-2. **Consistency Adapter** : Validasi MAtriks per-platform (kebijakan, harga, likuiditas, cap, slippage)
-3. **Universal Wallet**: Adapter PUSD + USDC (Approvals)
-4. **Market Graph**: Penanganan atribut yang didefinisikan pengguna
-5. **Penghargaan**: Skor yang dihasilkan, label kesalahan, bukti validasi
-
-## 10. Catatan Kesimpulan
-
-- **Perbaikan P0 kritis**: Implementasi POLYGON_1271, CLOB V2, Money Kernel, Signer Vault, Dependency amputation, SSRF
-- **Tim 8**: Core, frontend, keamanan, ops, keberlanjutan, etc.
-- **Validasi**: Rencana G0 → BETA (G1-G2) seperti di atas
-- **Rencana**:   Implementasi baru dengan ketahanan pada rasa sakit wallet dan manajemen uji coba
-
-## 11. Bukti Validasi
-
-```
---- /root/projects/PolyRoot/docs/ANALISA_MENDALAM_V2.md ---
-Proyeksi keseluruhan tanggal target awal: 9 September 2026 (Hari ini) + 120 hari = 12 Januari 2026
-Pengambilan risiko: Proses polymarket tidak mencapai bagian yang berhasil
-```
+1. **G0 Gate Preparation:** SDK acceptance tests (32 kontrak tests) harus jadi prioritas pertama. Ini membuktikan kandidat SDK benar-benar bisa signing V2 + POLY_1271.
+2. **Signer Vault Prototype:** Proses terisolasi pertama yang harus dibuktikan.
+3. **Dependency Pin:** `npm pack` + SHA512 verification untuk production packages.
+4. **Paper Trading Framework:** Simulasi tanpa uang, membuktikan ledger dan risk engine.
+5. **Fork CloddsBot Secara Resmi:** Git fork dengan disposition matrix sebagai guide, mulai dari KEEP+HARDEN (3 files) dan ADAPT (134 files).

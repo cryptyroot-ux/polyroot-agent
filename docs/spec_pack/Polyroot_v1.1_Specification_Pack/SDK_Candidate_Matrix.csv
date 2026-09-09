@@ -1,0 +1,13 @@
+﻿capability,unified_0_9_0,clob_v2_1_1_0,relayer_0_0_10,decision,status
+Public discovery,Public client,CLOB reads; separate metadata surface,Not applicable,Choose pure read calls; no secure constructor as probe,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+Signature 0-3,Documented account support; narrow signer integration untested,Enum/order builder includes POLY_1271 wrapping,Transaction signatures separate,CT-03–06 and CT-32 required,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+Deposit wallet,Unified create/discover/setup flows,Funder mapping; setup external,Relayer transaction client,"Default fresh POLY_1271, no EOA fallback",STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+L1/L2 lifecycle,Unified authentication workflow,create/derive API keys and L1/L2 headers,Relayer credentials distinct,Do not merge secret domains,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+Relayer approvals,Trading approval helpers + relayer integration,Use separate wallet setup service,Candidate transport for setup,One wallet nonce authority,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+Heartbeat,No direct identical facade established by static export inspection,/v1/heartbeats + heartbeat_id in extracted package,Not applicable,Narrow adapter extension only after CT-21/22,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+CTF / PolyV2,assetId and profile dispatch in changelog,ExchangeV3 exact-amount builder present,Approval/calldata profiles separate,Profile-specific signed payload tests,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+maxSpend,Estimator per SDK changelog,Fee adjustment helpers; bound not proven,Not applicable,Neither candidate gets spending-cap PASS from a helper name,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+Node runtime,>=24,>=20.10,No engine field in retrieved metadata,Exact runtime/image pin pending,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+Production footprint,Unified exports include unrelated surfaces,Narrower CLOB surface but still closure review,Only if required,Tree-shake/verify closure or pick narrower official surface,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+Research version pin,0.9.0 + verified SRI,1.1.0 + verified SRI,0.0.10 + verified SRI,Candidate pin is not adapter freeze,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN
+Authenticated acceptance,NOT_RUN,NOT_RUN,NOT_RUN,G4 requires authorized actual account/profile evidence,STATIC_EVIDENCE_ONLY_CONTRACT_NOT_RUN

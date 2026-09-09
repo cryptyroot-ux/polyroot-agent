@@ -1,0 +1,24 @@
+{
+  "version": "1.1",
+  "date": "2026-09-09",
+  "commit": "715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8",
+  "blob_count": 827,
+  "semantic_targeted_files": 42,
+  "dispositions": {
+    "QUARANTINE": 77,
+    "RESEARCH-ONLY": 221,
+    "REWRITE": 146,
+    "KEEP": 1,
+    "ADAPT": 134,
+    "REMOVE": 245,
+    "KEEP+HARDEN": 3
+  },
+  "requirements": 124,
+  "prior_requirements": 53,
+  "contract_tests": 32,
+  "fault_cases": 46,
+  "audit_corrections": 30,
+  "direct_dependencies": 89,
+  "production_frozen": false,
+  "live_tested": false
+}

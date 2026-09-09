@@ -3,7 +3,7 @@
  *
  * Validates an intent against the commissioned risk policy BEFORE any money
  * moves, and — when everything passes — reserves funds atomically inside the
- * Money Kernel (PR-RISK-01..08), producing the matched ExecutionPermit.
+ * Money Kernel (PM-RISK-01..08), producing the matched ExecutionPermit.
  *
  * The gate itself computes no float money: exposure checks run in USD-decimal
  * space (policy dimensions), while the kernel reservation runs in exact integer
@@ -113,7 +113,7 @@ export async function validateAndReserve(
     );
   }
 
-  // 5. Exact reservation in base units, atomic with the permit (PR-RISK-03).
+  // 5. Exact reservation in base units, atomic with the permit (PM-RISK-03).
   const sizeBase = decimalToBase(size);
   const priceBase = decimalToBase(price);
   const maxCashBase = cashNeededFor(sizeBase, priceBase);

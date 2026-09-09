@@ -1,0 +1,47 @@
+﻿id,scenario,injection,expected_invariant,owner,requirement,status
+FT-01,Concurrent spend,Two intents exceed cash/cap together,At most one reservation commits; other rejects,Risk,PM-RISK-02,NOT_RUN
+FT-02,Duplicate delivery,Same intent message 100 times,One intent hash/reservation; no extra order,Execution,PM-EXE-03,NOT_RUN
+FT-03,Crash before send,After signed payload persisted before network,Recover same payload; lookup policy before resend,Execution,PM-EXE-04,NOT_RUN
+FT-04,Crash after send,Before ACK persisted,SUBMISSION_UNKNOWN retains full reservation,Execution,PM-EXE-04,NOT_RUN
+FT-05,Late accepted submit,HTTP deadline expires while Cloudflare holds request,No new logical order; late venue result reconciles,Execution,PM-VENUE-06,NOT_RUN
+FT-06,Cancel fill race,Partial fill arrives with cancel response,Reserve unsettled fill and residual until reconciliation,Execution,PM-EXE-05,NOT_RUN
+FT-07,Failed cancel,not_canceled or request loss,Do not clear active order or release capital,Execution,PM-EXE-05,NOT_RUN
+FT-08,Partial batch failure,"Some new orders accepted, some rejected","Per-order results, no batch success assumption",Execution,PM-EXE-06,NOT_RUN
+FT-09,Heartbeat loss,Expired ID or two writers,Reconcile expected cancellations; no fabricated success,Execution,PM-EXE-07,NOT_RUN
+FT-10,Engine restart,425 across endpoints,Stop new orders; cancel best effort; reconcile when reachable,Execution,PM-VENUE-03,NOT_RUN
+FT-11,Post-only mode,Taker request during recovery,"Reject taker, preserve eligible maker with post_only true",Execution,PM-VENUE-01,NOT_RUN
+FT-12,Close-only account,Normal venue + restricted account,Only authorized risk reduction with verified inventory,Risk,PM-VENUE-02,NOT_RUN
+FT-13,Unknown venue mode,Mode detector stale,No new orders; queries and best effort cancel continue,Execution,PM-VENUE-01,NOT_RUN
+FT-14,Signer compromise attempt,Alter amount/contract after permit,Vault rejects exact payload/policy mismatch,Security,PM-SEC-02,NOT_RUN
+FT-15,Old fencing epoch,Previous executor resumes after lease loss,Vault rejects new signatures; reconcile already signed in-flight,Security,PM-SEC-01,NOT_RUN
+FT-16,Malicious plugin,Read env/mount/socket/spawn or fork bomb,OS isolation/resource quota blocks access and kills job,Security,PM-SEC-03,NOT_RUN
+FT-17,SSRF redirect,Public URL redirects to private IPv4/IPv6,No internal connection; evidence job fails closed,Security,PM-SEC-04,NOT_RUN
+FT-18,DNS rebinding,Public DNS changes after validation,Pinned validated connection/egress prevents internal access,Security,PM-SEC-04,NOT_RUN
+FT-19,Content bomb,Huge compressed response/archive expansion,Abort decoded/compressed budgets in isolated parser,Security,PM-SEC-05,NOT_RUN
+FT-20,Prompt injection,Evidence requests withdrawal or policy update,Data only; no tool or mandate mutation,Intelligence,PM-AI-04,NOT_RUN
+FT-21,Credential revocation,API disabled during open orders,AUTH_FAILURE; preserve uncertain state; owner recovery surfaced,Wallet,PM-WALLET-08,NOT_RUN
+FT-22,Deposit setup ambiguity,Relayer confirmation delayed,Operation remains UNKNOWN; no duplicate wallet setup,Wallet,PM-WALLET-04,NOT_RUN
+FT-23,Wrong spender approval,"Owner EOA approved, wallet unapproved",Available-to-trade zero; no order sign,Wallet,PM-WALLET-05,NOT_RUN
+FT-24,Fee changes,Fee higher at matching,Bound proven or path blocked; ledger actual fee retained,Risk,PM-PROTO-04,NOT_RUN
+FT-25,Tick/minimum changes,Metadata changed after quote,Revalidate and round safely; never enlarge beyond cap,Execution,PM-RISK-04,NOT_RUN
+FT-26,Unknown protocol,New assetId or exchange profile,"Profile BLOCKED, no legacy fallback",Execution,PM-PROTO-01,NOT_RUN
+FT-27,Rules/catalyst race,Event invalidation before signing,Permit watermark mismatch rejects; resting orders canceled per policy,Intelligence,PM-INTEL-07,NOT_RUN
+FT-28,WS gap,Reconnect and out-of-order deltas,Features stale until snapshot/watermark recovery,Data,PM-DATA-03,NOT_RUN
+FT-29,Clock skew,Worker clock exceeds allowed drift,No new sign; time-based test includes monotonic deadline,Platform,PM-PROTO-05,NOT_RUN
+FT-30,Correlation gap,Graph unavailable or same series unknown,Conservative group cap; no diversification credit,Risk,PM-GRAPH-04,NOT_RUN
+FT-31,False exclusivity,Outcomes exclusive but incomplete,Structural solver rejects guaranteed payout proof,Strategy,PM-GRAPH-02,NOT_RUN
+FT-32,One leg only,Other arb leg rejected/delayed,Bound residual exposure; hedge/unwind only within mandate,Strategy,PM-GRAPH-06,NOT_RUN
+FT-33,Settlement failure,MATCHED later FAILED or reorg,Provisional inventory not spendable; compensating journal,Ledger,PM-LED-03,NOT_RUN
+FT-34,Double redeem event,Receipt/stream delivered twice,One economic posting per unique transaction/log,Ledger,PM-EXE-08,NOT_RUN
+FT-35,DB outage,Reservation store unavailable,No new signing; cancel emergency policy isolated and audited,Platform,PM-RISK-02,NOT_RUN
+FT-36,Restore backup,DB behind venue after PITR,RECOVERING; ledger catch-up before permit issuance,Platform,PM-OPS-05,NOT_RUN
+FT-37,Hot cleanup,Experiment uses old raw objects,Reference-count pin prevents deletion; replay verifies hashes,Research,PM-EXP-04,NOT_RUN
+FT-38,Missing universe rows,Only winners retained in report,Denominator audit fails and experiment not eligible,Research,PM-EXP-01,NOT_RUN
+FT-39,Holdout reuse,Threshold tweaked after holdout peek,New trial spends budget; old holdout exposure remains recorded,Research,PM-EXP-03,NOT_RUN
+FT-40,Provider alias drift,Fingerprint/resolved model changes,New lineage/calibration segment; UNKNOWN if provider hides change,Intelligence,PM-INTEL-10,NOT_RUN
+FT-41,Optimistic paper fills,Actual maker queue underfills,Reality gap gate fails for affected profile,Research,PM-EXP-06,NOT_RUN
+FT-42,Exit liquidity disappears,SELL cannot fill at floor,Position stays open; risk pressure and price constraint visible,Execution,PM-SIZE-04,NOT_RUN
+FT-43,Reward estimate reversed,Rebate pool changed or payout below expectation,Only estimate corrected; no cash reservation funded by estimate,Ledger,PM-ECON-03,NOT_RUN
+FT-44,Model budget exhausted,LLM unavailable,New forecast abstains; cancel/exit monitoring/reconcile continue,Intelligence,PM-AI-05,NOT_RUN
+FT-45,Supply-chain drift,Forbidden transitive dependency/postinstall returns,Build admission fails; no runtime installation,Platform,PM-SEC-06,NOT_RUN
+FT-46,Drawdown and restart,Latched breach then process restart/deposit,Breach persists; no timed auto-resume,Risk,PM-RISK-03,NOT_RUN

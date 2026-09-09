@@ -1,0 +1,182 @@
+[
+  {
+    "key": "execution.mode",
+    "value": "PAPER",
+    "note": "Satu sumber mode; flag DRY_RUN lama hanya adapter kompatibilitas, tidak menjadi otoritas."
+  },
+  {
+    "key": "capital.usd_cap",
+    "value": "null",
+    "note": "Wajib diisi pemilik sebelum LIVE; bukan seluruh saldo wallet otomatis."
+  },
+  {
+    "key": "max_order_pct",
+    "value": "0.5%",
+    "note": "Dari approved capital cap; termasuk worst-case biaya."
+  },
+  {
+    "key": "max_market_pct",
+    "value": "2%",
+    "note": "Posisi + resting orders + reservasi pada market yang sama."
+  },
+  {
+    "key": "max_event_group_pct",
+    "value": "5%",
+    "note": "Eksposur yang berkorelasi; unknown group memakai kelompok konservatif bersama."
+  },
+  {
+    "key": "max_portfolio_pct",
+    "value": "10%",
+    "note": "Jumlah biaya modal yang berisiko; tanpa offset probabilistik antar market."
+  },
+  {
+    "key": "daily_loss_stop_pct",
+    "value": "2%",
+    "note": "Dari equity awal hari UTC yang disesuaikan arus modal; breach latched."
+  },
+  {
+    "key": "drawdown_stop_pct",
+    "value": "5%",
+    "note": "Dari high-water mark equity yang disesuaikan arus modal; breach latched."
+  },
+  {
+    "key": "max_open_orders",
+    "value": "10",
+    "note": "Termasuk status submission/cancel unknown; tidak menghitung hanya ACK open."
+  },
+  {
+    "key": "min_edge_after_cost",
+    "value": "0.03 per share",
+    "note": "Buffer awal eksperimen untuk pasar payout 1; parameter desain, bukan edge terbukti."
+  },
+  {
+    "key": "book_max_age_ms",
+    "value": "2000",
+    "note": "Age snapshot/stream untuk rilis directional; bukan standar HFT."
+  },
+  {
+    "key": "metadata_max_age_s",
+    "value": "60",
+    "note": "Refresh saat tick/status/fee berubah dan validasi lagi sebelum submit."
+  },
+  {
+    "key": "forecast_max_age_s",
+    "value": "900",
+    "note": "Batas atas; event baru atau rules berubah membatalkan lebih awal."
+  },
+  {
+    "key": "clock_skew_max_ms",
+    "value": "1000",
+    "note": "Breach menahan submit; timestamp bukti tetap UTC."
+  },
+  {
+    "key": "max_slippage_abs",
+    "value": "0.01",
+    "note": "Batas harga absolut per share pada entry; depth dapat menghasilkan batas lebih ketat."
+  },
+  {
+    "key": "research_concurrency",
+    "value": "2",
+    "note": "Jangan menghambat executor; provider budget diisi pemilik."
+  },
+  {
+    "key": "daily_ai_budget_usd",
+    "value": "null",
+    "note": "Wajib untuk operasi terjadwal; harga provider disimpan per versi rate card."
+  },
+  {
+    "key": "intent_ttl_s",
+    "value": "30",
+    "note": "Intent kedaluwarsa ditolak; unknown submission tetap direkonsiliasi."
+  },
+  {
+    "key": "risk_decision_ttl_ms",
+    "value": "1000",
+    "note": "Validitas izin; executor juga memeriksa hash policy, lease, balance dan quote."
+  },
+  {
+    "key": "reconcile_interval_s",
+    "value": "15",
+    "note": "Target desain saat sehat; startup/reconnect/unknown memicu segera."
+  },
+  {
+    "key": "cash_drift_tolerance",
+    "value": "0.01 USD-equivalent",
+    "note": "Tidak boleh dipakai untuk memaafkan unknown fill/order; fee rounding tetap presisi aset."
+  },
+  {
+    "key": "share_drift_tolerance",
+    "value": "1 base unit aset",
+    "note": "Asset decimals dari registry; drift lebih besar menahan entry."
+  },
+  {
+    "key": "retention.financial",
+    "value": "365 hari minimum",
+    "note": "HOT saja 30 hari; EXPERIMENT pin sampai 365 hari setelah close; ARCHIVE minimum 365 hari; active positions/disputes tidak boleh dihapus."
+  },
+  {
+    "key": "backup.rpo/rto",
+    "value": "15 menit / 60 menit",
+    "note": "Target off-host restore, bukan klaim hasil benchmark; venue reconciliation wajib."
+  },
+  {
+    "key": "sizer.fractional_kelly",
+    "value": "0.25",
+    "note": "Hipotesis awal eksperimen, bukan bukti optimal; no minimum-Kelly floor."
+  },
+  {
+    "key": "maker.expected_rebate_credit",
+    "value": "0 untuk buying power",
+    "note": "Estimate dipakai untuk analisis sensitivitas, bukan collateral."
+  },
+  {
+    "key": "venue.unknown_action",
+    "value": "NO_NEW_ORDER",
+    "note": "Cancel/reconcile best effort sesuai endpoint health."
+  },
+  {
+    "key": "wallet.fresh_default",
+    "value": "POLY_1271",
+    "note": "LIVE blocked hingga contract profile dan setup lulus."
+  },
+  {
+    "key": "protocol.unknown",
+    "value": "BLOCK",
+    "note": "Tidak fallback diam-diam ke CTF/V2 atau EOA."
+  },
+  {
+    "key": "strategy.mode",
+    "value": "PAPER",
+    "note": "Registry/gates per versi dan profile; tidak auto-promote."
+  },
+  {
+    "key": "trial.alpha_total",
+    "value": "0.05 per preregistered research program",
+    "note": "Alpha allocation across declared families/trials/looks; valid tests wajib."
+  },
+  {
+    "key": "hot_retention_days",
+    "value": "30",
+    "note": "Reference-counted experiment pins mengalahkan TTL."
+  },
+  {
+    "key": "experiment_post_close_days",
+    "value": "365 minimum",
+    "note": "Plus dispute/active position hold."
+  },
+  {
+    "key": "research.max_response_bytes",
+    "value": "5 MiB",
+    "note": "Per response decoded; compressed bytes dan total per job dibatasi terpisah."
+  },
+  {
+    "key": "research.max_redirects",
+    "value": "3",
+    "note": "Validasi URL/DNS/IP setiap hop; default allowlist domain."
+  },
+  {
+    "key": "micro_live.total_cap",
+    "value": "Owner-defined",
+    "note": "Harus muat venue minimum dan seluruh fees di bawah cap; jika tidak, tetap PAPER."
+  }
+]

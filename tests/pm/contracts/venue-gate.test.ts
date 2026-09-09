@@ -7,12 +7,12 @@ const MODES: VenueMode[] = [
   "NORMAL",
   "POST_ONLY",
   "CANCEL_ONLY",
-  "RESTARTING",
+  "READ_ONLY",
   "UNAVAILABLE",
   "UNKNOWN",
 ];
 
-describe("VenueAdapter — venue-mode action matrix (TABLE 17, EXE-02)", () => {
+describe("VenueAdapter — venue-mode action matrix (TABLE 17, PM-EXE-02)", () => {
   it("NORMAL and POST_ONLY permit order submit and cancel", () => {
     for (const m of ["NORMAL", "POST_ONLY"] as VenueMode[]) {
       assert.equal(venueActionGate(m, "ORDER_SUBMIT").allowed, true);
@@ -20,11 +20,15 @@ describe("VenueAdapter — venue-mode action matrix (TABLE 17, EXE-02)", () => {
     }
   });
 
-  it("CANCEL_ONLY and RESTARTING forbid submit but allow cancel", () => {
-    for (const m of ["CANCEL_ONLY", "RESTARTING"] as VenueMode[]) {
-      assert.equal(venueActionGate(m, "ORDER_SUBMIT").allowed, false);
-      assert.equal(venueActionGate(m, "ORDER_CANCEL").allowed, true);
-    }
+  it("CANCEL_ONLY forbids submit but allows cancel", () => {
+    assert.equal(venueActionGate("CANCEL_ONLY", "ORDER_SUBMIT").allowed, false);
+    assert.equal(venueActionGate("CANCEL_ONLY", "ORDER_CANCEL").allowed, true);
+  });
+
+  it("READ_ONLY forbids submit and cancel but permits reads (PM-VENUE-01)", () => {
+    assert.equal(venueActionGate("READ_ONLY", "ORDER_SUBMIT").allowed, false);
+    assert.equal(venueActionGate("READ_ONLY", "ORDER_CANCEL").allowed, false);
+    assert.equal(venueActionGate("READ_ONLY", "READ").allowed, true);
   });
 
   it("UNAVAILABLE and UNKNOWN fail closed for every action", () => {

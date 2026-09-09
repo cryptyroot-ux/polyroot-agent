@@ -44,5 +44,14 @@ export interface PolicyStore {
   update(policy: Partial<RiskPolicy>): Promise<void>;
 }
 
-// Money Kernel (PR-RISK-01..08, Blueprint B9)
+// Money Kernel (PM-RISK-01..08, Blueprint B9)
 export * from "./money-kernel.js";
+
+// Kill switch + reduction paths (PM-RISK-05/06)
+export * from "./kill-switch.js";
+
+// Key-compromise response planner (PM-SEC-08)
+export * from "./key-compromise.js";
+
+// Loss floors (PM-RISK-03)
+export * from "./loss-floor.js";

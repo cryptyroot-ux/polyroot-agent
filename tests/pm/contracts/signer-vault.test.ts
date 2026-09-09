@@ -75,7 +75,7 @@ function validReq(over = {}) {
   };
 }
 
-describe("Signer Vault — TABLE 8 pre-sign invariants (PR-WAL-07)", () => {
+describe("Signer Vault — TABLE 8 pre-sign invariants (PM-WALLET-07)", () => {
   it("signs a valid request once and records the signature", async () => {
     const v = vault();
     const res = await outcome(v.sign(validReq()));

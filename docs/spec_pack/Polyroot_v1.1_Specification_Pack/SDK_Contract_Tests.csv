@@ -1,0 +1,33 @@
+﻿id,contract,acceptance,gate,requirement,status,evidence
+CT-01,SDK install/Node compatibility,Exact package + integrity + minimum Node; no unreviewed lifecycle script,G0,PM-PROTO-02,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-02,Public client purity,"Public discovery/readiness never creates wallet, API key or approvals",G0,PM-WALLET-03,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-03,EOA signing,Golden EIP-712 domain/payload + signer recovery + venue acceptance,G0/G4,PM-WALLET-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-04,POLY_PROXY signing,Owner/funder/proxy mapping + authenticated acceptance,G0/G4,PM-WALLET-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-05,GNOSIS_SAFE signing,Safe funder mapping + golden signature + venue acceptance,G0/G4,PM-WALLET-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-06,POLY_1271 signing,Nested typed data/ERC-7739 wrapper + wallet validation + venue acceptance,G0/G4,PM-WALLET-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-07,Deposit wallet create/discover,Existing vs absent wallet; WALLET-CREATE idempotent reconciliation,G1/G4,PM-WALLET-04,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-08,Approval caller/spender,ERC20 collateral and ERC1155 operator call originates correct account wallet,G0/G4,PM-WALLET-05,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-09,L1/L2 credentials,"Typed auth, request body HMAC, API derive/create/revoke and signer binding",G0/G4,PM-WALLET-06,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-10,Relayer auth/nonce,Builder vs relayer auth routes and replay/timeout/nonce conflicts,G1/G4,PM-WALLET-04,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-11,CTF market profile,"Asset identity, contracts, domain and settlement outputs exact",G0/G4,PM-PROTO-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-12,PolyV2 position profile,"Structured assetId routing, ExchangeV3 and approvals; unsupported blocks",G0/G4,PM-PROTO-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-13,No legacy V1 fallback,Legacy fields/domain rejected; version probe failure stays UNKNOWN,G0,PM-PROTO-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-14,Base-unit rounding,"BUY/SELL shares and cash, unusual tick, min size, decimals, boundary prices",G0,PM-DATA-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-15,Fee drift spending bound,"Proof actual maximum debit for match-time fee changes, not maxSpend naming",G0/G4,PM-PROTO-04,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-16,GTC/GTD expiration,"Security offset/min future expiration, clock drift, cancel deadline",G0/G4,PM-PROTO-05,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-17,FOK/FAK outcomes,All-or-none matching vs partial/zero fill and later settlement; no closed-on-ACK,G0/G4,PM-EXE-06,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-18,Post-only behavior,"Crossing reject, no silent taker conversion; venue recovery mode",G0/G4,PM-ECON-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-19,Submit ambiguity,"Timeout before/after server receipt, delayed matching, duplicate order hash lookup",G1/G4,PM-EXE-04,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-20,Cancel responses,"Mixed canceled/not_canceled, cancel-vs-fill race, unavailable endpoint",G1/G4,PM-EXE-05,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-21,Heartbeat route,Endpoint/method/auth/body including ID carry-forward; initial/invalid ID recovery,G0/G4,PM-EXE-07,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-22,Heartbeat lifetime/scope,"Timeout interval, account/order coverage, multi-writer collision, restart",G1/G4,PM-EXE-07,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-23,Market/user stream,"Snapshot/delta ordering, replay, duplicates, missing sequence, reconnect",G1/G4,PM-DATA-03,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-24,Mode/error matrix,"425, cancel-only, post-only, close-only, banned, auth and balance mapping",G0/G4,PM-VENUE-04,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-25,Rate-limit headers,"IP queue delay, signer buckets, cancel debt, warning vs live behavior",G1/G4,PM-VENUE-05,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-26,Settlement reconciliation,MATCHED/MINED/CONFIRMED/RETRYING/FAILED and reorg/correction handling,G1/G4,PM-LED-03,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-27,Redeem flow,"Resolution finality, disputed state, CTF/PolyV2 correct redeem target and receipt",G0/G4,PM-EXE-08,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-28,Builder code/metadata,Encoded fields preserved; fee/rebate accounting independent of attribution,G0/G4,PM-PROTO-06,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-29,Incentive accounting,Maker rebate vs LP reward vs taker incentive with confirmed payout asset,G0/G4,PM-ECON-03,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-30,Credential compromise,"Revoke API vs session vs approval, partial failure and remaining open orders",G1/G4,PM-SEC-08,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-31,Session key beta,Actual scopes/expiry/revocation finality; custom lifetime assumptions rejected,G0/G4 opt-in,PM-WALLET-10,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.
+CT-32,SDK narrow signer adapter,Encoder produces typed request vault can verify; no generic sign escape hatch,G0/G1,PM-SEC-01,NOT_RUN,Static docs/package review only; no wallet or authenticated order was used.

@@ -3,7 +3,7 @@
  *
  * Builds the canonical signed order from the reserved intent + permit, always
  * clamped INSIDE the permit's reservation (share quota and cash ceiling). Every
- * clamp happens in exact integer base units (PR-LED-02); floats never inflate
+ * clamp happens in exact integer base units (PM-LED-02); floats never inflate
  * an order past its reservation.
  *
  * The signature is produced by the injected SignerVault, which enforces its own

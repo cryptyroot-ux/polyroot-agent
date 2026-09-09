@@ -1,8 +1,8 @@
 /**
- * @polyroot/risk — Money Kernel (PR-RISK-01..08, Blueprint B9 / TABLE 14).
+ * @polyroot/risk — Money Kernel (PM-RISK-01..08, Blueprint B9 / TABLE 14).
  *
  * The Money Kernel is the **only** place that may move money or change the
- * commitment of funds. Its central invariant (T-PR-RISK-03, B17.3 step 1):
+ * commitment of funds. Its central invariant (T-PM-RISK-03, B17.3 step 1):
  *
  *   A Reservation and its ExecutionPermit are created **atomically**. Funds are
  *   never reserved without a matching permit, and a permit is never issued
@@ -10,11 +10,11 @@
  *   versions. Removing a permit therefore releases its reservation; claiming a
  *   reservation always requires the matching valid permit.
  *
- * Exactness (PR-LED-02): every amount is expressed in integer base units
+ * Exactness (PM-LED-02): every amount is expressed in integer base units
  * (bigint). No float arithmetic ever participates in a balance commitment.
  *
  * Hard parameters are always enforced and **never loosened** by any tier; risk
- * tiers may only tighten (PR-RISK-05).
+ * tiers may only tighten (PM-RISK-05).
  *
  * The kernel is state/DB-agnostic: callers inject a `BalanceStore` and a
  * `KernelEventSink`. This keeps the financial logic deterministic and fully
@@ -130,6 +130,26 @@ export class MoneyKernel {
     if (req.maxCashBase <= 0n || req.maxCashBase > this.opts.hardMaxCash!) {
       return { ok: false, code: "CAP_CASH", reason: "cash outside hard cap" };
     }
+    // Per-share price must be in (0, 1e6] base units. A negative or zero price
+    // would make cashNeeded <= 0 and turn a "reservation" into a balance
+    // credit (money creation); a price > 1 unit is not a valid market price.
+    // PM-LED-02 exactness relies on these bounds.
+    if (req.perSharePriceBase <= 0n || req.perSharePriceBase > 1_000_000n) {
+      return {
+        ok: false,
+        code: "PRICE_RANGE",
+        reason: "per-share price outside (0, 1] base units",
+      };
+    }
+    // Venue mode is part of the permit payload and enforced by the venue gate;
+    // refuse to mint a permit carrying a non-canonical mode (PM-VENUE-01).
+    if (!VenueModeSchema.safeParse(req.venueMode).success) {
+      return {
+        ok: false,
+        code: "VENUE_MODE",
+        reason: "non-canonical venue mode",
+      };
+    }
     if (!req.policyHash || req.policyHash.length < 1) {
       return {
         ok: false,
@@ -224,7 +244,7 @@ export class MoneyKernel {
     return { ok: true, permit, reservationId: permit.reservation_ids[0]! };
   }
 
-  /** Release a reservation's committed funds (negative-line cancel; PR-RISK-07). */
+  /** Release a reservation's committed funds (negative-line cancel; PM-RISK-07). */
   async release(
     account: string,
     asset: string,

@@ -5,7 +5,7 @@
  * contract/property suites assert structural invariants only and must run
  * in CI without a live database. DB-backed fixtures (migrations applied,
  * table truncation, market/intent factories) land in Sprint 2 together
- * with the Drizzle repositories (T-PR-LED-01…04).
+ * with the Drizzle repositories (T-PM-LED-01…04).
  */
 
 export async function setupTestDb(): Promise<void> {

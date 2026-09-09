@@ -1,5 +1,5 @@
 /**
- * @polyroot/executor — Executor core (PR-EXE-01..08, Blueprint B10/B11 / TABLE 16).
+ * @polyroot/executor — Executor core (PM-EXE-01..08, Blueprint B10/B11 / TABLE 16).
  *
  * Guarantees implemented here (the correctness heart of execution):
  *
@@ -21,7 +21,7 @@
  *     reuse.
  *
  *  4. **Per-order cancel (EXE-06)**: cancels are routed per order id and gated
- *     by the venue-mode matrix (CANCEL_ONLY/RESTARTING permit cancels).
+ *     by the venue-mode matrix (CANCEL_ONLY permits cancels; READ_ONLY does not).
  *
  * The lifecycle transition table is pure / deterministic and fully unit-tested;
  * the `Executor` wires it to a `VenueAdapter`, a submit-idempotency log and a

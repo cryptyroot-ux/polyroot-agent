@@ -1,0 +1,803 @@
+[
+  {
+    "package": "@anthropic-ai/sdk",
+    "upstream_range": "^0.78.0",
+    "upstream_group": "dependencies",
+    "disposition": "ADAPT",
+    "target": "intelligence only",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@anthropic-ai/tokenizer",
+    "upstream_range": "^0.0.4",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@coral-xyz/anchor",
+    "upstream_range": "^0.32.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@drift-labs/sdk",
+    "upstream_range": "^2.156.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@hapi/boom",
+    "upstream_range": "^10.0.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@jup-ag/api",
+    "upstream_range": "^6.0.48",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@jup-ag/dca-sdk",
+    "upstream_range": "^3.0.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@jup-ag/limit-order-sdk",
+    "upstream_range": "^0.1.10",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@kamino-finance/klend-sdk",
+    "upstream_range": "^2.13.10",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@kamino-finance/kliquidity-sdk",
+    "upstream_range": "^6.5.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@meteora-ag/dlmm",
+    "upstream_range": "^1.9.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@meteora-ag/dynamic-bonding-curve-sdk",
+    "upstream_range": "^1.5.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@noble/ed25519",
+    "upstream_range": "^2.3.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@noble/hashes",
+    "upstream_range": "^1.8.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@noble/secp256k1",
+    "upstream_range": "^3.0.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@orca-so/whirlpool-sdk",
+    "upstream_range": "^0.4.2",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@orca-so/whirlpools",
+    "upstream_range": "^6.0.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@orca-so/whirlpools-client",
+    "upstream_range": "^6.0.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@orca-so/whirlpools-core",
+    "upstream_range": "^3.0.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@polkadot/api",
+    "upstream_range": "^14.3.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@predictdotfun/sdk",
+    "upstream_range": "^1.3.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@project-serum/anchor",
+    "upstream_range": "^0.26.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@pump-fun/pump-sdk",
+    "upstream_range": "1.36.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@pump-fun/pump-swap-sdk",
+    "upstream_range": "1.19.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@raydium-io/raydium-sdk-v2",
+    "upstream_range": "^0.2.32-alpha",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@slack/bolt",
+    "upstream_range": "^3.17.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@solana/kit",
+    "upstream_range": "^5.0.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@solana/spl-token",
+    "upstream_range": "^0.4.14",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@solana/web3.js",
+    "upstream_range": "^1.98.4",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@trpc/server",
+    "upstream_range": "10.45.4",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/better-sqlite3",
+    "upstream_range": "^7.6.13",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/bn.js",
+    "upstream_range": "^5.2.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/figlet",
+    "upstream_range": "^1.7.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/pg",
+    "upstream_range": "^8.16.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@whiskeysockets/baileys",
+    "upstream_range": "^6.7.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@wormhole-foundation/sdk",
+    "upstream_range": "^4.11.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@wormhole-foundation/sdk-evm",
+    "upstream_range": "^4.9.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@wormhole-foundation/sdk-evm-cctp",
+    "upstream_range": "^4.9.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@wormhole-foundation/sdk-evm-tokenbridge",
+    "upstream_range": "^4.9.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@wormhole-foundation/sdk-solana",
+    "upstream_range": "^4.9.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@wormhole-foundation/sdk-solana-cctp",
+    "upstream_range": "^4.9.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@wormhole-foundation/sdk-solana-tokenbridge",
+    "upstream_range": "^4.9.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@xenova/transformers",
+    "upstream_range": "^2.17.2",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "better-sqlite3",
+    "upstream_range": "^12.6.2",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "binance",
+    "upstream_range": "^3.3.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "bn.js",
+    "upstream_range": "^5.2.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "bs58",
+    "upstream_range": "^5.0.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "bullmq",
+    "upstream_range": "^5.69.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "bybit-api",
+    "upstream_range": "^4.6.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "chalk",
+    "upstream_range": "^5.3.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "chokidar",
+    "upstream_range": "^3.5.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "commander",
+    "upstream_range": "^12.0.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "discord.js",
+    "upstream_range": "^14.14.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "docx",
+    "upstream_range": "^9.5.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "dotenv",
+    "upstream_range": "^16.6.1",
+    "upstream_group": "dependencies",
+    "disposition": "RESEARCH-ONLY",
+    "target": "local paper tooling only",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "ethers",
+    "upstream_range": "^6.16.0",
+    "upstream_group": "dependencies",
+    "disposition": "REWRITE",
+    "target": "official SDK candidate + narrow signer; exact closure unapproved",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "eventemitter3",
+    "upstream_range": "^5.0.1",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "express",
+    "upstream_range": "^4.18.2",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "fast-xml-parser",
+    "upstream_range": "^5.3.7",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "figlet",
+    "upstream_range": "^1.10.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "glob",
+    "upstream_range": "^10.3.10",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "grammy",
+    "upstream_range": "^1.40.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "hyperliquid",
+    "upstream_range": "^1.7.7",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "inquirer",
+    "upstream_range": "^9.2.14",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "ioredis",
+    "upstream_range": "^5.9.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "json5",
+    "upstream_range": "^2.2.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "mammoth",
+    "upstream_range": "^1.11.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "node-cron",
+    "upstream_range": "^3.0.3",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "nodemailer",
+    "upstream_range": "^9.0.6",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "pg",
+    "upstream_range": "^8.17.2",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "pino",
+    "upstream_range": "^8.18.0",
+    "upstream_group": "dependencies",
+    "disposition": "KEEP+HARDEN",
+    "target": "structured redacted logging",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "pino-pretty",
+    "upstream_range": "^10.3.1",
+    "upstream_group": "dependencies",
+    "disposition": "RESEARCH-ONLY",
+    "target": "developer logs only",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "sharp",
+    "upstream_range": "^0.35.4",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "sql.js",
+    "upstream_range": "^1.14.0",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "tiktoken",
+    "upstream_range": "^1.0.22",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "tmi.js",
+    "upstream_range": "^1.8.5",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "unofficial-opinion-clob-sdk",
+    "upstream_range": "^0.1.10",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "ws",
+    "upstream_range": "^8.16.0",
+    "upstream_group": "dependencies",
+    "disposition": "ADAPT",
+    "target": "market/user websocket adapter",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "yaml",
+    "upstream_range": "^2.3.4",
+    "upstream_group": "dependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "zod",
+    "upstream_range": "^3.22.4",
+    "upstream_group": "dependencies",
+    "disposition": "ADAPT",
+    "target": "domain validation",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/express",
+    "upstream_range": "^4.17.21",
+    "upstream_group": "devDependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/hapi__boom",
+    "upstream_range": "^9.0.1",
+    "upstream_group": "devDependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/node",
+    "upstream_range": "^20.19.33",
+    "upstream_group": "devDependencies",
+    "disposition": "ADAPT",
+    "target": "build types only",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/nodemailer",
+    "upstream_range": "^6.4.22",
+    "upstream_group": "devDependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/sql.js",
+    "upstream_range": "^1.4.9",
+    "upstream_group": "devDependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "@types/ws",
+    "upstream_range": "^8.5.10",
+    "upstream_group": "devDependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "puppeteer",
+    "upstream_range": "^24.37.5",
+    "upstream_group": "devDependencies",
+    "disposition": "REMOVE",
+    "target": "none",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "tsx",
+    "upstream_range": "^4.7.0",
+    "upstream_group": "devDependencies",
+    "disposition": "RESEARCH-ONLY",
+    "target": "dev/test only",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  },
+  {
+    "package": "typescript",
+    "upstream_range": "^5.3.3",
+    "upstream_group": "devDependencies",
+    "disposition": "ADAPT",
+    "target": "build only",
+    "rationale": "Tidak ada package ikut LIVE otomatis. Pin exact + integrity + license + transitive closure + reviewed lifecycle scripts per image sebelum admission.",
+    "production_admitted": false
+  }
+]

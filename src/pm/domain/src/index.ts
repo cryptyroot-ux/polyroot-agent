@@ -31,7 +31,7 @@ export type ProposalId = Brand<string, "ProposalId">;
 export type RiskDecisionId = Brand<string, "RiskDecisionId">;
 export type PermitId = Brand<string, "PermitId">;
 export type PostingId = Brand<string, "PostingId">;
-export type CharterId = Brand<string, "CharterId">;
+export type MandateId = Brand<string, "MandateId">;
 export type WalletId = Brand<string, "WalletId">;
 export type WalletAddress = Brand<string, "WalletAddress">;
 
@@ -51,8 +51,13 @@ export const nowSec = () => Math.floor(Date.now() / 1000);
 
 /* ─── Orthogonal state axes (PRD P3.2, Blueprint B3.2) ─── */
 
-/** Operation mode — only LIVE can send financial orders. */
-export const OperationModeSchema = z.enum(["PAPER", "SHADOW", "LIVE"]);
+/** Operation mode — RESEARCH/PAPER/SHADOW/LIVE (PM-GOV-02); only LIVE can send financial orders. */
+export const OperationModeSchema = z.enum([
+  "RESEARCH",
+  "PAPER",
+  "SHADOW",
+  "LIVE",
+]);
 export type OperationMode = z.infer<typeof OperationModeSchema>;
 /** Backwards-compatible alias used by older scaffolds. */
 export const ExecutionModeSchema = OperationModeSchema;
@@ -71,16 +76,58 @@ export const RuntimeStateSchema = z.enum([
 ]);
 export type RuntimeState = z.infer<typeof RuntimeStateSchema>;
 
-/** Venue mode — controls which order actions are currently legal. */
+/** Venue mode — controls which order actions are currently legal (PM-VENUE-01). */
 export const VenueModeSchema = z.enum([
   "NORMAL",
   "POST_ONLY",
   "CANCEL_ONLY",
-  "RESTARTING",
+  "READ_ONLY",
   "UNAVAILABLE",
   "UNKNOWN",
 ]);
 export type VenueMode = z.infer<typeof VenueModeSchema>;
+
+/**
+ * Exchange / account mode, orthonormal to venue mode and system health
+ * (PM-VENUE-01). CLOSE_ONLY means the exchange allows reducing established
+ * positions only. ACCESS_BLOCKED means the account credential is refused.
+ */
+export const AccountModeSchema = z.enum([
+  "ACTIVE",
+  "CLOSE_ONLY",
+  "RESTRICTED",
+  "SUSPENDED",
+  "ACCESS_BLOCKED",
+]);
+export type AccountMode = z.infer<typeof AccountModeSchema>;
+
+/** System health (transient vs reachability), separate from venue/account mode. */
+export const SystemHealthSchema = z.enum([
+  "READY",
+  "DEGRADED",
+  "DEGRADED_FAILING",
+  "UNAVAILABLE",
+  "UNKNOWN",
+]);
+export type SystemHealth = z.infer<typeof SystemHealthSchema>;
+
+/**
+ * What the venue is currently observed to support for a market. Source MUST be
+ * observed/verified behavior (or the canonical protocol profile), never the
+ * operator's assumption of a fixed timer order (PM-VENUE-03).
+ */
+export const VenueCapabilitySchema = z.object({
+  market_id: z.string().min(1),
+  protocol: z.string().min(1),
+  supports_reduce_only: z.boolean(),
+  supports_gtc: z.boolean(),
+  supports_gtd: z.boolean(),
+  supports_post_only: z.boolean(),
+  max_tick_size_base: z.number().int().positive(),
+  min_size_base: z.number().int().positive(),
+  observed_at: z.date(),
+});
+export type VenueCapability = z.infer<typeof VenueCapabilitySchema>;
 
 /** Risk tier — automatically tightens sizing/universe/order style, never loosens hard caps. */
 export const RiskTierSchema = z.enum(["NORMAL", "CAUTIOUS", "PROTECTIVE"]);
@@ -160,11 +207,14 @@ export const IntentPurposeSchema = z.enum([
 ]);
 export type IntentPurpose = z.infer<typeof IntentPurposeSchema>;
 
-/* ─── Wallet / asset taxonomy (PR-WAL-02..06, Blueprint B5) ─── */
+/* ─── Wallet / asset taxonomy (PM-WALLET-02..06, Blueprint B5) ─── */
 
 export const WalletTypeSchema = z.enum([
   "DEPOSIT_WALLET",
   "EOA",
+  "POLY_PROXY",
+  "GNOSIS_SAFE",
+  "POLY_1271",
   "LEGACY_PROXY",
   "SAFE",
   "UNKNOWN",
@@ -180,7 +230,7 @@ export const AssetKindSchema = z.enum([
 ]);
 export type AssetKind = z.infer<typeof AssetKindSchema>;
 
-/** Signer / account / funder are distinct verified identifiers (PR-WAL-03). */
+/** Signer / account / funder are distinct verified identifiers (PM-WAL-03). */
 export const WalletIdentitySchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
   wallet_id: z.string().ulid(),
@@ -193,7 +243,7 @@ export const WalletIdentitySchema = z.object({
 });
 export type WalletIdentity = z.infer<typeof WalletIdentitySchema>;
 
-/** Asset registry entry — pUSD, USDC/USDC.e and outcome tokens are distinct (PR-WAL-06). */
+/** Asset registry entry — pUSD, USDC/USDC.e and outcome tokens are distinct (PM-WALLET-06). */
 export const AssetRecordSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
   asset_kind: AssetKindSchema,
@@ -204,16 +254,16 @@ export const AssetRecordSchema = z.object({
 });
 export type AssetRecord = z.infer<typeof AssetRecordSchema>;
 
-/* ─── Autonomy Charter (PR-GOV-03, Blueprint B4) ─── */
+/* ─── Mandate (PM-GOV-03, Blueprint B4) ─── */
 
 /**
  * One-time commissioning artifact. Immutable, versioned. Routine trades
- * never require human approval while a charter is active; an expired or
- * superseded charter blocks new risk.
+ * never require human approval while a mandate is active; an expired or
+ * superseded mandate blocks new risk.
  */
-export const AutonomyCharterSchema = z.object({
+export const MandateSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  charter_id: z.string().ulid(),
+  mandate_id: z.string().ulid(),
   wallet_id: z.string().ulid(),
   release_manifest: z.string().min(1),
   policy_version: z.string().min(1),
@@ -236,9 +286,9 @@ export const AutonomyCharterSchema = z.object({
   commissioned_by: z.string().min(1),
   commissioning_proof: z.string().min(1),
 });
-export type AutonomyCharter = z.infer<typeof AutonomyCharterSchema>;
+export type Mandate = z.infer<typeof MandateSchema>;
 
-/* ─── Market data (PR-DATA-01..04, Blueprint B4/B6) ─── */
+/* ─── Market data (PM-DATA-01..04, Blueprint B4/B6) ─── */
 
 /** Canonical market snapshot — titles/slugs are lookup aids, never keys. */
 export const MarketSnapshotSchema = z.object({
@@ -295,7 +345,7 @@ export const GraphEdgeSchema = z.object({
 });
 export type GraphEdge = z.infer<typeof GraphEdgeSchema>;
 
-/* ─── Evidence & forecast (PR-INT-01..08, Blueprint B7) ─── */
+/* ─── Evidence & forecast (PM-INTEL-01..08, Blueprint B7) ─── */
 
 /** Evidence claim — external content is data only, never instruction. */
 export const EvidenceItemSchema = z.object({
@@ -363,7 +413,7 @@ export const ForecastSchema = z.object({
 });
 export type Forecast = z.infer<typeof ForecastSchema>;
 
-/* ─── Strategy & intent (PR-STR-01..08, Blueprint B8) ─── */
+/* ─── Strategy & intent (PM-STR-01..08, Blueprint B8) ─── */
 
 /** Strategy proposal — proposal only, never a financial effect. */
 export const StrategyProposalSchema = z.object({
@@ -418,7 +468,7 @@ export const TradeIntentSchema = z.object({
 });
 export type TradeIntent = z.infer<typeof TradeIntentSchema>;
 
-/* ─── Money kernel (PR-RISK-01..08, Blueprint B9) ─── */
+/* ─── Money kernel (PM-RISK-01..08, Blueprint B9) ─── */
 
 /** Risk engine decision on an intent. */
 export const RiskDecisionSchema = z.object({
@@ -456,7 +506,7 @@ export const RiskDecisionSchema = z.object({
 });
 export type RiskDecision = z.infer<typeof RiskDecisionSchema>;
 
-/** Short-lived execution permit — atomic with the reservation (PR-RISK-03). */
+/** Short-lived execution permit — atomic with the reservation (PM-RISK-03). */
 export const ExecutionPermitSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
   permit_id: z.string().ulid(),
@@ -479,7 +529,7 @@ export const ExecutionPermitSchema = z.object({
 });
 export type ExecutionPermit = z.infer<typeof ExecutionPermitSchema>;
 
-/* ─── Execution (PR-EXE-01..08, Blueprint B10/B11) ─── */
+/* ─── Execution (PM-EXE-01..08, Blueprint B10/B11) ─── */
 
 /** Signed order ready for venue submission. */
 export const SignedOrderSchema = z.object({
@@ -521,7 +571,7 @@ export const OrderResultSchema = z.object({
 });
 export type OrderResult = z.infer<typeof OrderResultSchema>;
 
-/* ─── Ledger (PR-LED-01..08, Blueprint B12) ─── */
+/* ─── Ledger (PM-LED-01..08, Blueprint B12) ─── */
 
 /** Ledger event types — append-only, never mutated. */
 export const LedgerEventTypeSchema = z.enum([
@@ -662,5 +712,199 @@ export const DEFAULT_RISK_POLICY: RiskPolicy = {
   risk_permit_ttl_ms: 1000,
   reconcile_interval_s: 15,
 };
+
+/* ─── Data plane (PM-DATA-01..06, Blueprint B6) ─── */
+
+/**
+ * Typed asset identity — NOT every asset is a CTF integer token (PM-DATA-01).
+ * `protocol_profile_id` <-> a curated protocol profile; unknown profile must
+ * reject signing downstream.
+ */
+export const AssetIdentitySchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  asset_id: z.string().min(1),
+  asset_class: z.enum(["CTF_TOKEN", "POLY_V2_POSITION", "PUSD", "USDC", "USDC_E", "UNKNOWN"]),
+  settlement_protocol: z.string().min(1),
+  exchange_domain_version: z.string().min(1),
+  chain_id: z.number().int().positive(),
+  market_id: z.string().min(1).optional(),
+  event_id: z.string().min(1).optional(),
+  condition_id: z.string().min(1).optional(),
+  outcome: z.string().min(1).optional(),
+  collateral: z.string().min(1).optional(),
+  decimals: z.number().int().nonnegative(),
+  tick: z.number().positive().optional(),
+  min_size: z.number().positive().optional(),
+  rules_hash: z.string().min(1).optional(),
+  protocol_profile_id: z.string().min(1),
+});
+export type AssetIdentity = z.infer<typeof AssetIdentitySchema>;
+
+/** Settlement rule snapshot (PM-DATA-02). Rules are versioned+hashing; a rule
+ * change invalidates pending forecasts and unsent intents (RULES_CHANGED). */
+export const SettlementRuleSchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  market_id: z.string().min(1),
+  rule_version: z.string().min(1),
+  resolution_source: z.string().min(1),
+  resolves_at_utc: z.date(),
+  rule_text_hash: z.string().min(1),
+  rules_text: z.string().min(1),
+  active_from: z.date(),
+});
+export type SettlementRule = z.infer<typeof SettlementRuleSchema>;
+
+/** Level-2 book frame (PM-DATA-03): `received_at` (our clock) is distinct from
+ * `source_at`; a reconnect flag forces full resync before execution resumes. */
+export const OrderBookFrameSchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  market_id: z.string().min(1),
+  bids: z.array(z.tuple([z.number(), z.number()])).optional(),
+  asks: z.array(z.tuple([z.number(), z.number()])).optional(),
+  received_at: z.date(),
+  source_at: z.date(),
+  is_delta: z.boolean().default(false),
+  resync_required: z.boolean().default(false),
+  book_hash: z.string().min(1).optional(),
+});
+export type OrderBookFrame = z.infer<typeof OrderBookFrameSchema>;
+
+/** Actual market fee settings (PM-DATA-04). Unknown fee data => reject entry. */
+export const MarketFeeSettingsSchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  market_id: z.string().min(1),
+  fee_maker_bps: z.number().int().nonnegative(),
+  fee_taker_bps: z.number().int().nonnegative(),
+  fee_currency: z.string().min(1),
+  tick_size: z.number().positive(),
+  min_size: z.number().positive(),
+  trade_mode: z.enum(["BINARY", "MULTI_OUTCOME", "NEG_RISK", "UNKNOWN"]),
+  fee_settings_hash: z.string().min(1),
+  observed_at: z.date(),
+});
+export type MarketFeeSettings = z.infer<typeof MarketFeeSettingsSchema>;
+
+/** Data quality gate (PM-DATA-06): missing is NOT zero; two wire copies are one
+ * syndication family; staleness/contradiction/limits are reported separately. */
+export const DataQualityFlagsSchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  is_stale: z.boolean().default(false),
+  has_contradiction: z.boolean().default(false),
+  syndication_family: z.string().optional(),
+  is_duplicate_of: z.string().optional(),
+  request_budget_exhausted: z.boolean().default(false),
+  data_missing: z.boolean().default(false),
+  /** true = a literal zero was observed; used to distinguish 0 from missing. */
+  observed_zero: z.boolean().default(false),
+  notes: z.array(z.string()).default([]),
+});
+export type DataQualityFlags = z.infer<typeof DataQualityFlagsSchema>;
+
+/* ─── Intelligence plane (PM-INTEL-01..10, Blueprint B7) ─── */
+
+/** Source classes (PM-INTEL-01/02): LLM is only one synthesizer. */
+export const SourceClassSchema = z.enum([
+  "FUNDAMENTAL",
+  "MARKET",
+  "PARTICIPANT",
+  "STRUCTURAL",
+  "ALTERNATIVE",
+  "CROSS_MARKET",
+]);
+export type SourceClass = z.infer<typeof SourceClassSchema>;
+
+/**
+ * Source record (PM-INTEL-02). Reliability carries sample+window; correction
+ * history and syndication parent make two wire-copy URLs one family.
+ */
+export const SourceRecordSchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  source_id: z.string().ulid(),
+  url: z.string().min(1),
+  epistemic_class: z.enum(["PRIMARY", "SECONDARY", "AGGREGATOR", "UNKNOWN"]),
+  domain: z.string().min(1),
+  source_class: SourceClassSchema,
+  reliability: z.object({
+    score: z.number().min(0).max(1),
+    sample_count: z.number().int().nonnegative(),
+    window: z.string().min(1),
+  }),
+  correction_history: z.array(z.string()).default([]),
+  syndication_parent: z.string().optional(),
+  latency_sec: z.number().nonnegative().optional(),
+  specialization: z.string().optional(),
+  registered_at: z.date(),
+});
+export type SourceRecord = z.infer<typeof SourceRecordSchema>;
+
+/** Feature frame (PM-INTEL-04): sampling window, source lag, quality flags.
+ * Missing values are null — never imputed to a numeric zero. */
+export const FeatureFrameSchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  market_id: z.string().min(1),
+  source_class: SourceClassSchema,
+  feature: z.string().min(1),
+  value: z.number().nullable(),
+  sampling_window_s: z.number().int().positive(),
+  source_lag_s: z.number().nonnegative(),
+  quality: DataQualityFlagsSchema,
+  sampled_at: z.date(),
+});
+export type FeatureFrame = z.infer<typeof FeatureFrameSchema>;
+
+/**
+ * Catalyst bus event (PM-INTEL-07/08): durable outbox subject/version/dedupe,
+ * separate event vs received time, consumer watermark enables replay without
+ * re-execution.
+ */
+export const CatalystEventSchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  event_id: z.string().min(1),
+  category: z.enum([
+    "RULES_CHANGED",
+    "ANNOUNCEMENT",
+    "POLLING_UPDATE",
+    "OBSERVATION",
+    "SCHEDULE",
+    "MARKET_ANOMALY",
+  ]),
+  subject: z.string().min(1),
+  payload_version: z.number().int().positive(),
+  event_at: z.date(),
+  received_at: z.date(),
+  dedupe_key: z.string().min(1),
+});
+export type CatalystEvent = z.infer<typeof CatalystEventSchema>;
+
+/** Model lineage (PM-INTEL-10): requested vs resolved model, fingerprint
+ * (may be UNKNOWN), prompt/response hashes, replay vs hosted regeneration. */
+export const ModelLineageSchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  provider: z.string().min(1),
+  requested_model: z.string().min(1),
+  resolved_model: z.string().min(1),
+  model_release: z.string().min(1).optional(),
+  release_fingerprint: z.string().min(1).optional(),
+  model_fingerprint_state: z.enum(["KNOWN", "UNKNOWN"]).default("UNKNOWN"),
+  api_version: z.string().min(1),
+  prompt_hash: z.string().min(1),
+  seed: z.string().optional(),
+  config_hash: z.string().optional(),
+  response_hash: z.string().min(1),
+  generation_source: z.enum(["HOSTED", "SAVED_RESPONSE_REPLAY"]).default("HOSTED"),
+  generated_at: z.date(),
+});
+export type ModelLineage = z.infer<typeof ModelLineageSchema>;
+
+/** Research budget (PM-AI-05): tokens/cost/duration/sources/concurrency. */
+export const ResearchQuotaSchema = z.object({
+  schema_version: z.string().default(SCHEMA_VERSION),
+  max_tokens: z.number().int().positive(),
+  max_cost_usd: z.number().positive(),
+  max_duration_s: z.number().int().positive(),
+  max_sources: z.number().int().positive(),
+  max_concurrency: z.number().int().positive(),
+});
+export type ResearchQuota = z.infer<typeof ResearchQuotaSchema>;
 
 export { z };

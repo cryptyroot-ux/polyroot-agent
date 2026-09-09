@@ -1,0 +1,388 @@
+[
+  {
+    "path": "llms.txt",
+    "url": "https://docs.polymarket.com/llms.txt",
+    "resolved": "https://docs.polymarket.com/llms.txt",
+    "content_type": "text/plain; charset=utf-8",
+    "bytes": 13101,
+    "sha256": "13b622bc51d72f184c354ffbd0f643b956b947c41f82c8c4d22c8cf8255ed3db",
+    "file": "research/polyroot-v1.1/official/llms.txt.txt",
+    "fetched_at": "2026-09-09T08:18:49.865551+00:00"
+  },
+  {
+    "path": "getting-started/typescript",
+    "url": "https://docs.polymarket.com/getting-started/typescript.md",
+    "resolved": "https://docs.polymarket.com/getting-started/typescript.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 9893,
+    "sha256": "c8bfc443ed720ed281b4824f6eeefeaec48bac9e7a8e730be9a20a9fc5781efa",
+    "file": "research/polyroot-v1.1/official/getting-started__typescript.txt",
+    "fetched_at": "2026-09-09T08:18:50.004387+00:00"
+  },
+  {
+    "path": "getting-started/migrate-from-previous-sdks",
+    "url": "https://docs.polymarket.com/getting-started/migrate-from-previous-sdks.md",
+    "resolved": "https://docs.polymarket.com/getting-started/migrate-from-previous-sdks.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 60918,
+    "sha256": "7f35be1847b3f399e8bea8fedc9846f7a7b882aa9cd775a6f5740881a526eff9",
+    "file": "research/polyroot-v1.1/official/getting-started__migrate-from-previous-sdks.txt",
+    "fetched_at": "2026-09-09T08:18:51.373069+00:00"
+  },
+  {
+    "path": "trading/wallets-auth",
+    "url": "https://docs.polymarket.com/trading/wallets-auth.md",
+    "resolved": "https://docs.polymarket.com/trading/wallets-auth.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 54438,
+    "sha256": "bd16933a33ff6d3999cc551e6b3e3663480e7064f8e5eec86e72772907596e44",
+    "file": "research/polyroot-v1.1/official/trading__wallets-auth.txt",
+    "fetched_at": "2026-09-09T08:18:50.271797+00:00"
+  },
+  {
+    "path": "trading/quickstart",
+    "url": "https://docs.polymarket.com/trading/quickstart.md",
+    "resolved": "https://docs.polymarket.com/trading/quickstart.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 6532,
+    "sha256": "71d827507ce700888e483580859dbfcba5978d82f182c3ddcb345297e07bcd46",
+    "file": "research/polyroot-v1.1/official/trading__quickstart.txt",
+    "fetched_at": "2026-09-09T08:18:50.776658+00:00"
+  },
+  {
+    "path": "trading/session-keys",
+    "url": "https://docs.polymarket.com/trading/session-keys.md",
+    "resolved": "https://docs.polymarket.com/trading/session-keys.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 44018,
+    "sha256": "c1f1e4f31f991c829290afbf60298e670c97165d2be1559820dcdf731d7d7c6d",
+    "file": "research/polyroot-v1.1/official/trading__session-keys.txt",
+    "fetched_at": "2026-09-09T08:18:50.291475+00:00"
+  },
+  {
+    "path": "trading/matching-engine",
+    "url": "https://docs.polymarket.com/trading/matching-engine.md",
+    "resolved": "https://docs.polymarket.com/trading/matching-engine.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 6864,
+    "sha256": "f0d718b69509593654cb0085bb94fb96447c9b8d5ece6ddb990003d1e1f6f36c",
+    "file": "research/polyroot-v1.1/official/trading__matching-engine.txt",
+    "fetched_at": "2026-09-09T08:18:58.640133+00:00"
+  },
+  {
+    "path": "trading/fees",
+    "url": "https://docs.polymarket.com/trading/fees.md",
+    "resolved": "https://docs.polymarket.com/trading/fees.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 8128,
+    "sha256": "8e246189f6ca85b8b8782e1d76a769cf98672a98c4c63d8bbe6150d659db8d7c",
+    "file": "research/polyroot-v1.1/official/trading__fees.txt",
+    "fetched_at": "2026-09-09T08:18:58.654796+00:00"
+  },
+  {
+    "path": "trading/place-orders",
+    "url": "https://docs.polymarket.com/trading/place-orders.md",
+    "resolved": "https://docs.polymarket.com/trading/place-orders.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 61459,
+    "sha256": "a3426c3ac3c04c96a4e988009cd6e603d22622a31e1b3c02a453ce3ac22d7563",
+    "file": "research/polyroot-v1.1/official/trading__place-orders.txt",
+    "fetched_at": "2026-09-09T08:18:59.461576+00:00"
+  },
+  {
+    "path": "trading/manage-orders",
+    "url": "https://docs.polymarket.com/trading/manage-orders.md",
+    "resolved": "https://docs.polymarket.com/trading/manage-orders.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 52662,
+    "sha256": "410b6ea2854cf9731086bc4adabf626c00313d2e0d63fdc096447f71af5a24b9",
+    "file": "research/polyroot-v1.1/official/trading__manage-orders.txt",
+    "fetched_at": "2026-09-09T08:18:59.708814+00:00"
+  },
+  {
+    "path": "resources/error-codes",
+    "url": "https://docs.polymarket.com/resources/error-codes.md",
+    "resolved": "https://docs.polymarket.com/resources/error-codes.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 19541,
+    "sha256": "a0a93df3e5644349748692815cc9833319ccae3c829d218312df1a6771d08af3",
+    "file": "research/polyroot-v1.1/official/resources__error-codes.txt",
+    "fetched_at": "2026-09-09T08:18:58.760576+00:00"
+  },
+  {
+    "path": "resources/contracts",
+    "url": "https://docs.polymarket.com/resources/contracts.md",
+    "resolved": "https://docs.polymarket.com/resources/contracts.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 7987,
+    "sha256": "ed59020bd28a24cbca9dbd2f92624a2a8ad7e403f0f08b6ff1529e33860c99a6",
+    "file": "research/polyroot-v1.1/official/resources__contracts.txt",
+    "fetched_at": "2026-09-09T08:18:59.503834+00:00"
+  },
+  {
+    "path": "changelog/predictions",
+    "url": "https://docs.polymarket.com/changelog/predictions.md",
+    "resolved": "https://docs.polymarket.com/changelog/predictions.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 23375,
+    "sha256": "630e2f885b355a5a34dc1d0e09c2ac033ee83af4595ba283b217273e6f5ac73b",
+    "file": "research/polyroot-v1.1/official/changelog__predictions.txt",
+    "fetched_at": "2026-09-09T08:19:07.383994+00:00"
+  },
+  {
+    "path": "changelog/sdks",
+    "url": "https://docs.polymarket.com/changelog/sdks.md",
+    "resolved": "https://docs.polymarket.com/changelog/sdks.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 36662,
+    "sha256": "22cd00085261ffcca54d8a1f86f4a0e92fc297101af0227083030ae84dc7f1a6",
+    "file": "research/polyroot-v1.1/official/changelog__sdks.txt",
+    "fetched_at": "2026-09-09T08:19:07.486586+00:00"
+  },
+  {
+    "path": "programs/maker-rebates",
+    "url": "https://docs.polymarket.com/programs/maker-rebates.md",
+    "resolved": "https://docs.polymarket.com/programs/maker-rebates.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 5945,
+    "sha256": "8d2c6562bd1b3376bc3fc1557a60efef5aa3c1d856c7f8dcc405139a07e9ba2a",
+    "file": "research/polyroot-v1.1/official/programs__maker-rebates.txt",
+    "fetched_at": "2026-09-09T08:19:07.543073+00:00"
+  },
+  {
+    "path": "programs/taker-rebates",
+    "url": "https://docs.polymarket.com/programs/taker-rebates.md",
+    "resolved": "https://docs.polymarket.com/programs/taker-rebates.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 7769,
+    "sha256": "4781bad02aacd3a7599ddb31381eb4fc9cb4bd8f783701ac62ffbf1fc364af34",
+    "file": "research/polyroot-v1.1/official/programs__taker-rebates.txt",
+    "fetched_at": "2026-09-09T08:19:07.454758+00:00"
+  },
+  {
+    "path": "programs/liquidity-rewards",
+    "url": "https://docs.polymarket.com/programs/liquidity-rewards.md",
+    "resolved": "https://docs.polymarket.com/programs/liquidity-rewards.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 7191,
+    "sha256": "27e11fc522c0aa9ee586e838add32b176a27ec5e216a7d18f27a2298e62efc63",
+    "file": "research/polyroot-v1.1/official/programs__liquidity-rewards.txt",
+    "fetched_at": "2026-09-09T08:19:07.464166+00:00"
+  },
+  {
+    "path": "concepts/pusd",
+    "url": "https://docs.polymarket.com/concepts/pusd.md",
+    "resolved": "https://docs.polymarket.com/concepts/pusd.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 5551,
+    "sha256": "251904563e9fa977844a99400fca72754564ddcf27a765b97deeaf446c3cf613",
+    "file": "research/polyroot-v1.1/official/concepts__pusd.txt",
+    "fetched_at": "2026-09-09T08:19:08.281063+00:00"
+  },
+  {
+    "path": "trading/bridge/deposit",
+    "url": "https://docs.polymarket.com/trading/bridge/deposit.md",
+    "resolved": "https://docs.polymarket.com/trading/bridge/deposit.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 4549,
+    "sha256": "0c11c3dd89354f516f4ef23d7cf20a8482a1b989345ab079c5ceb7c65fa763f2",
+    "file": "research/polyroot-v1.1/official/trading__bridge__deposit.txt",
+    "fetched_at": "2026-09-09T08:19:16.167074+00:00"
+  },
+  {
+    "path": "trading/bridge/quote",
+    "url": "https://docs.polymarket.com/trading/bridge/quote.md",
+    "resolved": "https://docs.polymarket.com/trading/bridge/quote.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 4788,
+    "sha256": "64b4cf45f925a1d9ed829e3a7076b738b3fa520344a8db7c7c247912b116a5a6",
+    "file": "research/polyroot-v1.1/official/trading__bridge__quote.txt",
+    "fetched_at": "2026-09-09T08:19:16.027978+00:00"
+  },
+  {
+    "path": "api-reference/rate-limits",
+    "url": "https://docs.polymarket.com/api-reference/rate-limits.md",
+    "resolved": "https://docs.polymarket.com/api-reference/rate-limits.md",
+    "content_type": "text/markdown; charset=utf-8",
+    "bytes": 4124,
+    "sha256": "7ba9bdb5df4bfd12199349220dd3c0d0923f6fcc5352385d038ea4eb69ec051a",
+    "file": "research/polyroot-v1.1/official/api-reference__rate-limits.txt",
+    "fetched_at": "2026-09-09T08:19:16.354138+00:00"
+  },
+  {
+    "path": "api-reference/trading-rate-limits",
+    "url": "https://docs.polymarket.com/api-reference/trading-rate-limits.md",
+    "file": "research/polyroot-v1.1/official/api-reference__trading-rate-limits.txt",
+    "sha256": "18851dde8fdbc782bd04d56a6eeb36523fef030daf61e98874c5d5c94c508f69",
+    "bytes": 7729,
+    "fetched_at": "2026-09-09T08:29:01.337178+00:00"
+  },
+  {
+    "name": "v2-migration",
+    "url": "https://docs.polymarket.com/v2-migration.md",
+    "bytes": 25625,
+    "sha256": "8dc52780b87a85faa22a030174cb28a2ee7bfd3c2797712527e3a83147452c7b",
+    "path": "research/polyroot-v1.1/official/v2-migration.txt",
+    "fetched_at": "2026-09-09T08:20:43.789689+00:00"
+  },
+  {
+    "name": "clob-openapi",
+    "url": "https://docs.polymarket.com/api-spec/clob-openapi.yaml",
+    "bytes": 215862,
+    "sha256": "82529177635db366c31a08777355b4b95c392a427298c3ba68904b937d4594da",
+    "path": "research/polyroot-v1.1/official/clob-openapi.txt",
+    "fetched_at": "2026-09-09T08:20:45.000532+00:00"
+  },
+  {
+    "name": "relayer-openapi",
+    "url": "https://docs.polymarket.com/api-spec/relayer-openapi.yaml",
+    "bytes": 26743,
+    "sha256": "bc166abe718228203d6d479af36eae5901d77f807a1e73444fc380ee5ae385a8",
+    "path": "research/polyroot-v1.1/official/relayer-openapi.txt",
+    "fetched_at": "2026-09-09T08:20:43.795346+00:00"
+  },
+  {
+    "name": "client-npm",
+    "url": "https://registry.npmjs.org/@polymarket%2fclient",
+    "bytes": 1526467,
+    "sha256": "18c71dea602d83bbbaee29b780f37c0aa47e6a4583bcc1e78b41212ba8a6c9f8",
+    "path": "research/polyroot-v1.1/official/client-npm.txt",
+    "fetched_at": "2026-09-09T08:20:43.149295+00:00",
+    "latest": "0.9.0",
+    "repository": {
+      "url": "git+https://github.com/Polymarket/ts-sdk.git",
+      "type": "git",
+      "directory": "packages/client"
+    },
+    "dist": {
+      "shasum": "09b96dea30b4fd1eae570f065fb1945e2433ec7b",
+      "tarball": "https://registry.npmjs.org/@polymarket/client/-/client-0.9.0.tgz",
+      "fileCount": 30,
+      "integrity": "sha512-v1PuTbBsf7iySKbPaJZF/yR3GrCmZ7lCjg5+hc+vyKYdZ+Xp5obBFDP6NR/HttlkynCWSxQ+zvni2f9SDLpHhg==",
+      "signatures": [
+        {
+          "sig": "MEUCIByxWaH32jU1nDl85Rd8iJCbEdIzSSYYw2mRw9ugpYaxAiEAvDcb45Mz6J5n27P9rG326B2IE9UEGpp0QhivleeJAVY=",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@polymarket%2fclient@0.9.0",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      },
+      "unpackedSize": 2133363
+    },
+    "dependencies": {
+      "ky": "^1.14.3",
+      "ox": "^0.14.16",
+      "zod": "^4.3.6",
+      "it-merge": "^3.0.14",
+      "it-pushable": "^3.2.3",
+      "@msgpack/msgpack": "^3.1.3",
+      "@polymarket/types": "0.2.0",
+      "@polymarket/bindings": "0.9.0"
+    },
+    "engines": {
+      "node": ">=24"
+    },
+    "scripts": {
+      "build": "tsup",
+      "typecheck": "tsc -p tsconfig.json --noEmit"
+    },
+    "published": "2026-09-03T22:39:29.601Z"
+  },
+  {
+    "name": "clob-v2-npm",
+    "url": "https://registry.npmjs.org/@polymarket%2fclob-client-v2",
+    "bytes": 119224,
+    "sha256": "395fe6306151329104aea2b67e12386cee62023f9dae1cebf504c604d5a5dc51",
+    "path": "research/polyroot-v1.1/official/clob-v2-npm.txt",
+    "fetched_at": "2026-09-09T08:20:43.088653+00:00",
+    "latest": "1.1.0",
+    "repository": {
+      "url": "git+https://github.com/Polymarket/clob-client-v2.git",
+      "type": "git"
+    },
+    "dist": {
+      "shasum": "b4e540c4c98ecbc5bbf09c38ddc81bb2f3c54e31",
+      "tarball": "https://registry.npmjs.org/@polymarket/clob-client-v2/-/clob-client-v2-1.1.0.tgz",
+      "fileCount": 205,
+      "integrity": "sha512-hVeKSZCIG4T3tmgmVHjd9FAo9Iq7K2bCLTtxlFrnASjOZmTre6Y60QNgcZ+wREMC4Wur7S+7YaMcmTRyTmeCvg==",
+      "signatures": [
+        {
+          "sig": "MEUCIQDn8bVpAigCqa+PORbcnbC5LpMft58Q6kgpoh1tbTl9oQIgDXkBTp98RD8gw2l00iFAIT4taogaai+XJVvbwll5S24=",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@polymarket%2fclob-client-v2@1.1.0",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      },
+      "unpackedSize": 645391
+    },
+    "dependencies": {
+      "viem": "^2.46.3",
+      "axios": "^1.0.0",
+      "tslib": "^2.8.1",
+      "browser-or-node": "^3.0.0",
+      "@ethersproject/wallet": "^5.8.0",
+      "@ethersproject/providers": "^5.8.0"
+    },
+    "engines": {
+      "node": ">=20.10"
+    },
+    "scripts": {
+      "lint": "biome check ./src ./tests",
+      "test": "vitest run",
+      "build": "tsdown",
+      "deploy": "pnpm build && npm publish",
+      "format": "biome check --write ./src ./tests"
+    },
+    "published": "2026-07-17T11:38:12.801Z"
+  },
+  {
+    "name": "relayer-npm",
+    "url": "https://registry.npmjs.org/@polymarket%2fbuilder-relayer-client",
+    "bytes": 48460,
+    "sha256": "ef7ec33efead81c72ea00bcd8925a68a11b56179646fc2cd70a5e5abecd3b8a9",
+    "path": "research/polyroot-v1.1/official/relayer-npm.txt",
+    "fetched_at": "2026-09-09T08:20:43.071670+00:00",
+    "latest": "0.0.10",
+    "repository": null,
+    "dist": {
+      "shasum": "6daa58d845249b0b344cf589b31ab72ea747f8c9",
+      "tarball": "https://registry.npmjs.org/@polymarket/builder-relayer-client/-/builder-relayer-client-0.0.10.tgz",
+      "fileCount": 54,
+      "integrity": "sha512-TarpcWWHI+wiqz5MYxqL3NawCs2gEPSZNFfLmWZ6EYxXvmi2RYgGNYXObo9AsC97J95dZ9+9RGNF/V2QZ59+Rg==",
+      "signatures": [
+        {
+          "sig": "MEYCIQDvGB9ZuCUZTW+mhtgRks5qOmoWhUGGYo90kDAoCF1MOAIhAMtJPGxHA83LXF1Hv0jqIsyYEynjeU+7wGQTsJhnO97g",
+          "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+        }
+      ],
+      "unpackedSize": 123538
+    },
+    "dependencies": {
+      "tsx": "^4.20.3",
+      "viem": "^2.31.4",
+      "axios": "^0.27.2",
+      "ethers": "5.8.0",
+      "typescript": "^5.8.3",
+      "browser-or-node": "^3.0.0",
+      "@ethersproject/wallet": "5.8.0",
+      "@ethersproject/providers": "5.8.0",
+      "@polymarket/builder-signing-sdk": "^0.0.8",
+      "@polymarket/builder-abstract-signer": "0.0.1"
+    },
+    "engines": null,
+    "scripts": {
+      "test": "make test",
+      "build": "make build",
+      "clean": "rm -rf ./dist"
+    },
+    "published": "2026-05-28T18:45:54.731Z"
+  }
+]
