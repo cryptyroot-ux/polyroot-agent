@@ -1,14 +1,31 @@
 /**
  * @polyroot/control — Control API, owner auth, commands, audit
- *
- * Exports:
- * - ControlServer: Express app with auth
- * - OwnerAuth: API key / JWT verification
- * - CommandHandlers: pause, resume, policy update, emergency stop
- * - AuditLogger: immutable audit trail
+ * Phase 1: Placeholder exports — implementation in Sprint 2+
  */
 
-export { ControlServer } from "./server";
-export { OwnerAuth } from "./auth/owner";
-export { CommandHandlers } from "./commands/handlers";
-export { AuditLogger } from "./audit/logger";
+// Re-export domain types
+export type { TradeIntent, RiskDecision, RiskPolicy, Portfolio, LedgerEvent } from "@polyroot/domain";
+
+/** Placeholder for ControlServer — to be implemented */
+export interface ControlServer {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+/** Placeholder for OwnerAuth — to be implemented */
+export interface OwnerAuth {
+  verify(apiKey: string): Promise<boolean>;
+}
+
+/** Placeholder for CommandHandlers — to be implemented */
+export interface CommandHandlers {
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+  updatePolicy(policy: Partial<RiskPolicy>): Promise<void>;
+  emergencyStop(): Promise<void>;
+}
+
+/** Placeholder for AuditLogger — to be implemented */
+export interface AuditLogger {
+  log(entry: unknown): Promise<void>;
+}

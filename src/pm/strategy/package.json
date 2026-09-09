@@ -2,6 +2,7 @@
   "name": "@polyroot/strategy",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -21,12 +22,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@polyroot/domain": "workspace:*",
-    "@polyroot/intelligence": "workspace:*",
+    "@polyroot/domain": "*",
+    "@polyroot/intelligence": "*",
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@polyroot/tsconfig": "workspace:*",
+    "@polyroot/tsconfig": "*",
     "@types/node": "^20.19.0",
     "typescript": "^5.5.0"
   }

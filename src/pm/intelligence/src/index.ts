@@ -1,15 +1,33 @@
 /**
  * @polyroot/intelligence — LLM provider adapters, forecast service
- *
- * Exports:
- * - AnthropicAdapter: Claude API integration
- * - OpenAIAdapter: GPT API integration
- * - ForecastService: orchestrates evidence → forecast
- * - CalibrationService: tracks forecast accuracy over time
+ * Phase 1: Placeholder exports — implementation in Sprint 2+
  */
 
-export { AnthropicAdapter } from "./adapters/anthropic";
-export { OpenAIAdapter } from "./adapters/openai";
-export { ForecastService } from "./services/forecast";
-export { CalibrationService } from "./services/calibration";
-export { EvidenceStore } from "./stores/evidence";
+// Re-export domain types
+export type { EvidenceItem, Forecast, MarketSnapshot } from "@polyroot/domain";
+
+/** Placeholder for AnthropicAdapter — to be implemented */
+export interface AnthropicAdapter {
+  complete(prompt: string): Promise<string>;
+}
+
+/** Placeholder for OpenAIAdapter — to be implemented */
+export interface OpenAIAdapter {
+  complete(prompt: string): Promise<string>;
+}
+
+/** Placeholder for ForecastService — to be implemented */
+export interface ForecastService {
+  generate(evidence: EvidenceItem[]): Promise<Forecast>;
+}
+
+/** Placeholder for CalibrationService — to be implemented */
+export interface CalibrationService {
+  track(forecast: Forecast, outcome: boolean): Promise<void>;
+}
+
+/** Placeholder for EvidenceStore — to be implemented */
+export interface EvidenceStore {
+  add(item: EvidenceItem): Promise<void>;
+  getRecent(limit: number): Promise<EvidenceItem[]>;
+}

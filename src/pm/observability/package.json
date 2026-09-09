@@ -2,6 +2,7 @@
   "name": "@polyroot/observability",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -21,13 +22,13 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@polyroot/domain": "workspace:*",
+    "@polyroot/domain": "*",
     "pino": "^8.18.0",
     "pino-pretty": "^10.3.1",
     "prom-client": "^15.1.0"
   },
   "devDependencies": {
-    "@polyroot/tsconfig": "workspace:*",
+    "@polyroot/tsconfig": "*",
     "@types/node": "^20.19.0",
     "typescript": "^5.5.0"
   }

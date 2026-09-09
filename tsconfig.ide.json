@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@polyroot/domain/*": ["src/pm/domain/src/*"],
+      "@polyroot/data/*": ["src/pm/data/src/*"],
+      "@polyroot/intelligence/*": ["src/pm/intelligence/src/*"],
+      "@polyroot/strategy/*": ["src/pm/strategy/src/*"],
+      "@polyroot/risk/*": ["src/pm/risk/src/*"],
+      "@polyroot/executor/*": ["src/pm/executor/src/*"],
+      "@polyroot/venue/*": ["src/pm/venue/src/*"],
+      "@polyroot/ledger/*": ["src/pm/ledger/src/*"],
+      "@polyroot/control/*": ["src/pm/control/src/*"],
+      "@polyroot/observability/*": ["src/pm/observability/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+}

@@ -21,8 +21,6 @@
     "allowSyntheticDefaultImports": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "erasableSyntaxOnly": false,
-    "baseUrl": "."
-  },
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+    "erasableSyntaxOnly": false
+  }
 }

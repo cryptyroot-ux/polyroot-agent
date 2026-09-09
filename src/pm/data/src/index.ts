@@ -1,14 +1,31 @@
 /**
  * @polyroot/data — Market data adapters, provider adapters, PostgreSQL models
- *
- * Exports:
- * - MarketDataAdapter: reads from Polymarket SDK / WS
- * - ProviderAdapter: normalizes LLM provider outputs
- * - Database: Drizzle ORM setup + migrations
- * - Repositories: evidence, forecast, intent, position, etc.
+ * Phase 1: Placeholder exports — implementation in Sprint 2+
  */
 
-export { MarketDataAdapter } from "./adapters/market-data";
-export { ProviderAdapter } from "./adapters/provider";
-export { db, schema } from "./db";
-export * from "./repositories";
+// Re-export domain types
+export type { MarketSnapshot, EvidenceItem } from "@polyroot/domain";
+
+/** Placeholder for MarketDataAdapter — to be implemented */
+export interface MarketDataAdapter {
+  getSnapshot(marketId: string): Promise<MarketSnapshot>;
+  subscribe(marketIds: string[]): AsyncIterable<MarketSnapshot>;
+}
+
+/** Placeholder for ProviderAdapter — to be implemented */
+export interface ProviderAdapter {
+  normalize(response: unknown): unknown;
+}
+
+/** Placeholder for Database — to be implemented */
+export interface Database {
+  query(sql: string, params?: unknown[]): Promise<unknown[]>;
+}
+
+/** Placeholder for Repositories — to be implemented */
+export interface Repositories {
+  evidence: unknown;
+  forecasts: unknown;
+  intents: unknown;
+  positions: unknown;
+}
