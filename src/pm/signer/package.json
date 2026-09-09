@@ -1,5 +1,5 @@
 {
-  "name": "@polyroot/risk",
+  "name": "@polyroot/signer",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,15 +18,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
     "test": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
-    "test:unit": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
+    "test:contract": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@polyroot/domain": "*",
-    "@polyroot/strategy": "*",
-    "zod": "^3.22.4",
-    "decimal.js": "^10.4.3",
-    "ulid": "^2.3.0"
+    "@polyroot/domain": "*"
   },
   "devDependencies": {
     "@polyroot/tsconfig": "*",

@@ -43,3 +43,6 @@ export interface PolicyStore {
   get(): Promise<RiskPolicy>;
   update(policy: Partial<RiskPolicy>): Promise<void>;
 }
+
+// Money Kernel (PR-RISK-01..08, Blueprint B9)
+export * from "./money-kernel.js";
