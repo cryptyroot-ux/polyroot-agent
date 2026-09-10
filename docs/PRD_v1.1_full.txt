@@ -1,0 +1,463 @@
+Polyroot Product Requirements Document
+Polyroot adalah sistem modular untuk intelligence dan trading otonom di prediction market. Sistem menyatukan banyak sumber informasi dan keluarga strategi di atas satu kernel risiko, ledger finansial, serta jalur eksekusi yang dapat diaudit. Otonomi berlaku di dalam mandat pemilik; kemampuan menganalisis pasar tidak dengan sendirinya memberi izin memakai modal.
+1 Tujuan dan status dokumen
+Versi 1.1 Correction and Completion menggantikan baseline v1.0 untuk rancangan produk dan teknis. Baseline riset adalah 9 September 2026. Dokumen ini disusun untuk Crypty dengan nama produk Polyroot. Seluruh 53 requirement v1.0 tetap memiliki ID dan jejak perubahan; katalog baru memuat 124 requirement, 32 tes kontrak SDK, 46 fault cases, dan pemetaan 30 koreksi audit.
+Fondasi v1.0 yang dipertahankan meliputi reservasi atomik, akuntansi eksak, submit ambiguity, cancel/fill race, finalitas settlement, latched risk breach, recovery dan evaluasi temporal. Cakupan satu wallet dan satu strategi sekarang merupakan konfigurasi rollout pertama. Arsitektur akhir mendukung banyak strategi, wallet actors dan venue adapters tanpa memperbanyak otoritas risiko.
+Status v1.1 adalah candidate specification untuk review dan implementasi bertahap. Belum ada adapter production yang dibekukan, private key yang digunakan, order yang dikirim, fault test implementasi yang lulus, atau edge perdagangan yang dibuktikan oleh pekerjaan dokumen ini. Nama package dan versi kandidat tidak sama dengan admission ke LIVE.
+2 Masalah produk dan hasil yang diinginkan
+Repo trading sering menggabungkan discovery, LLM, strategi, wallet dan order submission dalam satu proses. Daftar strategi yang panjang sulit dinilai ketika saldo, fees, fill, risiko korelasi dan hasil paper tidak memakai kontrak yang sama. Polyroot harus memungkinkan pemilik mengetahui mengapa suatu pasar dipilih, berapa nilai ekonominya setelah biaya, siapa yang mengizinkan ukuran posisi, serta apa yang benar-benar terjadi pada venue.
+Hasil utama adalah keputusan yang dapat ditelusuri dan eksekusi yang tetap konsisten saat data, model atau jaringan gagal. Keberhasilan ekonomis diukur sesudah fees, execution shortfall, insentif yang benar-benar dibayar, biaya AI/data dan alokasi infrastruktur. Tidak ada target win rate atau imbal hasil tetap yang dijadikan janji produk.
+
+3 Keputusan riset yang mengubah baseline
+CloddsBot dipakai sebagai sumber fork pada commit 715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8. Semua 827 blob arsip cocok dengan Git object hash; SHA256 dan ukuran byte dicatat. Sebanyak 42 file menerima telaah semantik terarah. Sisanya memiliki inventaris statis dan keputusan admission konservatif. Ini lengkap sebagai inventory/disposition, belum menjadi audit line-by-line seluruh repository. Lisensi MIT mengizinkan modifikasi dengan pemberitahuan yang tetap dipertahankan.
+Upstream sudah memiliki SafetyManager, risk engine, VaR/stress/volatility, Kelly, market links, combinatorial analysis, weather dan participant tracking. Karena itu Polyroot memakai selective reuse. Pemeriksaan juga menemukan manual signer yang menolak POLY_1271, heuristic sizing, serta jalur copy/MM yang dapat menyamakan keberhasilan request dengan fill atau menghapus local order IDs setelah cancel gagal. Money path tersebut tidak boleh dipromosikan hanya dengan mengganti nama.
+CLOB V2 merupakan boundary P0 sejak produksi bermigrasi pada 28 April 2026. Riset terkini juga menunjukkan migration guide mengarahkan pengguna dari clob-client-v2 ke unified @polymarket/client. Kandidat yang diunduh dan diverifikasi integritasnya adalah client 0.9.0, clob-client-v2 1.1.0 dan builder-relayer-client 0.0.10. Keputusan akhir bergantung pada kemampuan teruji, bukan nama paket.
+Changelog SDK menambah assetId/PolyV2 dan ExchangeV3, serta menyebut maxSpend sebagai target estimasi yang memakai fee terbaru, bukan jaminan hard cap. Sementara halaman order masih memakai bahasa cap. Polyroot memperlakukan ketidaksesuaian itu sebagai kontrak yang belum terbukti: path LIVE harus menunjukkan batas debit yang dapat ditegakkan. Ini tambahan penting di luar 30 temuan audit.
+4 Cakupan akhir dan urutan rollout
+Produk akhir terdiri dari control plane, intelligence plane, strategy ecosystem, deterministic money kernel, execution plane, Wallet and Credential Service, Signer Vault, serta data dan observability plane bersama. Intelligence mencakup fundamental/news, market microstructure, participant behavior, hubungan struktural, alternative data dan cross-market consistency. LLM dapat menyintesis evidence, tetapi tidak menjadi satu-satunya penghasil probabilitas atau pemegang otoritas modal.
+
+Rollout awal menggunakan satu pemilik, satu wallet khusus Polymarket dan kandidat evidence_directional_v1. Strategi lain dapat berada pada RESEARCH/PAPER bersamaan. Tidak ada persyaratan menunggu semua strategi profitable sebelum menguji satu kandidat, tetapi shared kernel, ledger, sandbox dan protocol profile yang dipakai kandidat itu harus lulus P0. Data model tidak mengunci sistem pada satu wallet atau pasar biner.
+Funding, bridging, transfer keluar, withdrawal, penambahan spender, pergantian signer dan kenaikan mandat adalah tindakan pemilik melalui workflow setup. Bot boleh memantau readiness dan mengusulkan tindakan itu. Perps/leverage, token launch, marketplace, arbitrary DeFi, pemasangan plugin langsung dari chat dan self-update agent berada di luar cakupan otonomi produk ini. Multi-user custody/SaaS bukan target rollout pertama.
+5 Alur pengalaman pengguna
+5.1 Instalasi dan wallet readiness
+Instalasi dimulai pada PAPER. Pemilik melihat jenis wallet yang ditemukan, owner signer dan account/funder, status deployment, collateral terkonfirmasi, allowance per spender, dana yang dicadangkan dan saldo siap dipakai. Fresh installation memakai Deposit Wallet/POLY_1271 sebagai jalur default; existing EOA/Proxy/Safe mempunyai jalur kompatibilitas eksplisit. Setup yang belum lengkap ditampilkan sebagai tindakan spesifik, bukan pesan saldo kurang yang ambigu.
+Wallet discovery tidak boleh memicu deployment atau approval secara tersembunyi. Setup mandate menjelaskan action, chain, spender, batas approval dan estimasi biaya. Setelah pemilik mengizinkan setup, Wallet Service mengirim operasi relayer melalui Signer Vault, menunggu konfirmasi, kemudian memeriksa balance/allowance dari account yang benar. Status submission unknown tetap terlihat sampai bukti tersedia.
+5.2 Riset dan keputusan
+Market explorer menampilkan universe yang ditemukan, eligible/rejected beserta alasan, graph relations, sumber utama dan waktu pembaruan. Halaman analisis memperlihatkan raw/calibrated probability, ketidakpastian, counterevidence, harga executable dan net economic EV. NO_TRADE adalah hasil yang sah: stale data, sumber lemah, fees belum diketahui, ukuran di bawah minimum atau kapasitas modal habis harus dapat dijelaskan.
+5.3 Otonomi dalam mandat
+Pemilik memilih versi strategi, wallet, universe, anggaran, periode berlaku dan batas risiko. Aktivasi hanya tersedia bila gate profile/strategi lulus. Order yang memenuhi mandat tidak meminta konfirmasi per trade. Strategi menghasilkan proposal; ukuran dihitung dan dibatasi terpisah; executor hanya mengirim permit yang masih valid. Dashboard menampilkan SystemHealth, VenueMode dan AccountMode sebagai status berbeda.
+5.4 Posisi dan pengurangan risiko
+Halaman posisi menunjukkan shares confirmed/provisional, cost basis, current executable exit value, Hold/Exit/Reallocate EV, risiko kelompok dan status order. Pause entries, cancel open dan flatten adalah aksi berbeda. Cancel yang tidak terkonfirmasi tetap pending; posisi tidak ditandai closed karena SELL request diterima. Stop-loss atau drawdown latch tidak otomatis dihapus ketika proses restart.
+5.5 Eksperimen dan audit
+Pemilik dapat membandingkan strategi dengan benchmark pasar atau baseline sederhana pada waktu dan universe yang sama. Laporan mencantumkan trial count, abandoned runs, biaya, event groups independen, confidence intervals dan simulator reality gap. Satu keputusan dapat dibuka kembali untuk menemukan snapshot data, model response, graph version, permit, order/fill dan journal yang sama. Ekspor teredaksi tersedia dalam CSV/JSON.
+6 Kebijakan otonomi dan ukuran keberhasilan
+Mandat adalah dokumen immutable yang ditandatangani otoritas control plane: wallet, strategy versions, venue/protocol profiles, universe, budget, risk limits, operation types, expiry dan policy hash. Setiap perubahan menghasilkan versi baru. Strategi tidak dapat menaikkan limit, mengaktifkan dirinya di LIVE, memperpanjang mandat, menambah credential atau memilih contract baru.
+Default rollout berikut adalah hipotesis kebijakan yang konservatif dan dapat ditinjau pemilik; bukan nilai optimal yang dibuktikan. Capital cap dan biaya harian AI wajib diisi sebelum autonomous operation. Bila minimum venue melebihi ukuran aman, sistem tetap PAPER atau NO_TRADE.
+
+
+7 Katalog requirement normatif
+P0 berarti wajib sebelum capability terkait dibekukan atau memperoleh LIVE, bukan seluruh strategi harus diaktifkan pada hari pertama. P1 adalah capability lanjutan yang tetap masuk arsitektur. Semua requirement berstatus SPECIFIED, belum implemented. ID PM dipertahankan untuk kompatibilitas traceability; PM bukan nama produk. Acceptance lengkap berada dalam Requirements_v1.1.csv/JSON, menggunakan test ID T-<requirement ID>.
+7.1 Kendali produk
+
+7.2 Data dan identitas pasar
+
+7.3 Forecast dan probabilitas
+
+7.4 Strategi dan seleksi
+
+7.5 Risiko modal
+
+7.6 Eksekusi dan lifecycle
+
+7.7 Ledger dan pelaporan
+
+7.8 Operasi dan keamanan
+
+7.9 Validasi
+
+7.10 Wallet dan kredensial
+
+7.11 Kontrak Polymarket
+
+7.12 Intelligence dan sumber
+
+7.13 Market graph dan korelasi
+
+7.14 Sizing dan exits
+
+7.15 Ekonomi order
+
+7.16 Mode dan error
+
+7.17 Batas keamanan
+
+7.18 Eksperimen dan retensi
+
+7.19 Disposition dan spesifikasi
+
+8 Nonfunctional requirements dan data
+Financial arithmetic memakai integer base units atau decimal eksak dengan asset decimals dari registry. Event store append-only dan double-entry journal berada di PostgreSQL dengan unique keys, transactional outbox dan wallet fencing. Read model dapat dibangun ulang; log aplikasi dan response LLM tidak menjadi sumber saldo. Backup terenkripsi, restore rehearsal dan reconciliation setelah restore merupakan bagian release gate.
+Layanan UI nyaman digunakan pada tablet Android, menampilkan angka ekonomi tanpa mencampurkan aset, dan mengungkap stale/provisional/unknown status. Auth/session/CSRF, redaction dan audit aksi pemilik wajib. Intelligence outage tidak boleh mematikan cancel, reconciliation atau monitoring risiko posisi. Latency SLO disusun per strategy profile; tidak ada klaim HFT sebelum pengukuran jaringan dan venue nyata.
+Data publik dan konten riset diperlakukan sebagai input tak tepercaya. Retriever memakai pembatasan egress/SSRF; strategi berada di OS sandbox; private key berada di vault sempit. Runtime production dipangkas hingga closure yang dibutuhkan. Hak akses sumber dan kelayakan akun/venue diperiksa untuk capability terkait, tanpa menyimpulkan kewarganegaraan atau izin dari bahasa pengguna.
+9 Rencana delivery dan dependencies
+
+Perkiraan perencanaan, bukan komitmen hasil: tim dua engineer dengan dukungan quant/security paruh waktu memerlukan sekitar 2–3 minggu untuk G0, 4–6 minggu untuk G1, dan 3–5 minggu untuk G2; pekerjaan dapat tumpang tindih setelah kontrak inti stabil. G3 memerlukan sekurangnya 30 hari kalender, dan lebih lama bila event independen sedikit. G4 ditentukan ketersediaan fill dan jenis wallet/profile, bukan kalender saja. Budget infrastruktur dan provider dihitung dari profiling pilot; dokumen ini tidak memakai harga cloud/model yang belum diukur.
+10 Freeze readiness dan definisi selesai
+Specification review selesai ketika 30 koreksi memiliki mapping dan requirement tanpa kontradiksi, data contracts serta fault plan dapat direview, dan unresolved decisions memiliki owner/gate. Implementation freeze berbeda: SDK profile, fee/debit bound, POLY_1271 approval/signing, heartbeat dan GTD harus memiliki evidence hasil tes; money-path source yang diadopsi harus selesai ditelaah. LIVE memerlukan pula authenticated micro-LIVE dan bukti strategi.
+Status saat dokumen diterbitkan: koreksi desain tercakup; inventaris dan hash repository terverifikasi; pemilihan SDK masih kandidat; 32 contract tests dan 46 fault cases belum dijalankan pada implementasi. Tidak ada alasan menyebut sistem siap LIVE. Open register mencakup exact contract addresses/code validation, fee bound, heartbeat bridge unified client, session-key beta, completeness review dependencies, data availability untuk specialist, dan threshold experiment per profile.
+11 Paket normatif dan aturan perubahan
+PRD menetapkan hasil dan perilaku produk. Technical Blueprint menetapkan boundary, domain semantics, invariant dan urutan implementasi. Specification Pack berisi semua requirement/acceptance, 827-row Fork Disposition Matrix, 89-row dependency disposition, 30-row correction matrix, 18 JSON Schemas, SDK contracts, fault cases, policy defaults, baseline trace dan sumber. Jika ditemukan konflik, release ditahan dan dilakukan perubahan versioned pada ketiga artefak; tidak ada mekanisme memilih dokumen yang paling longgar.
+Rebranding menjadi Polyroot berlaku pada produk dan namespace target. Pemberitahuan MIT/copyright upstream dan provenance per-file dipertahankan. Klaim jumlah strategi, afiliasi Cambridge atau profitabilitas dari promosi repository tidak dijadikan acceptance evidence karena tidak dibuktikan oleh pemeriksaan ini.
+Sumber dan catatan verifikasi
+Catatan kaki menunjuk ID sumber berikut. Halaman dokumentasi yang berubah menggunakan snapshot penelitian 9 September 2026; metadata dan hash berada di Source_Snapshot_Manifest.json. Sumber baseline ilmiah/operasional berasal dari riset v1.0 dan dibedakan dari temuan protocol baru. Kesimpulan desain tidak merupakan klaim semua source code telah diaudit.
+[R01] alsk1992 / GitHub. CloddsBot LICENSE. Commit 715fd4a6c06b.
+[R03] alsk1992 / GitHub. CloddsBot gateway wiring. Commit 715fd4a6c06b.
+[R04] alsk1992 / GitHub. CloddsBot risk engine. Commit 715fd4a6c06b.
+[R06] alsk1992 / GitHub. CloddsBot manual order signer. Commit 715fd4a6c06b.
+[R07] alsk1992 / GitHub. CloddsBot Kelly sizing. Commit 715fd4a6c06b.
+[R11] alsk1992 / GitHub. CloddsBot copy trading. Commit 715fd4a6c06b.
+[R12] alsk1992 / GitHub. CloddsBot market making strategy. Commit 715fd4a6c06b.
+[R14] Polymarket. Migrating from previous SDKs. Diakses 9 September 2026.
+[R15] Polymarket. Wallets and authentication. Diakses 9 September 2026.
+[R16] Polymarket. Trading quickstart. Diakses 9 September 2026.
+[R17] Polymarket. Predictions changelog. Diakses 9 September 2026.
+[R18] Polymarket. SDK changelog. Diakses 9 September 2026.
+[R19] Polymarket. Placing orders. Diakses 9 September 2026.
+[R33] Polymarket / npm. client 0.9.0 registry metadata. Published 3 September 2026.
+[R34] Polymarket / npm. clob-client-v2 1.1.0 registry metadata. Published 17 July 2026.
+[R35] Polymarket / npm. builder-relayer-client 0.0.10 metadata. Published 28 May 2026.
+[R36] OWASP. SSRF Prevention Cheat Sheet. Diakses 9 September 2026.
+[R37] Node.js. Node.js permissions. Diakses 9 September 2026.
+[R38] OWASP. LLM Prompt Injection Prevention. Diakses 9 September 2026.
+[R45] PostgreSQL. Transaction isolation. PostgreSQL 17.
+[R46] PostgreSQL. Continuous archiving and PITR. PostgreSQL 17.
+
+[TABLE 1]
+Pengguna | Kebutuhan | Hasil yang terlihat
+Pemilik/operator | Mengatur modal, strategi, wallet dan waktu otonomi | Mandat jelas; saldo yang siap dipakai; pause/cancel/exit yang statusnya benar
+Peneliti strategi | Menguji hipotesis tanpa selection bias | Universe log, global trial registry, holdout, replay dan biaya yang lengkap
+Engineer/operator | Mengoperasikan layanan dan memulihkan gangguan | Kontrak versioned, ledger authoritative, fault evidence dan restore runbook
+
+[TABLE 2]
+Keluarga strategi | Peran di produk | Syarat khusus sebelum LIVE
+Evidence directional | Probabilitas dari evidence dan model terkalibrasi | Prospective benchmark, biaya riset, freshness dan uncertainty
+Structural / cross-market | Inconsistency dalam market graph dan payoff states | Proof relasi, exhaustive outcomes, leg execution/unwind budget
+Participant follow | Sinyal wallet dan forecaster yang konsisten | PnL yang direkonstruksi, latency copy, capacity dan survivorship
+Weather / specialist | Model domain dan koreksi error forecast | Station/units/window sesuai resolution source; evaluasi per kota/musim
+Market making / LP | Quotes, inventory dan liquidity incentives | Maker fill calibration, adverse selection, cancel dan reward attribution
+Momentum / expiry / DCA | Sinyal pasar, horizon dan inventory scheduling | Regime stability; DCA bukan alasan menambah risiko setelah limit
+Latency / HFT divergence | Perbedaan informasi atau harga berumur pendek | Clock/transport benchmark, market-rule drift dan micro-LIVE execution gap
+Cross-venue arbitrage | Ekspansi Polymarket–venue lain melalui adapter | Kelayakan venue, resolution basis, settlement mismatch dan funding terpisah
+
+[TABLE 3]
+Parameter awal | Nilai | Makna
+Modal mandat | Wajib ditentukan pemilik | Bukan seluruh saldo wallet
+Order / market / event / portfolio | 0.5% / 2% / 5% / 10% dari cap | Posisi, order aktif/unknown dan reservasi ikut dihitung
+Daily loss / drawdown latch | 2% / 5% | Equity konservatif disesuaikan arus modal
+Intent / risk permit TTL | 30 detik / 1 detik | Batas internal; tidak menjamin request server kadaluwarsa
+Kelly fraction | 0.25 kandidat eksperimen | Tanpa floor minimum; veto kernel tetap final
+PAPER book age | 2 detik untuk directional | Bukan standar latency/HFT
+Retensi | HOT 30 hari; experiment/archives ≥365 hari | Experiment pins dan posisi/dispute aktif mengalahkan cleanup
+
+[TABLE 4]
+Ukuran keberhasilan | Definisi | Bukti penerimaan
+Integritas modal | Tidak ada overspend, oversell atau pelepasan unknown reservation | Seluruh safety invariants dan fault gates pada profile yang dirilis lulus
+Auditability | Decision→input→permit→order→fill→journal dapat dilacak | 100% decision dan financial events pada release test traceable
+Probabilitas | Brier/log loss/calibration terhadap benchmark eligible universe | Event-based out-of-sample confidence intervals; tidak hanya win rate
+Ekonomi | Trading PnL + paid incentives − AI/data/infra costs | Laporan prospective lengkap, exposure/time dan uncertainty dilaporkan
+Execution reality | Gap fill/quantity/slippage/cancel/latency | Per-profile confidence bounds memenuhi threshold preregistered
+Operasi | Recovery, drift dan availability sesuai mandat | Target RPO 15 menit/RTO 60 menit diuji; bukan klaim SLA yang telah tercapai
+
+[TABLE 5]
+ID dan prioritas | Requirement
+PM-GOV-01
+P0 | Baseline fork. Pin commit upstream, lockfile, lisensi, patch lokal, dan schema_version dalam manifest rilis.
+PM-GOV-02
+P0 | Mode operasi. Sediakan RESEARCH, PAPER, SHADOW, dan LIVE; instalasi baru selalu PAPER. Hanya LIVE dapat mengirim order.
+PM-GOV-03
+P0 | Mandat otonomi. Aktivasi LIVE memerlukan mandat pemilik yang berisi wallet, strategi, pasar, batas modal, masa berlaku, dan versi kebijakan; tidak meminta konfirmasi setiap trade yang memenuhi mandat.
+PM-GOV-04
+P0 | Kelayakan akses. Verifikasi persyaratan akun dan pembatasan geografis platform sebelum LIVE; hasil geoblock saja tidak membuktikan kelayakan pengguna.
+PM-GOV-05
+P0 | Cakupan modular. Polyroot mendukung banyak strategi dan profil wallet/venue melalui kernel bersama. Rollout pertama satu pemilik dan satu wallet Polymarket; transfer, bridge, withdrawal, leverage/perps, token launch dan self-update bukan otonomi strategi.
+
+[TABLE 6]
+ID dan prioritas | Requirement
+PM-DATA-01
+P0 | Identitas aset dan protokol. Simpan asset_id bertipe, settlement_protocol, exchange_domain_version, chain, market/event/condition bila berlaku, outcome, collateral, decimals, tick, min_size, rules_hash dan protocol_profile_id. Jangan menganggap semua asset_id adalah CTF token integer.
+PM-DATA-02
+P0 | Aturan penyelesaian. Simpan sumber resolusi, tenggat UTC, teks aturan dan hash versi; perubahan aturan membatalkan forecast dan intent yang belum terkirim.
+PM-DATA-03
+P0 | Order book. Bangun buku harga dari snapshot dan stream, simpan received_at serta source timestamp; reconnect mewajibkan sinkronisasi ulang.
+PM-DATA-04
+P0 | Biaya aktual. Ambil fee settings pasar, tick, min_size, dan mode perdagangan sebelum submit; data biaya tidak diketahui harus menolak entry.
+PM-DATA-05
+P0 | Provenance berita. Setiap EvidenceItem menyimpan URL, penerbit, waktu publikasi/ambil, hash konten, klaim, dan keterkaitan dengan pertanyaan pasar.
+PM-DATA-06
+P0 | Kualitas dan batas data. Deteksi data stale, kontradiksi, duplikasi sindikasi, batas request, dan data yang tidak tersedia; nol berbeda dari missing.
+
+[TABLE 7]
+ID dan prioritas | Requirement
+PM-AI-01
+P0 | Forecast terstruktur multimodel. Forecast memuat distribusi outcome, interval/uncertainty, evidence/counterevidence, assumptions, invalidators, valid_until, model/prompt/calibrator lineage dan abstain. Binary p_yes hanya salah satu shape.
+PM-AI-02
+P0 | Provider portabel. Dukung Anthropic dan endpoint kompatibel OpenAI melalui adapter yang diuji; model ID/config dipin per eksperimen; fallback tercatat.
+PM-AI-03
+P0 | Kualitas probabilitas. Pisahkan probabilitas mentah, terkalibrasi, dan skenario konservatif; confidence verbal LLM tidak dipakai sebagai ukuran posisi.
+PM-AI-04
+P0 | Batas sumber tak tepercaya. Konten web diperlakukan sebagai data, tidak dapat mengubah mandat, menjalankan shell, membaca secret, atau memanggil signer.
+PM-AI-05
+P0 | Anggaran riset. Batasi token, biaya, durasi, jumlah sumber, dan concurrency; kehabisan budget menghasilkan abstain serta tetap menjalankan monitoring posisi.
+PM-AI-06
+P1 | Memori dan penjelasan. Simpan ringkasan bukti dan keputusan untuk pengguna, bukan mengandalkan percakapan sebagai ledger; semua versi dapat ditelusuri.
+
+[TABLE 8]
+ID dan prioritas | Requirement
+PM-STR-01
+P0 | Katalog strategi modular. evidence_directional_v1 adalah kandidat awal; registry juga mendefinisikan structural, participant-follow, weather, market-making/LP, momentum/expiry dan latency. Eligibility berlaku per versi strategi dan protocol profile.
+PM-STR-02
+P0 | Edge setelah biaya. Hitung expected value dari probabilitas konservatif, executable price/depth, net shares, fees, serta biaya operasi; abstain bila edge tidak melampaui buffer.
+PM-STR-03
+P0 | Versi eksperimen. Setiap parameter dan strategi mempunyai versi immutable, periode evaluasi, dan benchmark yang ditetapkan sebelum pengujian.
+PM-STR-04
+P1 | SDK strategi. Kontrak snapshot→Proposal mendukung semua keluarga strategi di proses sandbox, dengan declared data dependencies, budgets, schema dan lifecycle gates.
+
+[TABLE 9]
+ID dan prioritas | Requirement
+PM-RISK-01
+P0 | Batas eksposur. Batasi notional per order, per market, kelompok event berkorelasi, dan seluruh portfolio; hitung posisi plus open order plus reservasi.
+PM-RISK-02
+P0 | Reservasi atomik. Risk check dan reservasi kas/shares/policy_version ditulis atomik; reservasi tidak dilepas selama status submit belum diketahui.
+PM-RISK-03
+P0 | Batas kerugian. Gunakan equity konservatif yang disesuaikan deposit/withdrawal; breach harian/drawdown bertahan setelah restart sampai prosedur resume.
+PM-RISK-04
+P0 | Likuiditas dan ukuran. Harga/tick/min_size/depth/slippage harus lulus; quantity dibulatkan ke bawah. Jika minimum bursa melanggar batas modal, abstain.
+PM-RISK-05
+P0 | Kill switch. PAUSE_ENTRIES menolak entry; CANCEL_OPEN membatalkan order; FLATTEN adalah aksi terpisah dengan batas harga dan posisi aktual.
+PM-RISK-06
+P0 | Jalur pengurangan risiko. SELL hanya memakai shares terverifikasi dan reservasi; tidak membuka short atau menganggap reduce-only native tersedia.
+PM-RISK-07
+P0 | Mandat immutable. Agent dapat mengusulkan perubahan strategi, tetapi tidak dapat menaikkan limit, memperpanjang mandat, mengaktifkan LIVE, atau mengubah signer.
+
+[TABLE 10]
+ID dan prioritas | Requirement
+PM-EXE-01
+P0 | Satu jalur finansial. Semua entry point membuat Proposal/TradeIntent. Hanya executor mengirim order yang berizin; signing dilakukan Signer Vault terpisah melalui typed request sempit.
+PM-EXE-02
+P0 | Adapter dan protocol profile. SDK Candidate Matrix, contract tests, exact version/integrity pin dan adapter freeze berlaku sebelum profile LIVE; wallet, collateral, contract, asset format dan domain dicocokkan.
+PM-EXE-03
+P0 | Idempotensi intent. Simpan intent_id, dedupe_key, payload_hash dan signed order hash sebelum jaringan; satu logical intent tidak dikirim sebagai order baru saat timeout.
+PM-EXE-04
+P0 | Status tidak diketahui. Timeout atau koneksi putus setelah submit menghasilkan SUBMISSION_UNKNOWN; lakukan lookup dan rekonsiliasi, bukan retry buta.
+PM-EXE-05
+P0 | Cancel dan replace. Cancel acknowledgment dan fill terakhir direkonsiliasi sebelum replace; quantity baru hanya sisa yang masih diinginkan dan aman.
+PM-EXE-06
+P0 | Fill dan penutupan. Update posisi hanya berdasarkan fill atau settlement terverifikasi; ACK/open/FOK rejected bukan closed position.
+PM-EXE-07
+P0 | Stream dan heartbeat teruji. Heartbeat endpoint, body, ID rollover, auth, scope wallet dan timeout menjadi versioned contract fixtures; stream ping tidak menggantikan order heartbeat.
+PM-EXE-08
+P0 | Settlement. Simpan dispute/resolved/redeemable/redeemed secara terpisah; redemption hanya setelah finalitas dan transaksi terkonfirmasi, terikat mandat.
+
+[TABLE 11]
+ID dan prioritas | Requirement
+PM-LED-01
+P0 | Event durable. Order, fill, reservasi, fee, transfer dan koreksi menjadi event append-only; proyeksi dapat dibangun ulang.
+PM-LED-02
+P0 | Akuntansi numerik. Gunakan integer unit aset atau decimal eksak; pisahkan ledger cash, shares, cost basis, realized, unrealized dan biaya operasi.
+PM-LED-03
+P0 | Rekonsiliasi berkala. Bandingkan local orders/fills/positions/balances dengan venue dan chain; drift material menahan entry baru.
+PM-LED-04
+P0 | Laporan performa. Pisahkan PAPER/SHADOW/LIVE dan PnL trading/net ekonomi; profit tidak dicatat hanya karena ada sinyal.
+PM-LED-05
+P1 | Ekspor dan audit. Ekspor keputusan, fills, PnL dan konfigurasi teredaksi dalam CSV/JSON; provenance serta koreksi tetap terhubung.
+
+[TABLE 12]
+ID dan prioritas | Requirement
+PM-OPS-01
+P0 | Akses dashboard. Dashboard responsif untuk tablet Android; login pemilik, session aman, CSRF dan audit aksi; signer/DB tidak dipublikasikan.
+PM-OPS-02
+P1 | Observabilitas pengguna. Tampilkan mode, stale data, mandat, saldo bebas/terkunci, posisi, orders, keputusan dan biaya AI; alasan NO_TRADE dapat dibaca.
+PM-OPS-03
+P0 | Isolasi secret berlapis. Private signing key hanya di Signer Vault; L2/relayer credentials tersegmentasi di layanan pemakai, tidak pada LLM/plugin/dashboard atau log. Dependency closure dibatasi per image.
+PM-OPS-04
+P0 | Persistence dan restart. Startup selalu RECOVERING sampai ledger, venue dan mandat selaras; satu executor aktif per wallet memakai fencing.
+PM-OPS-05
+P0 | Backup dan pemulihan. Backup ledger serta konfigurasi terenkripsi di luar VPS; prosedur restore diuji terhadap RPO/RTO yang disepakati.
+PM-OPS-06
+P0 | Monitoring dan biaya. Health, readiness, lag, queue age, fee mismatch, unknown orders, clock drift, dan biaya provider memiliki metrik serta alert terdeduplikasi.
+PM-OPS-07
+P0 | Rilis dan rollback. Rilis memakai immutable image/manifest, migrasi teruji, dan rollout PAPER dahulu; agent tidak memasang update dirinya sendiri.
+
+[TABLE 13]
+ID dan prioritas | Requirement
+PM-VAL-01
+P0 | Tes kontrak dan properti. Uji invariants kas/shares/limits/idempotensi dan adapter terhadap fixture serta read-only API terkini; tidak mengandalkan mock saja.
+PM-VAL-02
+P0 | Evaluasi temporal. Pisahkan train/validation/holdout menurut waktu dan event; semua fitur memiliki cutoff; calibrator dipasang hanya pada train.
+PM-VAL-03
+P0 | Simulator dan kenyataan. Paper engine memodelkan bid/ask/depth, antrean, latency, fee, partial fill dan cancel; kalibrasi terhadap micro-LIVE memakai Execution Reality Gap per profile.
+PM-VAL-04
+P0 | Evaluasi strategi. Laporkan Brier, log loss, calibration, benchmark pasar, net PnL, drawdown, fill ratio, biaya serta jumlah event independen.
+PM-VAL-05
+P0 | Promosi bertahap. RESEARCH/PAPER/SHADOW/micro-LIVE/autonomous-LIVE mempunyai gate berbeda; kenaikan modal perlu keputusan pemilik dan bukti operasi/strategi.
+
+[TABLE 14]
+ID dan prioritas | Requirement
+PM-WALLET-01
+P0 | Deposit Wallet default. Fresh install mendukung full CLOB V2 POLY_1271 Deposit Wallet; existing EOA, POLY_PROXY dan GNOSIS_SAFE di-discover eksplisit, tanpa downgrade diam-diam.
+PM-WALLET-02
+P0 | Discovery owner dan funder. WalletProfile menyimpan owner_signer, account/funder, signature type, chain, deployment proof, contract code/profile dan status discovery.
+PM-WALLET-03
+P0 | Setup terpisah. Create/discover wallet dan setup approvals berada pada setup mandate; constructor SDK yang dapat deploy/create credentials tidak dijalankan sebagai health probe.
+PM-WALLET-04
+P0 | Relayer lifecycle. Catat relayer operation_id, action hash, wallet nonce, submission/confirmation/revert/unknown; approval dijalankan dari account wallet yang tepat.
+PM-WALLET-05
+P0 | Allowance readiness. Allowance collateral dan operator outcome token di-query per spender/protocol; READY memerlukan confirmed balance dan approvals yang cocok.
+PM-WALLET-06
+P0 | L1 dan L2 authentication. Pisahkan L1 typed auth, L2 API credentials, builder dan relayer authorization; binding wallet/signer serta lifecycle tercatat tanpa menyimpan secret pada event.
+PM-WALLET-07
+P0 | Credential lifecycle. CredentialRecord mencatat CREATED, ACTIVE, ROTATING, REVOKED, COMPROMISED, owner, scope, creation proof, rotated_at dan health; transitions diaudit.
+PM-WALLET-08
+P0 | Rotation dan revocation. Rotasi memakai overlap terkendali dan bukti key baru sehat; revoke lama terkonfirmasi, termasuk dampak open orders dan relayer/session yang terpisah.
+PM-WALLET-09
+P0 | Asset readiness. Pisahkan funding asset, settled collateral, outcome inventory, reported wallet balance, allowance, encumbrance dan available-to-trade.
+PM-WALLET-10
+P1 | Session keys opsional. Session key beta hanya profile opt-in setelah scopes, lifetime nyata dan revocation completion terbukti; tidak mengasumsikan custom validUntil atau revoke sinkron.
+
+[TABLE 15]
+ID dan prioritas | Requirement
+PM-PROTO-01
+P0 | Migration boundary. Legacy signed V1 order ditolak. CLOB generation, settlement protocol CTF/PolyV2, Exchange domain dan SDK version adalah dimensi berbeda.
+PM-PROTO-02
+P0 | SDK selection. Bandingkan unified client dan clob-client-v2 berdasarkan signature 0–3, wallet/relayer, heartbeat, asset profiles, fees, rounding dan runtime; pin hanya kandidat yang lulus.
+PM-PROTO-03
+P0 | External contract drift. Simpan snapshot OpenAPI/docs, package SRI, golden payload dan profile hash; perubahan kontrak menahan profile sampai recertification.
+PM-PROTO-04
+P0 | Hard spending bound. maxSpend helper bukan batas keras yang diasumsikan; setiap path LIVE harus membuktikan bound debit termasuk match-time fee atau ditolak.
+PM-PROTO-05
+P0 | GTD dan batas waktu. Uji offset expiration, minimum future expiry dan server clock per SDK/profile; horizon intent tidak otomatis sama dengan expiry resting order.
+PM-PROTO-06
+P0 | Builder metadata. Builder code/metadata divalidasi dan disertakan dalam signed payload hash; default builder credential tidak diperoleh dari plugin.
+
+[TABLE 16]
+ID dan prioritas | Requirement
+PM-INTEL-01
+P0 | Intelligence plane. Sediakan fundamental, market, participant, structural, alternative dan cross-market signals melalui feature contracts; LLM hanya salah satu synthesizer.
+PM-INTEL-02
+P0 | Source Registry. SourceRecord memuat kelas epistemik, domain, reliability dengan sample/window, correction history, syndication parent, latency dan specialization.
+PM-INTEL-03
+P0 | Kualitas sumber. Bobot evidence mempertimbangkan sumber primer, temporal relevance, independensi dan kontradiksi; rating sumber bukan probabilitas kebenaran otomatis.
+PM-INTEL-04
+P0 | Market intelligence. Features menyimpan spread/depth/volume/velocity/orderflow, sampling window, source lag dan quality flags; missing tidak diimputasi nol.
+PM-INTEL-05
+P1 | Participant intelligence. Ranking wallet memperhitungkan settled/open PnL, deposits, event mix, sample size, survivorship, entry latency dan follow capacity.
+PM-INTEL-06
+P1 | Alternative data. Weather/polling/macro/sports adapters menyimpan source version, timestamp, station/units/timezone dan resolution mapping.
+PM-INTEL-07
+P0 | Catalyst bus. Event perubahan aturan, pengumuman, polling, observation, jadwal dan anomali pasar meng-invalidasi forecast/feature/intent terkait.
+PM-INTEL-08
+P0 | Catalyst durability. Event bus memakai durable outbox, event_id, event/received time, subject, version, dedupe dan consumer watermark; replay tidak mengeksekusi ulang trade.
+PM-INTEL-09
+P0 | Forecast ensemble. Ensemble menghindari menghitung provider yang memakai evidence sama sebagai independen; bobot/calibrator dipin per event class.
+PM-INTEL-10
+P0 | Model lineage. Catat provider, exact requested/resolved model, release snapshot/fingerprint bila tersedia, API version, prompt hash, seed/config, schema dan response hash.
+
+[TABLE 17]
+ID dan prioritas | Requirement
+PM-GRAPH-01
+P0 | Relasi bertipe. MarketRelation menyimpan source/target, type, confidence, provenance, generated_by/reviewed_by, valid_from/to, rules hash dan graph_version.
+PM-GRAPH-02
+P0 | Proof constraints. Mutually exclusive, exhaustive, complement, subset, conditional, temporal, family dan correlation dibedakan; hard constraint memerlukan verified resolution proof.
+PM-GRAPH-03
+P0 | Relation proposal review. LLM/regex/embedding hanya mengusulkan relasi; normalisasi event-year, candidate, timezone dan resolution authority harus lolos verifikasi.
+PM-GRAPH-04
+P0 | Konservatif saat unknown. Pasar satu event/series dengan relasi belum diketahui memakai conservative risk group; tidak dianggap independen karena graph kosong.
+PM-GRAPH-05
+P0 | Correlation engine. Pisahkan logical groups dari empirical correlations; model joint payout/scenario, overlapping groups, estimation uncertainty dan time window.
+PM-GRAPH-06
+P1 | Structural alpha. Solver menggunakan payoff matrix semua state relevan, executable leg prices, fees dan non-atomic execution risk; label arbitrase memerlukan proof.
+
+[TABLE 18]
+ID dan prioritas | Requirement
+PM-SIZE-01
+P0 | Sizer terpisah. PositionSizer menghitung raw size dari edge distribution/uncertainty; liquidity/portfolio constraints memperkecil; RiskKernel memberi veto akhir.
+PM-SIZE-02
+P0 | Sizing numerik. Baseline menggunakan bounded fractional Kelly hanya pada payoff profile teruji; fees/uncertainty/joint exposure memerlukan scenario optimizer atau konservatif abstain.
+PM-SIZE-03
+P0 | Exit evaluation. Exit Engine membandingkan net Hold EV, Exit EV dan Reallocate EV dengan bid/depth, fee, time, opportunity cost, liquidity dan risk pressure.
+PM-SIZE-04
+P0 | Exit execution. Risk-reducing exit tetap tunduk pada verified inventory, price floor, protocol/mode dan unknown state; penutupan hanya dari fills.
+PM-SIZE-05
+P0 | Capital allocator. Allocator membagi budget antar strategi menggunakan durable reservations, per-strategy caps dan conflict policy; tidak melakukan internal netting tak terbukti.
+
+[TABLE 19]
+ID dan prioritas | Requirement
+PM-ECON-01
+P0 | Role dan constraint. EconomicRole MAKER/TAKER terpisah dari post_only boolean dan time_in_force; outcome role aktual diambil dari fill.
+PM-ECON-02
+P0 | Net economic EV. Modelkan payout, executable cash flows, taker fee, adverse selection, fill cost, data/AI/infrastructure allocation dan rebate; biaya tidak dihitung dua kali.
+PM-ECON-03
+P0 | Rebate ledger. Maker rebate, liquidity reward dan taker incentive terpisah; EXPECTED/ACCRUED/CONFIRMED_PAID dibedakan dan hanya settled cash menjadi buying power.
+PM-ECON-04
+P0 | Maker inventory. Maker EV memakai conditional fill probability, adverse selection, queue/cancel latency dan inventory carry; reward farming dibatasi downside risk.
+PM-ECON-05
+P0 | Portfolio performance. Laporan memisahkan realized/unrealized trading, fees, confirmed incentives, operations cost dan cashflow-adjusted equity.
+
+[TABLE 20]
+ID dan prioritas | Requirement
+PM-VENUE-01
+P0 | VenueMode ortogonal. Modelkan NORMAL, POST_ONLY, CANCEL_ONLY, READ_ONLY, UNAVAILABLE, UNKNOWN terpisah dari SystemHealth dan AccountMode.
+PM-VENUE-02
+P0 | Capability intersection. Izin final adalah irisan venue mode, account status, protocol, strategy gate, mandate, freshness dan risk state.
+PM-VENUE-03
+P0 | Restart behavior. 425/restart dapat menolak cancel; POST_ONLY recovery ditentukan observed contract/capability, bukan asumsi urutan timer tetap.
+PM-VENUE-04
+P0 | Error taxonomy. Normalisasi RETRYABLE, RECONCILE_REQUIRED, POLICY_BLOCK, VENUE_MODE, PERMANENT_REJECT, AUTH_FAILURE, BALANCE_FAILURE, STALE_DATA, UNKNOWN; simpan raw code.
+PM-VENUE-05
+P0 | Client throttling. Gunakan deadline-aware queues dan bucket IP/signer/order/cancel; perhatikan server headers dan queued delay, bukan hanya HTTP 429.
+PM-VENUE-06
+P0 | In-flight uncertainty. Revalidate sebelum sign/send; deadline abort tidak membuktikan server berhenti. Setelah unknown/throttle, lookup dan quote validation sebelum rencana baru.
+
+[TABLE 21]
+ID dan prioritas | Requirement
+PM-SEC-01
+P0 | Signer Vault. Vault proses terpisah hanya menerima typed SignRequest dengan chain, contract/domain, action, asset/amount, permit/policy hash, nonce/time dan fencing epoch.
+PM-SEC-02
+P0 | Signer budget binding. Vault memverifikasi permit authenticator, payload equality, once-only signing budget/idempotency dan policy epoch; tidak percaya field executor tanpa bukti.
+PM-SEC-03
+P0 | Sandbox strategi. Strategi tak tepercaya berjalan non-root dalam OS process/container sandbox dengan filesystem/read-only snapshot, cgroup limits, syscall policy dan egress deny.
+PM-SEC-04
+P0 | Retrieval SSRF. Fetch gateway menolak private/loopback/link-local/metadata IPv4/IPv6, memvalidasi DNS A/AAAA dan redirects, serta mengunci resolved address/egress.
+PM-SEC-05
+P0 | Content budgets. Retrieval membatasi content type, response bytes, timeout dan decompression; parser terisolasi dan tidak menjalankan active content.
+PM-SEC-06
+P0 | Dependency amputation. Setiap production image memiliki allowlisted code/import/transitive dependency closure; unrelated exchanges, Solana, messaging, token launch dan install hooks dibuang.
+PM-SEC-07
+P0 | Service egress. LLM/retriever/executor/vault memakai jaringan dan DB roles terpisah; vault tidak mempunyai arbitrary HTTP, browser, LLM atau generic shell endpoint.
+PM-SEC-08
+P0 | Key compromise response. Kill signing, freeze entries, reconcile, cancel bila masih bisa, rotate/revoke API dan owner/session keys sesuai jenis; asset rescue hanya owner workflow.
+PM-SEC-09
+P0 | Supply-chain release. Pin source, lockfiles, SDK integrity, container digest dan reviewed build scripts; runtime tidak memasang package atau model secara otomatis.
+
+[TABLE 22]
+ID dan prioritas | Requirement
+PM-EXP-01
+P0 | Universe logging. Catat DISCOVERED, ELIGIBLE, REJECTED beserta reason, ANALYZED, NO_TRADE dan TRADED untuk setiap universe scan/cutoff.
+PM-EXP-02
+P0 | Global trial registry. Simpan semua prompt/model/threshold/strategy trials, parent family, status dan abandoned runs; holdout tidak di-reset diam-diam.
+PM-EXP-03
+P0 | Multiple testing policy. Preregister family, primary metric, valid event-level test dan alpha/looks budget; perubahan policy atau holdout membuat versi baru tanpa menghapus spend lama.
+PM-EXP-04
+P0 | Tiered retention. HOT raw books rolling 30 hari default; EXPERIMENT pins data/features/decisions/replay selama eksperimen dan 365 hari setelah close; ARCHIVE audit minimum 365 hari.
+PM-EXP-05
+P0 | Forensic replay. Experiment manifest menyimpan data hashes, event cutoff, code/profile/model response, graph/source versions, seeds, environment dan fee snapshots.
+PM-EXP-06
+P0 | Reality gap. Bandingkan simulated vs actual micro-LIVE fill rate, quantity, slippage, latency dan cancellation per profile; uncertainty/sample coverage dilaporkan.
+PM-EXP-07
+P0 | Independent events. Hitung effective event groups dan uncertainty dari dependence-aware validation; jumlah orders bukan ukuran sampel independen.
+PM-EXP-08
+P0 | Prospective evaluation. Hosted LLM retrospective result dipisah dari prospective paper/shadow karena training cutoff/alias drift tidak selalu diketahui.
+PM-EXP-09
+P0 | Promotion evidence. Gate report mencatat implemented/tested/source-only status, failed/inconclusive tests, costs dan rollback thresholds; tak ada klaim profit terbukti tanpa out-of-sample evidence.
+
+[TABLE 23]
+ID dan prioritas | Requirement
+PM-FORK-01
+P0 | Full inventory. Seluruh blob pinned commit memiliki path, Git hash, SHA256, byte count, subsystem, disposition, rationale, target, review coverage dan acceptance gate.
+PM-FORK-02
+P0 | Promotion per simbol. KEEP tidak berarti bebas audit; ADAPT/REWRITE/QUARANTINE tidak masuk runtime sebelum owner teknis menutup review dan gates; keputusan dapat direvisi dengan history.
+PM-FORK-03
+P0 | Preservation trace. Seluruh 53 requirement v1.0 dipertahankan ID-nya atau direvisi eksplisit; 30 koreksi audit terhubung requirement, desain, test dan bukti riset.
+PM-FORK-04
+P0 | Freeze register. Pisahkan document baseline dari implementation/profile freeze; P0 unresolved contract, semantic review money path atau fault case menghalangi freeze terkait.
+PM-FORK-05
+P0 | Repository branding. Nama produk, package/service namespaces baru dan dashboard memakai Polyroot; copyright dan provenance CloddsBot tetap dipertahankan.
+
+[TABLE 24]
+Tahap | Hasil konkret | Dependency untuk maju
+G0 Protocol and fork decisions | Disposition review money path; SDK golden fixtures; protocol profile candidate | Tidak ada unknown wallet/domain/fee bound pada profile sasaran
+G1 Money kernel and isolation | Journal, reservations, intent/order lifecycle, vault, sandbox, setup workflow | Fault invariants, no-bypass dan restore laboratory lulus
+G2 Intelligence and strategy contracts | Graph/source/catalyst, universe log, SDK plugins, sizer/exit model | Deterministic replay dan data rights/quality tersedia
+G3 Prospective PAPER and SHADOW | Minimal 30 hari observasi plus event sufficiency dan statistical plan | Holdout, net EV, simulator assumptions dan selection audit layak
+G4 Micro-LIVE calibration | Modal kecil yang ditetapkan pemilik; authenticated venue tests dan reality gap | Bounded loss, contract behavior dan coverage profile terbukti
+G5 Autonomous LIVE per strategy/profile | Mandat terkontrol dengan monitoring dan rollback | G0–G4 terkait lulus; promosi modal eksplisit

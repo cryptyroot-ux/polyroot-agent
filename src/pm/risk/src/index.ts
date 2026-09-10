@@ -47,6 +47,9 @@ export interface PolicyStore {
 // Money Kernel (PM-RISK-01..08, Blueprint B9)
 export * from "./money-kernel.js";
 
+// PostgreSQL implementations for MoneyKernel ports
+export * from "./money-kernel-pg.js";
+
 // Kill switch + reduction paths (PM-RISK-05/06)
 export * from "./kill-switch.js";
 

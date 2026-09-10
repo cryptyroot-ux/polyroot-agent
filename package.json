@@ -60,5 +60,9 @@
     "minimatch": "^10.2.1",
     "qs": "^6.15.0",
     "bigint-buffer": "npm:@vekexasia/bigint-buffer2@^1.0.4"
+  },
+  "dependencies": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.0"
   }
 }

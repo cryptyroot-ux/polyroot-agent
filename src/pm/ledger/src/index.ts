@@ -4,10 +4,8 @@
  * mapping. No I/O.
  */
 import {
-  z,
   type LedgerEvent,
   type TradeIntent,
-  type SignedOrder,
 } from "@polyroot/domain";
 
 /* ─── PM-LEDGER-01: atomic entry generation ──────────────────────────── */
