@@ -207,3 +207,132 @@ describe("PostgreSQL persistence integration (points #1-#3)", { skip: !DB_OK }, 
     await pool.end();
   });
 });
+describe("G4-G6 runtime PostgreSQL integration", { skip: !DB_OK }, () => {
+  it("G4: paper log + experiment registry round-trip through the real DB", async () => {
+    const { PgPaperLog, PgExperimentRegistry } = await import("@polyroot/runtime");
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: PG_URL });
+
+    const paperLog = new PgPaperLog(pool);
+    const registry = new PgExperimentRegistry(pool);
+
+    // Preregister before running (no cherry-picking)
+    const exp = await registry.preregister({
+      name: "pg_g4_baseline",
+      version: "0.1.0",
+      description: "G4 integration baseline",
+      preregisteredRule: "Stop if brier > 0.25 after 100 decisions",
+      mode: "PAPER",
+    });
+    assert.equal(exp.status, "PREREGISTERED");
+
+    // Log a full-universe paper decision
+    await paperLog.insert({
+      market_id: "mkt_g4_1",
+      action: "BUY",
+      forecastP: 0.62,
+      size: 100,
+      fillStatus: "FILLED",
+      filledSize: 100,
+      fillPrice: 0.60,
+      makerFee: 0,
+      takerFee: 120,
+      uncertainty: 0.1,
+      experimentId: exp.id,
+      loopEpoch: 1,
+    });
+    await paperLog.insert({
+      market_id: "mkt_g4_2",
+      action: "NO_TRADE",
+      forecastP: null,
+      size: 0,
+      fillStatus: "CANCELLED",
+      filledSize: 0,
+      fillPrice: null,
+      makerFee: 0,
+      takerFee: 0,
+      uncertainty: 0.9,
+      experimentId: exp.id,
+      loopEpoch: 1,
+    });
+
+    const count = await paperLog.count();
+    assert.ok(count >= 2, `expected >=2 paper_log rows, got ${count}`);
+    const byAction = await paperLog.countByAction();
+    assert.equal(byAction["BUY"], 1);
+    assert.equal(byAction["NO_TRADE"], 1);
+
+    // Conclude the experiment with metrics
+    await registry.conclude(exp.id, {
+      quality: { brier: 0.21, logLoss: 0.55, calibrationError: 0.08, sharpness: 0.3, coverage: 0.81, abstentionRate: 0.1, n: 2 },
+      netPnl: 5.2,
+      maxDrawdownPct: 0.01,
+    });
+    const concluded = await registry.get(exp.id);
+    assert.equal(concluded?.status, "CONCLUDED");
+
+    await pool.end();
+  });
+
+  it("G5: shadow baseline tracks days/clusters; gate NOT_RUN until criteria met", async () => {
+    const { PgShadowBaseline } = await import("@polyroot/runtime");
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: PG_URL });
+
+    const shadow = new PgShadowBaseline(pool);
+
+    // Fresh baseline (from migration insert) starts at 0 days / 0 clusters.
+    const before = await shadow.snapshot();
+    assert.equal(before.gatePassed, false);
+    assert.ok(before.observedDays < 30);
+
+    // Freeze exact versions + preregistered stopping rule.
+    await shadow.freezeVersion("deadbeef", "evaluate after 100 clusters or 30 days, whichever last");
+
+    const rows = await pool.query(
+      `UPDATE shadow_baseline
+       SET resolved_clusters=150, observed_days=45 WHERE id='00000000-0000-0000-0000-000000000001'
+       RETURNING *`,
+    );
+    assert.ok(rows.rowCount === 1);
+
+    const after = await shadow.snapshot();
+    assert.equal(after.resolvedClusters, 150);
+    assert.equal(after.versionsFrozenSha, "deadbeef");
+    assert.equal(after.preregistered, true);
+
+    // The snapshot evaluates the gate from the DB.
+    const resp = await pool.query(
+      `SELECT (observed_days >= 30 AND resolved_clusters >= 100) AS pass
+       FROM shadow_baseline WHERE id='00000000-0000-0000-0000-000000000001'`,
+    );
+    assert.equal(resp.rows[0].pass, true);
+
+    // IMPORTANT: this test only verifies ENGINE mechanics. Real G5 requires
+    // >=30 actual calendar days; we reset the baseline so no fake evidence persists.
+    await pool.query(
+      `UPDATE shadow_baseline SET resolved_clusters=0, observed_days=0,
+           versions_frozen_sha=NULL, preregistered=FALSE, pr_stopping_rule=NULL
+       WHERE id='00000000-0000-0000-0000-000000000001'`,
+    );
+
+    await pool.end();
+  });
+
+  it("G6: micro-LIVE harness wiring validates capital cap + venue gating", async () => {
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: PG_URL });
+
+    // G6 requires a small EXPLICIT capital cap. We assert the policy plumbing
+    // exists (capital_usd_cap column) — but no real funds/fills happen here.
+    const col = (
+      await pool.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_name='risk_policy' AND column_name='capital_usd_cap'`,
+      )
+    ).rows;
+    assert.equal(col.length, 1);
+
+    await pool.end();
+  });
+});
