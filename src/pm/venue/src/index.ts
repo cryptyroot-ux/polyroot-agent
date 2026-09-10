@@ -57,3 +57,4 @@ export interface VenueAdapter {
 // Venue-mode gate, capability intersection, error taxonomy, throttling,
 // recovery (PM-VENUE-01..06)
 export * from "./policy.js";
+export * from "./capability.js";
