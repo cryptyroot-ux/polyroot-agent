@@ -452,3 +452,80 @@ export function runPaperLoop(deps: PaperLoopDeps, markets: Array<{ market_id: st
 
   return { decisions, probabilities, outcomes, economic, probQuality };
 }
+/* ─── PR-AUT-02 (G4): PAPER loop through the REAL pipeline ────────────────── */
+
+export interface PaperFinancialDecision {
+  market_id: string;
+  action: "BUY" | "SELL";
+  p: number;
+  size: number;
+  fill: SimulatedFill;
+  pnl: number;
+}
+
+export interface RunPaperLoopWithOrchestratorParams {
+  markets: Array<{ market_id: string; bid: number; ask: number }>;
+  feeInput: Omit<FillModelInput, "size" | "bid" | "ask">;
+  forecast: (m: { market_id: string; bid: number; ask: number }) => number | null;
+  sizeIntent: (m: { market_id: string; bid: number; ask: number }, p: number) => number;
+  /** Financial gate (PRD P3.2): only ALLOW lets a new order reach the orchestrator. */
+  computeGate: (m: { market_id: string; bid: number; ask: number }) => "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED";
+  /** Side effect that runs before each entry attempt (permission/eligibility hook). */
+  onEntry: (m: { market_id: string; bid: number; ask: number }) => void;
+  /** The real money path: MoneyKernel -> Executor -> SignerVault (PR-EXE-01). */
+  orchestrate: (m: { market_id: string; bid: number; ask: number; p: number; size: number }) => Promise<unknown>;
+}
+
+export interface RunPaperLoopWithOrchestratorResult {
+  decisions: PaperFinancialDecision[];
+  economic: EconomicMetrics;
+}
+
+/**
+ * The full autonomous loop but routes each tradable decision through the REAL
+ * pipeline (orchestrate). The financial gate decides entry admission per
+ * market; only ALLOW reaches the money path. This fixes the prior gap where
+ * PAPER simulated fills without touching MoneyKernel/Executor/Signer.
+ */
+export async function runPaperLoopWithOrchestrator(
+  params: RunPaperLoopWithOrchestratorParams,
+): Promise<RunPaperLoopWithOrchestratorResult> {
+  const decisions: PaperFinancialDecision[] = [];
+  const perMarketPnl: number[] = [];
+  const equityCurve = [1000];
+  let totalFees = 0;
+  let grossPnl = 0;
+  let turnover = 0;
+
+  for (const m of params.markets) {
+    const p = params.forecast(m);
+    if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02) continue;
+    const gate = params.computeGate(m);
+    params.onEntry(m);
+    if (gate !== "ALLOW") continue; // entry or financially blocked -> no new order
+    const size = params.sizeIntent(m, p);
+    await params.orchestrate({ ...m, p, size });
+    // Simulated fill for accounting (still no financial I/O):
+    const fill = simulateFill({ ...params.feeInput, size, bid: m.bid, ask: m.ask });
+    const pnl = fill.status === "CANCELLED" ? 0 : (p - 0.5) * fill.filledSize - (fill.makerFee + fill.takerFee);
+    decisions.push({ market_id: m.market_id, action: p > 0.5 ? "BUY" : "SELL", p, size, fill, pnl });
+    perMarketPnl.push(pnl);
+    grossPnl += pnl + (fill.makerFee + fill.takerFee);
+    turnover += fill.filledSize * fill.fillPrice;
+    totalFees += fill.makerFee + fill.takerFee;
+    const last = equityCurve[equityCurve.length - 1] ?? 1000;
+    equityCurve.push(last + pnl);
+  }
+
+  const economic = computeEconomicMetrics({
+    equityCurve,
+    initialEquity: equityCurve[0] ?? 1000,
+    totalFees,
+    grossPnl,
+    turnover,
+    capacityUsd: 10_000,
+    perMarketPnl,
+  });
+
+  return { decisions, economic };
+}
