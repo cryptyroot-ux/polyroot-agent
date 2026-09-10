@@ -17,8 +17,8 @@
     "dev": "tsc -w -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
-    "test": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
-    "test:unit": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
+    "test": "node -e \"console.log('no package-scoped tests yet — see tests/pm')\"",
+    "test:unit": "node -e \"console.log('no package-scoped tests yet — see tests/pm')\"",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -28,10 +28,11 @@
     "@polyroot/risk": "*",
     "@polyroot/signer": "*",
     "express": "^4.18.2",
-    "zod": "^3.22.4",
+    "pg": "^8.11.5",
     "pino": "^8.18.0",
     "pino-pretty": "^10.3.1",
-    "pg": "^8.11.5"
+    "ulid": "^2.4.0",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@polyroot/tsconfig": "*",
