@@ -58,3 +58,4 @@ export interface VenueAdapter {
 // recovery (PM-VENUE-01..06)
 export * from "./policy.js";
 export * from "./capability.js";
+export * from "./polymarket-adapter.js";
