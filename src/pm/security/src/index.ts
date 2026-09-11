@@ -1,5 +1,5 @@
 /**
- * @polyroot/security — Research quarantine boundary (PR-SEC-02, T-PR-SEC-02, G2-G7).
+ * @polyroot/security — Security boundaries (PR-SEC-02, PR-SEC-03, T-PR-SEC-02, T-PR-SEC-03, G2-G7).
  *
  * High-risk retrieval/parsing runs in a low-privilege research boundary.
  * Privileged forecasting/strategy receives normalized evidence objects, never
@@ -7,6 +7,7 @@
  * compromised it cannot reach executor/signing/private-db roles.
  */
 
+// Research quarantine boundary (PR-SEC-02)
 export type Resource =
   | "market_data"
   | "evidence_store"
@@ -76,3 +77,10 @@ export function redactSecrets(payload: Record<string, unknown>): Record<string, 
   }
   return out;
 }
+
+// Egress Guard (PR-SEC-03, T-PR-SEC-03P0)
+export { EgressGuard, type EgressGuardConfig, type EgressCheckResult } from "./egress-guard.js";
+
+// Re-export venue capability types for consumers that need unified security boundary access
+export type { CapabilityDecision } from "@polyroot/venue";
+export { capabilityAllows } from "@polyroot/venue";
