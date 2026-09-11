@@ -240,3 +240,71 @@ export function contradicts(prices: number[]): boolean {
 /* ─── Catalyst passthrough types (used by intelligence plane) ────────── */
 
 export type { CatalystEvent };
+/* ─── PR-DATA-07: full universe decision log ─────────────────────────────── */
+
+export interface MarketDecision {
+  id: string;
+  ticker: string;
+  eligible: boolean;
+  reason?: string;
+  decidedAt: Date;
+}
+
+export interface DecideInput {
+  metadataOk: boolean;
+  liquidityOk: boolean;
+  rulesOk?: boolean;
+}
+
+/** Deterministic eligibility decider — every rejection carries a reason code. */
+export class UniverseDecider {
+  decide(id: string, input: DecideInput): MarketDecision {
+    const now = new Date();
+    if (!input.metadataOk) {
+      return { id, ticker: id, eligible: false, reason: "metadata_missing", decidedAt: now };
+    }
+    if (!input.rulesOk) {
+      return { id, ticker: id, eligible: false, reason: "rules_unclear", decidedAt: now };
+    }
+    if (!input.liquidityOk) {
+      return { id, ticker: id, eligible: false, reason: "no_depth", decidedAt: now };
+    }
+    return { id, ticker: id, eligible: true, decidedAt: now };
+  }
+}
+
+/** Append-only log of every market considered (selection-bias audit). */
+export class UniverseLog {
+  private decisions: MarketDecision[] = [];
+
+  record(d: MarketDecision): void {
+    this.decisions.push(d);
+  }
+
+  get(id: string): MarketDecision | undefined {
+    return this.decisions.find((d) => d.id === id);
+  }
+
+  all(): MarketDecision[] {
+    return [...this.decisions];
+  }
+
+  traded(): MarketDecision[] {
+    return this.decisions.filter((d) => d.eligible);
+  }
+
+  rejected(): MarketDecision[] {
+    return this.decisions.filter((d) => !d.eligible);
+  }
+
+  /** Replay the exact set for a calendar day. */
+  replayDay(day: Date): MarketDecision[] {
+    const y = day.getUTCFullYear();
+    const m = day.getUTCMonth();
+    const d = day.getUTCDate();
+    return this.decisions.filter((x) => {
+      const xd = x.decidedAt;
+      return xd.getUTCFullYear() === y && xd.getUTCMonth() === m && xd.getUTCDate() === d;
+    });
+  }
+}
