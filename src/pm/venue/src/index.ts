@@ -12,50 +12,26 @@
  * adapter deterministic and unit-testable without a live network.
  */
 
-import type {
-  AccountMode,
-  MarketSnapshot,
-  OrderResult,
-  SignedOrder,
-  VenueCapability,
-  VenueMode,
-} from "@polyroot/domain";
+import type { AccountMode, VenueCapability } from "@polyroot/domain";
 
+// Canonical adapter contract types live in types.ts (no circular runtime import
+// with the concrete adapter below).
 export type {
-  AccountMode,
-  MarketSnapshot,
-  OrderResult,
-  SignedOrder,
-  VenueCapability,
-};
-
-/** A single low-level, venular call outcome. */
-export type SubmitOutcome =
-  | { ok: true; result: OrderResult }
-  | { ok: false; code: string; reason: string };
-
-/**
- * VenueAdapter capability contract. Every implementation MUST:
- *  - refuse any request whose venue mode forbids the action (`venueActionGate`);
- *  - narrow `SignedOrder` submission to the canonical type (no arbitrary bytes);
- *  - treat an ACK as "not a fill" and return structured `OrderResult`.
- */
-export interface VenueAdapter {
-  readonly mode: VenueMode;
-  /** Return a fresh market snapshot scoped to a market id. */
-  getOrderBook(marketId: string): Promise<MarketSnapshot>;
-  /** Submit a typed signed order if and only if the mode gate allows it. */
-  placeOrder(order: SignedOrder): Promise<SubmitOutcome>;
-  /** Cancel by venue order id, subject to the mode gate. */
-  cancelOrder(orderId: string): Promise<SubmitOutcome>;
-  /** Query the venue for the current status of a submitted order. Returns null if the venue has no record. */
-  getOrderStatus(orderId: string): Promise<OrderResult | null>;
-  /** Set the current operational mode (narrowed by the supervisor). */
-  setMode(mode: VenueMode): void;
-}
+  SubmitOutcome,
+  VenueAdapter,
+} from "./types.js";
 
 // Venue-mode gate, capability intersection, error taxonomy, throttling,
 // recovery (PM-VENUE-01..06)
 export * from "./policy.js";
 export * from "./capability.js";
 export * from "./polymarket-adapter.js";
+
+// Permit store with atomic claim (PR-EXE-02, PR-OPS-02)
+export * from "./permit-store.js";
+
+// Durable recovery ledger for in-flight orders and reconciliation (PM-EXE-04/06)
+export * from "./recovery-ledger.js";
+
+// Re-export domain types used by the public surface.
+export type { AccountMode, VenueCapability };

@@ -33,7 +33,7 @@ export interface OrderBuildInput {
 }
 
 export type OrderBuildResult =
-  | { ok: true; order: SignedOrder }
+  | { ok: true; order: SignedOrder; permit: ExecutionPermit }
   | { ok: false; code: string; reason: string };
 
 function fail(code: string, reason: string): OrderBuildResult {
@@ -119,7 +119,7 @@ export async function buildSignedOrder(
     return fail("ORDER_INVALID", parsed.error.message);
   }
 
-  return { ok: true, order: parsed.data };
+  return { ok: true, order: parsed.data, permit };
 }
 
 export type { ExecutionPermit, SignedOrder, TradeIntent, WalletIdentity };

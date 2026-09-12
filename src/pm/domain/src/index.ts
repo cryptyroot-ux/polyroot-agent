@@ -164,6 +164,15 @@ export const OrderStatusSchema = z.enum([
 ]);
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
+/** Order lifecycle state machine (TABLE 16, PM-EXE-03/04). */
+export type OrderLifecycleState =
+  | "CANCEL_UNKNOWN"
+  | "NOT_SEEN"
+  | "SUBMITTING"
+  | "ACKNOWLEDGED"
+  | "SUBMISSION_UNKNOWN"
+  | "DEFINITIVE_REJECT";
+
 export const CancelStatusSchema = z.enum([
   "CANCEL_REQUESTED",
   "CANCELED",
