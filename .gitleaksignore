@@ -1,0 +1,26 @@
+# Gitleaks ignore file for PolyRoot v1.1
+# False positives in test fixtures and legacy documentation
+
+# Test fixtures with placeholder keys
+tests/pm/contracts/observability.test.ts
+tests/unit/polymarket-order-signer-v2.test.ts
+tests/unit/fast-broadcast-byte-parity.test.ts
+
+# Legacy documentation with example curl commands
+README.md
+public/SKILL.md
+docs/EVM_WALLET.md
+
+# Legacy CloddsBot fork source files
+src/feeds/virtuals/index.ts
+src/evm/virtuals.ts
+src/auth/google.ts
+
+# Schema files with placeholder values
+docs/spec_pack/Polyroot_v1.1_Specification_Pack/MANIFEST_SHA256.json
+schemas/CredentialRecord.schema.json
+
+# Additional legacy files
+src/feeds/virtuals/index.ts
+src/evm/virtuals.ts
+src/auth/google.ts

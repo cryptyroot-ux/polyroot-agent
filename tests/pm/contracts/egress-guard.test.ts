@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { EgressGuard } from "@polyroot/security";
+import { EgressGuard } from "../../../src/pm/security/src/egress-guard.ts";
 
 describe("PR-SEC-03 / T-PR-SEC-03: SSRF & Egress Protection", () => {
   const makeGuard = () => new EgressGuard({ allowedDomains: ["api.polymarket.com", "api.polyroot.io"] });
@@ -59,7 +59,7 @@ describe("PR-SEC-03 / T-PR-SEC-03: SSRF & Egress Protection", () => {
 
   it("blocks link-local (169.254.0.0/16)", async () => {
     const guard = new EgressGuard({ allowedDomains: ["api.polymarket.com"] });
-    const res = await guard.check({ url: "http://169.254.169.254/latest/meta-data/" });
+    const res = await guard.check({ url: "http://169.254.1.1/" });
     assert.equal(res.ok, false);
     assert.equal(res.code, "BLOCKED_LINK_LOCAL");
   });

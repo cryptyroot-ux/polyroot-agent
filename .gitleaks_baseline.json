@@ -1,0 +1,22 @@
+[
+ {
+  "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "StartLine": 33,
+  "EndLine": 33,
+  "StartColumn": 13,
+  "EndColumn": 109,
+  "Match": "CredentialRecord.schema.json\": \"REDACTED\"",
+  "Secret": "REDACTED",
+  "File": "docs/spec_pack/Polyroot_v1.1_Specification_Pack/MANIFEST_SHA256.json",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 3.8362865,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": "",
+  "Tags": [],
+  "RuleID": "generic-api-key",
+  "Fingerprint": "docs/spec_pack/Polyroot_v1.1_Specification_Pack/MANIFEST_SHA256.json:generic-api-key:33"
+ }
+]

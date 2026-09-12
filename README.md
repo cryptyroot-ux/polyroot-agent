@@ -55,7 +55,7 @@ Key invariants:
 | **Spec version** | v1.1 (Correction & Completion Release, 9 Sep 2026) |
 | **Requirements** | **96** traceable (86 P0 + 10 P1) — [PRD_v1.1.docx](PolyRoot_PRD_v1.1.docx) |
 | **Gates** | G0–G7 (G0–G3 verified, G4–G7 pending economic evidence) |
-| **Traceability** | 124/124 structural mapping (124 PM-* requirement IDs ↔ test IDs) |
+| **Traceability** | 96/96 structural mapping (96 PR-* requirement IDs ↔ test IDs) |
 | **Tests** | 170 contract + 12 property = **183 passing** |
 | **Build** | 36/36 packages (monorepo, turbo) |
 | **Lint / Typecheck** | Clean |
@@ -114,7 +114,7 @@ npm run dev          # starts gateway + executor in PAPER mode
 
 ```bash
 npm run test:unit        # 170 contract + 12 property = 183 tests
-npm run traceability     # 124/124 structural traceability
+npm run traceability     # 96/96 structural traceability
 npm run build            # 36/36 packages pass
 npm run lint && npm run typecheck
 ```

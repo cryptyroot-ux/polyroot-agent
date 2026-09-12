@@ -18,7 +18,7 @@ describe("PR-OPS-05: real observability (no placeholder)", () => {
 
   it("Logger: records messages with level; redacts secret-like fields", () => {
     const logger = new Logger();
-    logger.info("order submitted", { orderId: "0xABC123", secret: "sk_live_1234567890123456" });
+    logger.info("order submitted", { orderId: "0xABC123", secret: "sk_live_1234567890123456" }); // gitleaks:allow
     const logs = logger.getLogs("info");
     assert.ok(logs.length === 1);
     const entry = logs[0];

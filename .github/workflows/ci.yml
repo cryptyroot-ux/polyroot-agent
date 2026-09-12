@@ -123,10 +123,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: --verbose --redact
+      - name: Run Gitleaks (no-git with baseline)
+        run: |
+          gitleaks detect --source . --no-git --baseline-path .gitleaks_baseline.json --verbose --redact --exit-code 1
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0

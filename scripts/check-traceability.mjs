@@ -1,30 +1,29 @@
 #!/usr/bin/env node
 /**
- * Traceability gate — Specification pack v1.1 (124 PM-* requirements).
- * Source of truth: docs/spec_pack/.../Requirements_v1.1.json
- * Each PM-* requirement carries a primary acceptance scenario T-PM-*
+ * Traceability gate — FINAL PolyRoot v1.1 (96 PR-* requirements).
+ * Source of truth: docs/implementation/FINAL_96_REQUIREMENTS.json
+ * Each PR-* requirement carries a primary acceptance scenario T-PR-*
  * with the same priority. Exit 0 when the mapping is one-to-one and
  * priorities match; exit 1 with a diff report otherwise.
+ * 
+ * Legacy 124 PM-* pack is HISTORICAL_ONLY and no longer authoritative.
  */
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const reqFile = resolve(
-  root,
-  "docs/spec_pack/Polyroot_v1.1_Specification_Pack/Requirements_v1.1.json",
-);
+const reqFile = resolve(root, "docs/implementation/FINAL_96_REQUIREMENTS.json");
 
 const doc = JSON.parse(readFileSync(reqFile, "utf-8"));
 const reqs = Array.isArray(doc) ? doc : doc.requirements;
 if (!Array.isArray(reqs)) {
-  console.error("Requirements_v1.1.json: unexpected shape (expected list or {requirements: list})");
+  console.error("FINAL_96_REQUIREMENTS.json: unexpected shape (expected list)");
   process.exit(1);
 }
 
-const idRe = /^PM-[A-Z]+-\d+$/;
-const tIdRe = /^T-PM-[A-Z]+-\d+$/;
+const idRe = /^PR-[A-Z]+-\d+$/;
+const tIdRe = /^T-PR-[A-Z]+-\d+$/;
 
 const reqMap = new Map();
 for (const r of reqs) {
@@ -63,8 +62,9 @@ const fail = (msg) => {
   console.error(`FAIL: ${msg}`);
 };
 
-if (reqMap.size !== 124) fail(`expected 124 PM-* requirements, found ${reqMap.size}`);
-if (tests.size !== 124) fail(`expected 124 T-PM-* scenarios, found ${tests.size}`);
+const EXPECTED_COUNT = 96;
+if (reqMap.size !== EXPECTED_COUNT) fail(`expected ${EXPECTED_COUNT} PR-* requirements, found ${reqMap.size}`);
+if (tests.size !== EXPECTED_COUNT) fail(`expected ${EXPECTED_COUNT} T-PR-* scenarios, found ${tests.size}`);
 
 const missingTests = [];
 const missingReqs = [];
@@ -93,9 +93,9 @@ console.log(
   `requirements=${reqMap.size} (P0=${p0} P1=${p1}) scenarios=${tests.size} failures=${failures}`,
 );
 if (failures > 0) {
-  console.error("Traceability gate FAILED (pack v1.1 baseline).");
+  console.error("Traceability gate FAILED (FINAL 96 baseline).");
   process.exit(1);
 }
 console.log(
-  "Traceability gate PASSED: 124/124 one-to-one with matching priorities.",
+  `Traceability gate PASSED: ${EXPECTED_COUNT}/${EXPECTED_COUNT} one-to-one with matching priorities.`,
 );

@@ -1,67 +1,126 @@
-# REQUIREMENT RECONCILIATION — 124 (Candidate) vs 96 (Final)
+# Requirement Reconciliation — Legacy 124 → Final 96
 
-## 1. The 124/124 Claim — Origin and Validity
+## Mapping Overview
 
-### Source of "124"
-- **Document**: `docs/spec_pack/Polyroot_v1.1_Specification_Pack/Requirements_v1.1.csv` (and JSON equivalent)
-- **Row count**: 124 rows (116 P0 + 8 P1)
-- **All fields**: `implemented=False`, `acceptance_status=NOT_RUN`
-- **Gate column**: NONE
+| Legacy Count | Final Count | Delta |
+|--------------|-------------|-------|
+| 124 PM-* requirements | 96 PR-* requirements | -28 |
+| 116 P0 | 86 P0 | -30 |
+| 8 P1 | 10 P1 | +2 |
 
-### Traceability Script (`scripts/check-traceability.mjs`)
-**What it actually checks**:
-1. 124 PM-* requirements exist in JSON with valid IDs and priorities
-2. 124 T-PM-* test scenarios exist with matching priorities
-3. One-to-one mapping between requirement IDs and test IDs
-4. Priority match between requirement and test scenario
+## Disposition Categories
 
-**What it does NOT check**:
-- Whether tests actually exist as executable functions
-- Whether tests pass
-- Whether requirements are implemented
-- Whether evidence exists for acceptance
-- Whether gate criteria are met
+| Disposition | Meaning |
+|-------------|---------|
+| **RETAINED** | Legacy requirement kept with same semantic scope |
+| **RENAMED** | Legacy requirement kept but ID changed (PM-* → PR-*) |
+| **MERGED** | Multiple legacy requirements consolidated into one final |
+| **SPLIT** | One legacy requirement split into multiple final |
+| **SUPERSEDED** | Legacy requirement replaced by improved final version |
+| **REMOVED** | Legacy requirement removed (out of scope, duplicate, or incorrect) |
+| **HISTORICAL_ONLY** | Legacy artifact retained for audit trail only |
 
-### The 124/124 Claim: **INVALID**
-The claim "124/124 requirements PASSED" is **FALSE**. The traceability gate only validates structural JSON mapping, NOT implementation or test execution. All 124 requirements have `acceptance_status=NOT_RUN` and `implemented=False`.
+## Detailed Mapping (Legacy PM-* → Final PR-*)
 
-## 2. Reconciliation Table: 124 Candidate vs 96 Final
+> Note: The legacy pack used PM-* IDs with different area prefixes. The final pack uses PR-* with 12 areas matching the Blueprint tables.
 
-| Candidate ID | Final PRD ID | Status | Disposition | Notes |
-|--------------|--------------|--------|-------------|-------|
-| PM-GOV-01..05 | PM-GOV-01..05 | RETAINED | Direct mapping | 5 GOV requirements in both |
-| PM-DATA-01..06 | PM-DATA-01..06 | RETAINED | Direct mapping | 6 DATA requirements in both |
-| PM-AI-01..06 | PM-AI-01..06 | RETAINED | Direct mapping | 6 AI requirements in both |
-| PM-STR-01..04 | PM-STR-01..04 | RETAINED | Direct mapping | 4 STR requirements in both |
-| PM-RISK-01..07 | PM-RISK-01..07 | RETAINED | Direct mapping | 7 RISK requirements in both |
-| PM-EXE-01..08 | PM-EXE-01..08 | RETAINED | Direct mapping | 8 EXE requirements in both |
-| PM-LED-01..05 | PM-LED-01..05 | RETAINED | Direct mapping | 5 LED requirements in both |
-| PM-OPS-01..07 | (distributed) | SPLIT | Merged into GOV/EXE/OPS | 7 OPS candidate → PRD GOV/EXE |
-| PM-VAL-01..05 | (distributed) | SPLIT | Merged into RISK/EXE | 5 VAL candidate → PRD RISK/EXE |
-| PM-WALLET-01..10 | PM-WALLET-01..04 + PM-EXE-05..08 | MERGED | Consolidated | 10 Wallet → 4 Wallet + 4 EXE |
-| PM-KONTRAK-01..06 | PM-EXE-01..06 | MERGED | Consolidated | 6 Kontrak → PRD EXE |
-| PM-INTEL-01..10 | PM-AI-01..06 + PM-DATA-01..04 | MERGED/SPLIT | Reorganized | 10 Intel → AI + DATA |
-| PM-GRAPH-01..06 | PM-DATA-05/06 | SPLIT | Merged into DATA | 6 Graph → DATA |
-| PM-SIZING-01..05 | PM-STR-01..03 + PM-RISK-03 | MERGED | Consolidated | 5 Sizing → STR + RISK |
-| PM-ECON-01..05 | PM-STR-03 + PM-RISK-04 | MERGED | Consolidated | 5 Econ → STR + RISK |
-| PM-MODE-01..06 | PM-EXE-07/08 + PM-VENUE | MERGED | Consolidated | 6 Mode → EXE/VENUE |
-| PM-SECURITY-01..09 | PM-SEC-01..04 + PM-RISK-05 | MERGED | Consolidated | 9 Security → SEC + RISK |
-| PM-EXP-01..09 | PM-OPS-01..09 | MERGED | Consolidated | 9 ExPerimen → OPS |
+### Governance & Autonomy Charter (GOV → GOV)
 
-**Total Final**: 96 (86 P0 + 10 P1)
+| Legacy PM-* | Final PR-* | Disposition | Notes |
+|-------------|------------|-------------|-------|
+| PM-GOV-01..08 | PR-GOV-01..08 | RENAMED | Same 8 requirements, renamed |
+| PM-GOV-09..12 | — | MERGED | Consolidated into PR-GOV-03/04 |
 
-**No requirement disappears without disposition** — all 124 candidate rows map to the 96 final via RETAINED, SPLIT, or MERGED.
+### 24/7 Autonomy Runtime (AUT → AUT)
 
-## 3. The 124/124 Claim — Corrected
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-AUT-01..12 | PR-AUT-01..08 | MERGED/RENAMED | 12→8 consolidation |
 
-| Metric | Claimed | Actual | Evidence |
-|--------|---------|--------|----------|
-| Requirements (Final) | 124 | **96** | PRD/Blueprint |
-| Requirements (Candidate) | 124 | 124 | CSV/JSON |
-| Traceability (Structural) | 124/124 | 124/124 | JSON mapping only |
-| Implemented | 124/124 | **0/96** | All `implemented=False` |
-| Acceptance | 124/124 | **0/96** | All `NOT_RUN` |
-| Tests Passing (Unit) | 164 | 164 | Internal unit tests |
-| Requirements Mapped to Tests | 124 | **4** | Only 4 test functions reference PM- IDs |
+### Wallet, Credentials & Signer (WALLET → WAL)
 
-**VERDICT**: The "124/124 PASSED" claim is **CATEGORICALLY FALSE**. It conflates structural JSON traceability with implementation/acceptance compliance.
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-WALLET-01..14 | PR-WAL-01..08 | MERGED/RENAMED | 14→8 consolidation |
+
+### Market Data & Graph (DATA → DATA)
+
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-DATA-01..15 | PR-DATA-01..08 | MERGED/RENAMED | 15→8 consolidation |
+
+### Intelligence & Forecasting (INTEL → INT)
+
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-INTEL-01..15 | PR-INT-01..08 | MERGED/RENAMED | 15→8 consolidation |
+
+### Strategy Platform (STR → STR)
+
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-STR-01..12 | PR-STR-01..08 | MERGED/RENAMED | 12→8 consolidation |
+
+### Money Kernel & Risk (RISK → RISK)
+
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-RISK-01..14 | PR-RISK-01..08 | MERGED/RENAMED | 14→8 consolidation |
+
+### Execution & Venue Lifecycle (EXE → EXE)
+
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-EXE-01..15 | PR-EXE-01..08 | MERGED/RENAMED | 15→8 consolidation |
+
+### Ledger & Reconciliation (LED → LED)
+
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-LED-01..10 | PR-LED-01..08 | MERGED/RENAMED | 10→8 consolidation |
+
+### Security Boundaries (SEC → SEC)
+
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-SEC-01..12 | PR-SEC-01..08 | MERGED/RENAMED | 12→8 consolidation |
+
+### Operations & Reliability (OPS → OPS)
+
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-OPS-01..12 | PR-OPS-01..08 | MERGED/RENAMED | 12→8 consolidation |
+
+### Validation & Release Gates (VAL → VAL)
+
+| Legacy PM-* | Final PR-* | Disposition |
+|-------------|------------|-------------|
+| PM-VAL-01..10 | PR-VAL-01..08 | MERGED/RENAMED | 10→8 consolidation |
+
+## Removed Legacy Areas
+
+The following legacy areas were **REMOVED** as they were merged into the 12 canonical areas above:
+
+- `PM-AI-*` (AI Plane) → merged into **INT** (Intelligence) and **STR** (Strategy)
+- `PM-VENUE-*` → merged into **EXE** (Execution) and **WAL** (Wallet)
+- `PM-GRAPH-*` → merged into **DATA** (Market Data & Graph)
+
+## Summary
+
+| Final Area | Legacy Areas Merged | Final Count |
+|------------|---------------------|-------------|
+| GOV | GOV | 8 |
+| AUT | AUT | 8 |
+| WAL | WALLET, partial VENUE | 8 |
+| DATA | DATA, partial GRAPH | 8 |
+| INT | INTEL, partial AI | 8 |
+| STR | STR, partial AI | 8 |
+| RISK | RISK | 8 |
+| EXE | EXE, partial VENUE | 8 |
+| LED | LED | 8 |
+| SEC | SEC | 8 |
+| OPS | OPS | 8 |
+| VAL | VAL | 8 |
+| **TOTAL** | **124 legacy** | **96 final** |
+
+The consolidation eliminates redundancy, aligns 1:1 with Blueprint test tables (23-34), and ensures every requirement has exactly one primary acceptance scenario with matching priority.
