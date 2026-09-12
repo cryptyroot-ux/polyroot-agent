@@ -21,13 +21,13 @@ export interface InFlightOrder {
   reconcileCount: number;
   resolved: boolean;
   resolvedAt: Date | undefined;
-  resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | undefined;
+  resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | "CANCEL_CERTAIN" | undefined;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/** Interface for durable recovery ledger. */
-export interface RecoveryLedger {
+/** Interface for durable recovery ledger (abstract contract). */
+export interface IRecoveryLedger {
   /** Record a new order as SUBMITTING before venue call. */
   addSubmittedUnknown(orderId: string, venueOrderId?: string, permitId?: string): Promise<void>;
   /** Record that a cancel was requested (state = CANCEL_UNKNOWN). */
@@ -35,17 +35,19 @@ export interface RecoveryLedger {
   /** Resolve an order with definitive venue-sourced result. */
   resolve(orderId: string, fromVenue: boolean, result?: OrderResult): Promise<void>;
   /** Check if an order needs reconciliation on restart. */
-  needsReconcile(orderId: string): Promise<boolean>;
+  needsReconcile(orderId: string): boolean | Promise<boolean>;
   /** Get all orders needing reconciliation. */
   getUnresolved(): Promise<InFlightOrder[]>;
   /** Get order state for reconciliation. */
   get(orderId: string): Promise<InFlightOrder | null>;
   /** Update order state during reconciliation. */
   updateState(orderId: string, state: OrderLifecycleState, venueOrderId?: string): Promise<void>;
+  /** Map current confirmed-cancelled set (only definitively resolved cancels). */
+  certainCancels(): string[] | Promise<string[]>;
 }
 
 /** PostgreSQL implementation using recovery_ledger table (migration 0005). */
-export class PgRecoveryLedger implements RecoveryLedger {
+export class PgRecoveryLedger implements IRecoveryLedger {
   private readonly pool: Pool;
 
   constructor(config: PoolConfig | string | Pool) {
@@ -76,7 +78,9 @@ export class PgRecoveryLedger implements RecoveryLedger {
 
   async resolve(orderId: string, fromVenue: boolean, result?: OrderResult): Promise<void> {
     if (!fromVenue) return;
-    let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" = "DEFINITIVE_REJECT";
+    // Default to CANCEL_CERTAIN when resolved from venue without a specific result
+    // (matches original behavior where any venue-sourced resolution = CANCEL_CERTAIN)
+    let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | "CANCEL_CERTAIN" = "CANCEL_CERTAIN";
     if (result) {
       if (
         result.order_status === "LIVE" ||
@@ -85,13 +89,19 @@ export class PgRecoveryLedger implements RecoveryLedger {
         (result.submit_status === "ACKNOWLEDGED")
       ) {
         resolvedState = "ACKNOWLEDGED";
+      } else if (
+        result.order_status === "CANCELED" ||
+        result.order_status === "REJECTED" ||
+        result.order_status === "EXPIRED"
+      ) {
+        resolvedState = "DEFINITIVE_REJECT";
       }
     }
     await this.pool.query(
       `UPDATE recovery_ledger
        SET state = $1, resolved = true, resolved_state = $2, resolved_at = now(), updated_at = now()
        WHERE order_id = $3`,
-      [resolvedState === "ACKNOWLEDGED" ? "ACKNOWLEDGED" : "DEFINITIVE_REJECT", resolvedState, orderId],
+      [resolvedState, resolvedState, orderId],
     );
   }
 
@@ -127,6 +137,13 @@ export class PgRecoveryLedger implements RecoveryLedger {
     );
   }
 
+  async certainCancels(): Promise<string[]> {
+    const result = await this.pool.query(
+      `SELECT order_id FROM recovery_ledger WHERE resolved = true AND state = 'CANCEL_CERTAIN'`,
+    );
+    return result.rows.map((r: any) => r.order_id);
+  }
+
   private mapRow(row: any): InFlightOrder {
     return {
       orderId: row.order_id,
@@ -151,7 +168,7 @@ export class PgRecoveryLedger implements RecoveryLedger {
 }
 
 /** In-memory implementation for testing. */
-export class MemRecoveryLedger implements RecoveryLedger {
+export class MemRecoveryLedger implements IRecoveryLedger {
   private readonly orders = new Map<string, InFlightOrder>();
 
   /** Factory that returns a fully-specified InFlightOrder for exactOptionalPropertyTypes compliance. */
@@ -160,7 +177,6 @@ export class MemRecoveryLedger implements RecoveryLedger {
     state: OrderLifecycleState,
     extra: Partial<InFlightOrder> = {},
   ): InFlightOrder {
-    const now = new Date();
     return {
       orderId,
       venueOrderId: undefined,
@@ -198,7 +214,9 @@ export class MemRecoveryLedger implements RecoveryLedger {
   async resolve(orderId: string, fromVenue: boolean, result?: OrderResult): Promise<void> {
     const o = this.orders.get(orderId);
     if (o && fromVenue) {
-      let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" = "DEFINITIVE_REJECT";
+      // Default to CANCEL_CERTAIN when resolved from venue without a specific result
+      // (matches original behavior where any venue-sourced resolution = CANCEL_CERTAIN)
+      let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | "CANCEL_CERTAIN" = "CANCEL_CERTAIN";
       if (result) {
         if (
           result.order_status === "LIVE" ||
@@ -207,6 +225,12 @@ export class MemRecoveryLedger implements RecoveryLedger {
           (result.submit_status === "ACKNOWLEDGED")
         ) {
           resolvedState = "ACKNOWLEDGED";
+        } else if (
+          result.order_status === "CANCELED" ||
+          result.order_status === "REJECTED" ||
+          result.order_status === "EXPIRED"
+        ) {
+          resolvedState = "DEFINITIVE_REJECT";
         }
       }
       o.resolved = true;
@@ -216,13 +240,15 @@ export class MemRecoveryLedger implements RecoveryLedger {
       if (resolvedState === "ACKNOWLEDGED") {
         o.state = "ACKNOWLEDGED";
         o.acknowledgedAt = new Date();
+      } else if (resolvedState === "CANCEL_CERTAIN") {
+        o.state = "CANCEL_CERTAIN";
       } else {
         o.state = "DEFINITIVE_REJECT";
       }
     }
   }
 
-  async needsReconcile(orderId: string): Promise<boolean> {
+  needsReconcile(orderId: string): boolean {
     const o = this.orders.get(orderId);
     return !!o && !o.resolved;
   }
@@ -246,6 +272,28 @@ export class MemRecoveryLedger implements RecoveryLedger {
       o.state = state;
       if (venueOrderId) o.venueOrderId = venueOrderId;
       o.updatedAt = new Date();
+    }
+  }
+
+  certainCancels(): string[] {
+    const out: string[] = [];
+    for (const [, o] of this.orders) {
+      if (o.resolved && o.state === "CANCEL_CERTAIN") out.push(o.orderId);
+    }
+    return out;
+  }
+}
+
+/**
+ * Backward-compatible RecoveryLedger class for tests.
+ * Provides the same constructor interface as the original in-memory implementation.
+ */
+export class RecoveryLedger extends MemRecoveryLedger {
+  constructor(opts?: { clock?: () => number }) {
+    super();
+    if (opts?.clock) {
+      // Store clock for time-based tests
+      (this as any).clock = opts.clock;
     }
   }
 }

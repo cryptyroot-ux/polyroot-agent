@@ -18,7 +18,6 @@ const DepInput = z.object({
   resolved: z.boolean(),
   disposition: DispositionSchema,
 });
-const DepResolved = DepInput.extend({ resolved: z.literal(true), disposition: DispositionSchema.exclude(["REMOVE"]) });
 
 export const ReleaseManifestSchema = z.object({
   schema_version: z.string().min(1),

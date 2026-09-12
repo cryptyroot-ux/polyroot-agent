@@ -49,7 +49,7 @@ import { venueActionGate } from "@polyroot/venue";
 import { cashNeededFor } from "@polyroot/risk";
 import { decimalToBase } from "@polyroot/signer";
 import type { PermitStore } from "@polyroot/venue";
-import type { RecoveryLedger } from "@polyroot/venue";
+import type { IRecoveryLedger } from "@polyroot/venue";
 
 export type { ExecutionPermit, SignedOrder, OrderResult };
 export type {
@@ -66,7 +66,9 @@ export type OrderLifecycleState =
   | "SUBMITTING"
   | "ACKNOWLEDGED"
   | "SUBMISSION_UNKNOWN"
-  | "DEFINITIVE_REJECT";
+  | "DEFINITIVE_REJECT"
+  | "CANCEL_UNKNOWN"
+  | "CANCEL_CERTAIN";
 
 export interface LifecycleEvent {
   state: OrderLifecycleState;
@@ -135,7 +137,7 @@ export interface ExecutorDeps {
   /** Durable permit store with atomic single-use claim. */
   permitStore: PermitStore;
   /** Durable recovery ledger for in-flight orders and reconciliation. */
-  recoveryLedger: RecoveryLedger;
+  recoveryLedger: IRecoveryLedger;
   /** Per-wallet lease epoch for executor fencing. */
   leaseEpoch: number;
 }
@@ -212,20 +214,7 @@ export class Executor {
       };
     }
 
-    // 3. ATOMIC PERMIT CLAIM — single-use permit claimed atomically.
-    // This replaces the check-then-act race with a single atomic operation.
-    if (permit.single_use) {
-      const claimed = await this.deps.permitStore.claim(permit.permit_id, order.order_id);
-      if (!claimed) {
-        return {
-          outcome: "PERMIT_INVALID",
-          code: "PERMIT_USED",
-          reason: "permit already used or expired",
-        };
-      }
-    }
-
-    // 4. Permit–order binding: when the signed order carries a permit_id it
+    // 3. Permit–order binding: when the signed order carries a permit_id it
     //    MUST match the presented permit. This prevents a permit issued for
     //    market A from being used to submit an order bound to market B.
     if (order.permit_id && order.permit_id !== permit.permit_id) {
@@ -236,7 +225,7 @@ export class Executor {
       };
     }
 
-    // 5. The order must stay within the permit's reservation (share quota and
+    // 4. The order must stay within the permit's reservation (share quota and
     //    cash ceiling). A signed order that exceeds its permit is refused —
     //    this is the reserve-then-spend enforcement, never loosened by a tier.
     if (!this.permitCoversOrder(order, permit)) {
@@ -247,15 +236,17 @@ export class Executor {
       };
     }
 
-    // 6. Venue-mode gate — fail closed before any network call. The order is
-    //    NOT marked in-flight until this passes, so a gate-blocked order can
-    //    still be retried cleanly (no false duplicate lock).
+    // 5. Venue-mode gate — fail closed BEFORE any permit claim. A harmless
+    //    reject must NOT strand money authority: the permit is only consumed
+    //    once the venue actually permits the action. The order is NOT marked
+    //    in-flight until this passes, so a gate-blocked order can still be
+    //    retried cleanly (no false duplicate lock).
     const gate = venueActionGate(this.deps.adapter.mode, "ORDER_SUBMIT");
     if (!gate.allowed) {
       return { outcome: "MODE_FORBIDS", code: gate.code, reason: gate.reason };
     }
 
-    // 7. Lease epoch fencing — only the current lease holder may submit.
+    // 6. Lease epoch fencing — only the current lease holder may submit.
     // This prevents split-brain on network partition or duplicate worker startup.
     // The permit's lease_epoch must match the current executor lease epoch.
     if (permit.lease_epoch !== this.deps.leaseEpoch) {
@@ -264,6 +255,24 @@ export class Executor {
         code: "LEASE_EPOCH_MISMATCH",
         reason: `permit lease epoch ${permit.lease_epoch} != executor lease ${this.deps.leaseEpoch}`,
       };
+    }
+
+    // 7. Persist the permit (idempotent upsert) so atomic claim has a record to lock.
+    await this.deps.permitStore.save(permit);
+
+    // 8. ATOMIC PERMIT CLAIM — single-use permit claimed atomically.
+    // This replaces the check-then-act race with a single atomic operation.
+    // Placed AFTER every harmless-rejectable check so a rejected order never
+    // strands money authority.
+    if (permit.single_use) {
+      const claimed = await this.deps.permitStore.claim(permit.permit_id, order.order_id);
+      if (!claimed) {
+        return {
+          outcome: "PERMIT_INVALID",
+          code: "PERMIT_USED",
+          reason: "permit already used or expired",
+        };
+      }
     }
 
     // 8. CRASH WINDOW ELIMINATION: Persist SUBMITTING state to recovery ledger
@@ -292,7 +301,10 @@ export class Executor {
 
     if (!res.ok) {
       if (res.code === "SUBMISSION_UNKNOWN") {
-        // Persist SUBMISSION_UNKNOWN for reconciliation
+        // Persist SUBMISSION_UNKNOWN for reconciliation. The local seen log
+        // must reflect the same state so reconcile() does not read a stale
+        // SUBMITTING and skip the venue query.
+        this.deps.seen.add(order.order_id, "SUBMISSION_UNKNOWN");
         await this.deps.recoveryLedger.updateState(order.order_id, "SUBMISSION_UNKNOWN");
         return { outcome: "NEEDS_RECONCILIATION", orderId: order.order_id };
       }
@@ -382,4 +394,4 @@ export type { VenueMode, VenueAdapter };
 /* ── PermitStore & RecoveryLedger interfaces (re-exported for convenience) ──── */
 
 export type { PermitStore } from "@polyroot/venue";
-export type { RecoveryLedger } from "@polyroot/venue";
+export type { IRecoveryLedger } from "@polyroot/venue";

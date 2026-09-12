@@ -15,6 +15,7 @@ import {
   orderLifecycleNext,
   type OrderLifecycleState,
 } from "@polyroot/executor";
+import { MemPermitStore, MemRecoveryLedger } from "@polyroot/venue";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import { RecoveryLedger, RecoveryInFlightOrder } from "@polyroot/venue";
 import type {
@@ -43,7 +44,7 @@ import {
 } from "@polyroot/risk";
 import {
   SignerVault,
-  permitFingerprint,
+  computePayloadHash,
   decimalToBase,
   type SignRequest,
 } from "@polyroot/signer";
@@ -124,7 +125,6 @@ class FakeAdapter implements VenueAdapter {
 }
 
 function makeExecutor(adapter: FakeAdapter, now = new Date("2026-01-01T00:00:30Z")) {
-  const used = new Set<string>();
   const seen = new Map<string, OrderLifecycleState>();
   const ex = new Executor({
     adapter,
@@ -134,10 +134,11 @@ function makeExecutor(adapter: FakeAdapter, now = new Date("2026-01-01T00:00:30Z
       add: (id, state) => void seen.set(id, state),
       get: (id) => seen.get(id),
     },
-    markPermitUsed: async (pid) => void used.add(pid),
-    isPermitUsed: async (pid) => used.has(pid),
+    permitStore: new MemPermitStore({ clock: () => now }),
+    recoveryLedger: new MemRecoveryLedger(),
+    leaseEpoch: 1,
   });
-  return { ex, seen, used };
+  return { ex, seen };
 }
 
 const basePortfolio: Portfolio = {
@@ -151,14 +152,24 @@ const basePortfolio: Portfolio = {
 const basePolicy: RiskPolicy = {
   schema_version: "1.1",
   policy_version: "v0-bootstrap",
-  risk_stop_pct: 0.1,
-  max_open_positions: 10,
-  max_position_share_pct: 0.2,
-  max_cash_per_order: 100,
-  daily_loss_stop_pct: 0.05,
-  max_drawdown_stop_pct: 0.2,
-  reduce_only: true,
-  tags: [],
+  execution_mode: "PAPER",
+  capital_usd_cap: null,
+  max_order_pct: 0.005,
+  max_market_pct: 0.02,
+  max_event_group_pct: 0.05,
+  max_portfolio_pct: 0.1,
+  daily_loss_stop_pct: 0.02,
+  drawdown_stop_pct: 0.05,
+  max_open_orders: 10,
+  min_edge_after_cost: 0.02,
+  book_max_age_ms: 2000,
+  metadata_max_age_s: 60,
+  forecast_max_age_s: 900,
+  clock_skew_max_ms: 1000,
+  max_slippage_abs: 0.01,
+  intent_ttl_s: 30,
+  risk_permit_ttl_ms: 1000,
+  reconcile_interval_s: 15,
 };
 
 /* ── FT-01: Concurrent spend ──────────────────────────────────────────── */
@@ -409,22 +420,31 @@ describe("FT-14 — Signer compromise attempt: vault rejects mismatch", () => {
       maxClockSkewMs: 5_000,
     });
     const permit = makePermit();
-    const makeReq = (amountBase: bigint, actionId = "sig_1"): SignRequest => ({
-      schema_version: "1.1",
-      action: "ORDER_SUBMIT",
-      permit,
-      wallet: {
-        wallet_type: "L2",
-        signer_address: "0xSIGNER",
-        funder: "0xFUNDER", // distinct from signer (WAL-03)
-      },
-      amountBase,
-      actionId,
-      marketContext: "mkt_1",
-      venueMode: "NORMAL",
-      now: new Date("2026-01-01T00:00:30Z"),
-      payloadHash: permitFingerprint(permit),
-    });
+    const makeReq = (amountBase: bigint, actionId = "sig_1"): SignRequest => {
+      const base = {
+        schema_version: "1.1",
+        action: "ORDER_SUBMIT",
+        permit,
+        wallet: {
+          wallet_type: "L2",
+          signer_address: "0xSIGNER",
+          account_wallet: "0xACCOUNT",
+          funder: "0xFUNDER", // distinct from signer (WAL-03)
+          chain_id: 137,
+          verified_at: new Date("2026-01-01T00:00:00Z"),
+        },
+        amountBase,
+        actionId,
+        marketContext: "mkt_1",
+        venueMode: "NORMAL",
+        now: new Date("2026-01-01T00:00:30Z"),
+        payloadHash: "", // dummy
+      };
+      return {
+        ...base,
+        payloadHash: computePayloadHash(base),
+      };
+    };
     // Honors the permit share quota: 50 shares signed cleanly.
     const ok = await vault.sign(makeReq(decimalToBase(50)));
     assert.equal(ok.ok, true);

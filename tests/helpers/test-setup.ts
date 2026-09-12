@@ -1,23 +1,25 @@
 /**
- * Test setup helper — Phase 1 scaffolding.
+ * Test setup helper — Phase 12 scaffolding.
  *
- * Lifecycle hooks are intentionally dependency-free no-ops: current
- * contract/property suites assert structural invariants only and must run
- * in CI without a live database. DB-backed fixtures (migrations applied,
- * table truncation, market/intent factories) land in Sprint 2 together
- * with the Drizzle repositories (T-PM-LED-01…04).
+ * This session implements the durable ledger abstractions (EventStore,
+ * ProjectionEngine, OutboxProcessor) backed by PostgreSQL migration 0005 tables.
+ * See each package's tsdoc for detailed invariants.
+ *
+ * Lifecycle hooks are still no-ops until Sprint 2 (repositories/migrations).
  */
 
 export async function setupTestDb(): Promise<void> {
-  // No-op until Sprint 2 (see note above).
+  // No-op: durable abstractions are pure-Ports interfaces. Integration
+  // tests that touch PostgreSQL are added in Sprint 2 alongside the
+  // Drizzle repositories (T-PM-LED-01…04).
 }
 
 export async function cleanTestDb(): Promise<void> {
-  // No-op until Sprint 2 (see note above).
+  // No-op until Sprint 2.
 }
 
 export async function teardownTestDb(): Promise<void> {
-  // No-op until Sprint 2 (see note above).
+  // No-op until Sprint 2.
 }
 
 // DB-backed factories arrive with the repositories (Sprint 2).

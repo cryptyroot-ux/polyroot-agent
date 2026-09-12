@@ -109,20 +109,20 @@ export class PgSupervisor extends Supervisor {
   constructor(
     reconciler: Reconciler,
     config: PoolConfig | string | Pool,
-    _policy: import("@polyroot/domain").RiskPolicy,
+    policy: import("@polyroot/domain").RiskPolicy,
   ) {
     const pool = config instanceof Pool ? config : new Pool(typeof config === "string" ? { connectionString: config } : config);
-    new PgPersistence(pool); // Created for parent constructor only
+    const persistence = new PgPersistence(pool);
 
     // Call parent constructor with required dependencies
     super({
-      reconciler: reconciler as any,
-      persistence: new PgPersistence(pool) as any,
-      policy: {} as any,
+      reconciler,
+      persistence,
+      policy,
       now: () => new Date(),
-    } as any);
+    });
 
-    this.pool = config instanceof Pool ? config : new Pool(typeof config === "string" ? { connectionString: config } : config);
+    this.pool = pool;
   }
 
   override async onOrchestrateResult(res: OrchestrateResult): Promise<void> {

@@ -17,8 +17,6 @@ import type { ExecutionPermit } from "@polyroot/domain";
 import {
   createPgStores,
   MoneyKernel,
-  type BalanceStore,
-  type KernelEventSink,
 } from "@polyroot/risk";
 import {
   createPgControlStores,
@@ -63,7 +61,7 @@ export type OrchestrateOutcome =
   | {
       ok: true;
       outcome: "SUBMITTED" | "NEEDS_RECONCILIATION";
-      state: any;
+      state: import("@polyroot/executor").OrderLifecycleState;
       order: any;
       permit: ExecutionPermit;
     }
@@ -85,8 +83,8 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
     eventSink,
     pool: riskPool,
   }: {
-    balanceStore: BalanceStore;
-    eventSink: KernelEventSink;
+    balanceStore: import("@polyroot/risk").BalanceStore;
+    eventSink: import("@polyroot/risk").KernelEventSink;
     pool: import("pg").Pool;
   } = createPgStores(deps.pgConfig);
 
@@ -99,39 +97,31 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
   // ── PostgreSQL-backed Control plane ports ─────────────────────────────────
   const stores = createPgControlStores(deps.pgConfig, null as any, deps.policy);
   const persistence = stores.persistence;
-  const controlPool = stores.pool;
 
-// ── Executor with PostgreSQL-backed seen map (in-memory cache, DB sync) ──
-  const _seenCache = new Map<string, import("@polyroot/executor").OrderLifecycleState>();
+  // ── PostgreSQL-backed Permit Store & Recovery Ledger ──────────────────────
+  const permitStore = new (await import("@polyroot/venue")).PgPermitStore(deps.pgConfig);
+  const recoveryLedger = new (await import("@polyroot/venue")).PgRecoveryLedger(deps.pgConfig);
+
+  // ── Executor with in-memory seen cache (DB-backed recovery ledger for crash safety) ──
+  const seenCache = new Map<string, import("@polyroot/executor").OrderLifecycleState>();
 
   // Hydrate cache from DB once at startup (survives restarts).
-  const _unknownIds = await persistence.listUnknown();
-  for (const _id of _unknownIds) _seenCache.set(_id, "SUBMISSION_UNKNOWN");
+  const unknownIds = await recoveryLedger.getUnresolved();
+  for (const id of unknownIds) seenCache.set(id.orderId, id.state);
 
   const executor = new Executor({
     adapter: deps.venue,
     now: deps.now,
     seen: {
-      has: (orderId: string) => _seenCache.has(orderId),
-      add: (orderId: string, state: any) => {
-        _seenCache.set(orderId, state);
-        void persistence.set(orderId, state); // fire-and-forget DB sync
+      has: (orderId: string) => seenCache.has(orderId),
+      add: (orderId: string, state: import("@polyroot/executor").OrderLifecycleState) => {
+        seenCache.set(orderId, state);
       },
-      get: (orderId: string) => _seenCache.get(orderId),
+      get: (orderId: string) => seenCache.get(orderId),
     },
-    markPermitUsed: async (permitId: string) => {
-      await controlPool.query(
-        `UPDATE execution_permits SET used_at = now() WHERE permit_id = $1`,
-        [permitId],
-      );
-    },
-    isPermitUsed: async (permitId: string) => {
-      const result = await controlPool.query(
-        `SELECT used_at FROM execution_permits WHERE permit_id = $1`,
-        [permitId],
-      );
-      return Boolean(result.rows[0]?.used_at);
-    },
+    permitStore,
+    recoveryLedger,
+    leaseEpoch: deps.leaseEpoch(),
   });
 
   // ── PostgreSQL-backed Reconciler + Supervisor ─────────────────────────────
@@ -148,80 +138,65 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
       { forecast: input.forecast, book: input.book },
       { minEdge: deps.policy.min_edge_after_cost },
     );
-    if (edge.action === "NO_TRADE") {
-      return { ok: false, stage: "EDGE" as const, code: edge.code, reason: edge.reason };
+    if (edge.action !== "TRADE") {
+      return { ok: false, stage: "EDGE", code: "MIN_EDGE_UNMET", reason: `edge ${Math.round(edge.edge * 10000)} bps < ${deps.policy.min_edge_after_cost * 10000} bps` };
     }
 
-    // Stage RISK: policy limits + atomic reservation → permit
-    const gate = await validateAndReserve(
-      {
-        intent: input.intent,
-        policy: deps.policy,
-        wallet: deps.wallet,
-        venueMode,
-        leaseEpoch: deps.leaseEpoch(),
-        now,
-        policyHash: deps.policyHash,
-        ...(input.currentMarketExposureUsd !== undefined
-          ? { currentMarketExposureUsd: input.currentMarketExposureUsd }
-          : {}),
-        ...(input.currentPortfolioExposureUsd !== undefined
-          ? { currentPortfolioExposureUsd: input.currentPortfolioExposureUsd }
-          : {}),
-      },
-      kernel,
-    );
-    if (!gate.ok) {
-      return { ok: false, stage: "RISK" as const, code: gate.code, reason: gate.reason };
+    // Stage RISK: validate & reserve
+    const riskInput: import("@polyroot/control").RiskGateInput = {
+      intent: input.intent,
+      policy: deps.policy,
+      wallet: deps.wallet,
+      venueMode,
+      leaseEpoch: deps.leaseEpoch(),
+      now,
+      policyHash: deps.policyHash,
+      ...(input.currentMarketExposureUsd !== undefined
+        ? { currentMarketExposureUsd: input.currentMarketExposureUsd }
+        : {}),
+      ...(input.currentPortfolioExposureUsd !== undefined
+        ? { currentPortfolioExposureUsd: input.currentPortfolioExposureUsd }
+        : {}),
+    };
+    const riskRes = await validateAndReserve(riskInput, kernel);
+    if (!riskRes.ok) {
+      return { ok: false, stage: "RISK", code: riskRes.code, reason: riskRes.reason };
     }
 
-    // Stage BUILD: clamp to permit + sign
-    const built = await buildSignedOrder(
+    // Stage BUILD: sign order
+    const buildRes = await buildSignedOrder(
       {
         intent: input.intent,
-        permit: gate.permit,
+        permit: riskRes.permit,
         wallet: deps.wallet,
         venueMode,
         now,
       },
       deps.signer,
     );
-    if (!built.ok) {
-      return { ok: false, stage: "BUILD" as const, code: built.code, reason: built.reason };
+    if (!buildRes.ok) {
+      return { ok: false, stage: "BUILD", code: buildRes.code, reason: buildRes.reason };
     }
+    const { order, permit } = buildRes;
 
-    // Stage SUBMIT: idempotent, permit-bound, venue-gated
-    const submitted = await executor.submit(built.order, gate.permit);
-    switch (submitted.outcome) {
-      case "SUBMITTED":
-        return {
-          ok: true,
-          outcome: "SUBMITTED" as const,
-          state: submitted.state,
-          order: built.order,
-          permit: gate.permit,
-        };
-      case "NEEDS_RECONCILIATION":
-        return {
-          ok: true,
-          outcome: "NEEDS_RECONCILIATION" as const,
-          state: "SUBMISSION_UNKNOWN" as const,
-          order: built.order,
-          permit: gate.permit,
-        };
-      default:
-        return {
-          ok: false,
-          stage: "SUBMIT" as const,
-          code: submitted.code,
-          reason: submitted.reason,
-        };
+    // Stage SUBMIT: execute via executor
+    const submitRes = await executor.submit(order, permit);
+    if (submitRes.outcome === "SUBMITTED") {
+      return { ok: true, outcome: "SUBMITTED", state: submitRes.state, order: submitRes.result, permit };
     }
+    if (submitRes.outcome === "NEEDS_RECONCILIATION") {
+      return { ok: true, outcome: "NEEDS_RECONCILIATION", state: "SUBMISSION_UNKNOWN", order: { order_id: submitRes.orderId }, permit };
+    }
+    return { ok: false, stage: "SUBMIT", code: submitRes.code, reason: submitRes.reason };
   }
 
+  // ── Shutdown ──────────────────────────────────────────────────────────────
   async function shutdown(): Promise<void> {
-    await riskPool.end();
-    await controlPool.end();
+    await Promise.all([
+      riskPool.end(),
+      (await import("@polyroot/venue")).PgPermitStore.prototype.close?.call(permitStore),
+      (await import("@polyroot/venue")).PgRecoveryLedger.prototype.close?.call(recoveryLedger),
+    ]);
   }
 
   return {
@@ -229,7 +204,7 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
     supervisor,
     reconciler,
     kernel,
-    persistence,
+    persistence: persistence,
     shutdown,
   };
 }

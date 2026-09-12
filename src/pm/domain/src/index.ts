@@ -166,6 +166,7 @@ export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
 /** Order lifecycle state machine (TABLE 16, PM-EXE-03/04). */
 export type OrderLifecycleState =
+  | "CANCEL_CERTAIN"
   | "CANCEL_UNKNOWN"
   | "NOT_SEEN"
   | "SUBMITTING"
@@ -587,6 +588,7 @@ export const LedgerEventTypeSchema = z.enum([
   "INTENT_PROPOSED",
   "RISK_DECISION",
   "RESERVATION_CREATED",
+  "RESERVATION_CONSUMED",
   "RESERVATION_RELEASED",
   "ORDER_SIGNED",
   "ORDER_SUBMITTED",

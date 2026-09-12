@@ -20,30 +20,35 @@ describe("Phase 11: Supervisor & Reconciler Persistence", () => {
   const t0 = new Date("2026-09-09T00:00:00Z");
   const dummyPolicy: RiskPolicy = {
     schema_version: "1.0.0",
-    policy_id: "pol_1",
-    version: 1,
-    max_position_per_market_usd: 100,
-    max_portfolio_var_95_usd: 500,
-    max_drawdown_daily_pct: 5,
-    kill_switch_active: false,
-    kill_switch_scope: "NONE",
-    signer_lease_duration_sec: 300,
-    lease_ttl_sec: 300,
-    max_leverage: 1,
-    max_loss_per_asset_usd: 50,
+    policy_version: "v0-bootstrap",
+    execution_mode: "PAPER",
+    capital_usd_cap: null,
+    max_order_pct: 0.005,
+    max_market_pct: 0.02,
+    max_event_group_pct: 0.05,
+    max_portfolio_pct: 0.1,
+    daily_loss_stop_pct: 0.02,
+    drawdown_stop_pct: 0.05,
+    max_open_orders: 10,
     min_edge_after_cost: 0.02,
-    order_type_restriction: "POST_ONLY",
+    book_max_age_ms: 2000,
+    metadata_max_age_s: 60,
+    forecast_max_age_s: 900,
+    clock_skew_max_ms: 1000,
+    max_slippage_abs: 0.01,
+    intent_ttl_s: 30,
+    risk_permit_ttl_ms: 1000,
     reconcile_interval_s: 15,
   };
 
-  it("stores and queries unknown orders using InMemoryPersistence", () => {
+  it("stores and queries unknown orders using InMemoryPersistence", async () => {
     const store = new InMemoryPersistence();
-    store.set("o1", "SUBMISSION_UNKNOWN");
-    store.set("o2", "ACKNOWLEDGED");
+    await store.set("o1", "SUBMISSION_UNKNOWN");
+    await store.set("o2", "ACKNOWLEDGED");
 
-    assert.equal(store.get("o1"), "SUBMISSION_UNKNOWN");
-    assert.equal(store.get("o2"), "ACKNOWLEDGED");
-    assert.deepEqual(store.listUnknown(), ["o1"]);
+    assert.equal(await store.get("o1"), "SUBMISSION_UNKNOWN");
+    assert.equal(await store.get("o2"), "ACKNOWLEDGED");
+    assert.deepEqual(await store.listUnknown(), ["o1"]);
   });
 
   it("reconciles unknown orders via Reconciler", async () => {
@@ -58,12 +63,12 @@ describe("Phase 11: Supervisor & Reconciler Persistence", () => {
     const reconciler = new Reconciler(fakeExecutor as unknown as Executor, store);
     await reconciler.reconcileAll();
 
-    assert.equal(store.get("o1"), "ACKNOWLEDGED");
-    assert.equal(store.get("o2"), "DEFINITIVE_REJECT");
-    assert.deepEqual(store.listUnknown(), []);
+    assert.equal(await store.get("o1"), "ACKNOWLEDGED");
+    assert.equal(await store.get("o2"), "DEFINITIVE_REJECT");
+    assert.deepEqual(await store.listUnknown(), []);
   });
 
-  it("supervisor records orchestrate results and monitors health", () => {
+  it("supervisor records orchestrate results and monitors health", async () => {
     const store = new InMemoryPersistence();
     const fakeExecutor = new FakeExecutor();
     const reconciler = new Reconciler(fakeExecutor as unknown as Executor, store);
@@ -79,20 +84,21 @@ describe("Phase 11: Supervisor & Reconciler Persistence", () => {
       schema_version: "1.0.0",
       order_id: "ord_test_1",
       market_id: "mkt_1",
-      token_id: "10001",
       side: "BUY",
       price: 0.5,
       size: 10,
-      salt: "s1",
+      fee_rate_bps: 0,
+      nonce: 1,
+      expiration: 10000,
       signature: "0x123",
       signer: "0xabc",
-      funder: "0xdef",
-      expiration: 10000,
-      nonce: 1,
+      signed_at: new Date(),
+      decision_id: "dec_1",
+      permit_id: "perm_1",
     };
 
     // 1. Submit unknown outcome
-    supervisor.onOrchestrateResult({
+    await supervisor.onOrchestrateResult({
       ok: true,
       outcome: "NEEDS_RECONCILIATION",
       state: "SUBMISSION_UNKNOWN",
@@ -100,12 +106,12 @@ describe("Phase 11: Supervisor & Reconciler Persistence", () => {
       permit: {} as any,
     });
 
-    let health = supervisor.getHealthReport();
+    let health = await supervisor.getHealthReport();
     assert.equal(health.unknownOrderCount, 1);
     assert.equal(health.totalOrderCount, 1);
 
     // 2. Submit another acknowledged order
-    supervisor.onOrchestrateResult({
+    await supervisor.onOrchestrateResult({
       ok: true,
       outcome: "SUBMITTED",
       state: "ACKNOWLEDGED",
@@ -113,7 +119,7 @@ describe("Phase 11: Supervisor & Reconciler Persistence", () => {
       permit: {} as any,
     });
 
-    health = supervisor.getHealthReport();
+    health = await supervisor.getHealthReport();
     assert.equal(health.unknownOrderCount, 1);
     assert.equal(health.totalOrderCount, 2);
   });

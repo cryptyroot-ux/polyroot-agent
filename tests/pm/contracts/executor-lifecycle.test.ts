@@ -92,12 +92,15 @@ function makeSignedOrder(id = "ord_1", permitId?: string): SignedOrder {
   };
 }
 
+import { MemPermitStore, MemRecoveryLedger } from "@polyroot/venue";
+
 function makeDeps(
   adapter: FakeAdapter,
   now: Date = new Date("2026-01-01T00:00:30Z"),
 ) {
-  const used = new Set<string>();
   const seen = new Map<string, OrderLifecycleState>();
+  const permitStore = new MemPermitStore({ clock: () => now });
+  const recoveryLedger = new MemRecoveryLedger();
   const deps = {
     adapter,
     now: () => now,
@@ -106,10 +109,11 @@ function makeDeps(
       add: (id: string, state: OrderLifecycleState) => void seen.set(id, state),
       get: (id: string) => seen.get(id),
     },
-    markPermitUsed: async (pid: string) => void used.add(pid),
-    isPermitUsed: async (pid: string) => used.has(pid),
+    permitStore,
+    recoveryLedger,
+    leaseEpoch: 1,
   };
-  return { deps, used, seen };
+  return { deps, permitStore, recoveryLedger, seen };
 }
 
 describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..06)", () => {
@@ -153,11 +157,12 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
 
   it("refuses to reuse an already-used single-use permit", async () => {
     const adapter = new FakeAdapter();
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
-    // Simulate a prior successful use by marking the fresh permit used.
+    // Simulate a prior successful use by claiming the fresh permit in the store.
     const permit = makePermit();
-    await deps.markPermitUsed(permit.permit_id, "ord_1");
+    await permitStore.save(permit);
+    await permitStore.claim(permit.permit_id, "ord_1");
     const res = await ex.submit(makeSignedOrder(), permit);
     assert.equal(res.outcome, "PERMIT_INVALID");
     if (res.outcome === "PERMIT_INVALID") assert.equal(res.code, "PERMIT_USED");

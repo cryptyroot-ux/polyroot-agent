@@ -69,7 +69,10 @@ export class PgPermitStore implements PermitStore {
    * Only succeeds if: permit exists, not used, not expired.
    * Uses PostgreSQL row lock to prevent concurrent claims.
    */
-  async claim(permitId: string, orderId: string): Promise<boolean> {
+  async claim(permitId: string, _orderId: string): Promise<boolean> {
+    // orderId is consumed for binding; permit binding occurs via
+    // Executor.submit → SignerVault payloadHash which includes permit_id.
+    // The permit_id binding is the authoritative single-use guard.
     const result = await this.pool.query(
       `UPDATE execution_permits
        SET used_at = now()
@@ -127,16 +130,25 @@ export class PgPermitStore implements PermitStore {
 /** In-memory implementation for testing (uses atomic operations via Map). */
 export class MemPermitStore implements PermitStore {
   private readonly permits = new Map<string, ExecutionPermit & { claimed: boolean }>();
+  private readonly clock: () => Date;
 
-  async save(permit: ExecutionPermit): Promise<void> {
-    this.permits.set(permit.permit_id, { ...permit, claimed: false });
+  constructor(opts?: { clock?: () => Date }) {
+    this.clock = opts && opts.clock ? opts.clock : function () { return new Date(); };
   }
 
-  async claim(permitId: string, orderId: string): Promise<boolean> {
+  async save(permit: ExecutionPermit): Promise<void> {
+    // Preserve any existing single-use claim: an upsert must never silently
+    // clear a claim that was already recorded for this permit_id. The PG
+    // implementation mirrors this by only updating the fields it is asked to.
+    const existing = this.permits.get(permit.permit_id);
+    this.permits.set(permit.permit_id, { ...permit, claimed: existing?.claimed ?? false });
+  }
+
+  async claim(permitId: string, _orderId: string): Promise<boolean> {
     const permit = this.permits.get(permitId);
     if (!permit) return false;
     if (permit.claimed) return false;
-    if (new Date() > permit.expires_at) return false;
+    if (this.clock() > permit.expires_at) return false;
     // Atomic in JS: check-then-set on the same object in single-threaded event loop
     permit.claimed = true;
     // In real implementation, we'd also store orderId
@@ -151,7 +163,10 @@ export class MemPermitStore implements PermitStore {
   async get(permitId: string): Promise<ExecutionPermit | null> {
     const permit = this.permits.get(permitId);
     if (!permit) return null;
-    const { claimed, ...rest } = permit;
+    // `claimed` is intentionally not part of the public ExecutionPermit contract;
+    // it is the internal single-use flag consumed by claim()/isClaimed().
+    const { claimed: _claimed, ...rest } = permit;
+    void _claimed;
     return rest;
   }
 }

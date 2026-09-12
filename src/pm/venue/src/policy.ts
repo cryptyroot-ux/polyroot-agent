@@ -429,7 +429,7 @@ export class RateGovernor {
 
 export type InFlightState = "SUBMITTED_UNKNOWN" | "CANCEL_UNKNOWN" | "CANCEL_CERTAIN";
 
-export interface InFlightOrder {
+export interface InternalInFlightOrder {
   orderId: string;
   venueOrderId?: string | undefined;
   state: InFlightState;
@@ -444,8 +444,8 @@ export interface InFlightOrder {
  * auto-resubmitted as a brand-new order (PM-VENUE-03/06 TEST: a late-accepted
  * POST after timeout is still one reconciled order, not a new retry).
  */
-export class RecoveryLedger {
-  private readonly orders = new Map<string, InFlightOrder>();
+export class InternalRecoveryLedger {
+  private readonly orders = new Map<string, InternalInFlightOrder>();
   private readonly clock: () => number;
 
   constructor(opts?: { clock?: () => number }) {

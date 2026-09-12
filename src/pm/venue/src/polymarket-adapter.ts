@@ -20,7 +20,7 @@ import {
   type VenueMode,
 } from "@polyroot/domain";
 import { venueActionGate } from "./policy.js";
-import type { SubmitOutcome } from "./index.js";
+import type { SubmitOutcome } from "./types.js";
 
 /** The minimal @polymarket/client surface this adapter depends on (0.9.0). */
 export interface PolymarketClientLike {
@@ -65,6 +65,7 @@ export class PolymarketVenueAdapter {
     };
     const bestBid = best(raw?.bids);
     const bestAsk = best(raw?.asks);
+    const bestTimestamp = new Date();
     return {
       schema_version: "1.0.0",
       event_id: marketId,
@@ -82,8 +83,8 @@ export class PolymarketVenueAdapter {
       venue_mode: this._mode,
       yes_price: bestBid ?? 0.5,
       no_price: bestAsk ?? 0.5,
-      source_at: new Date(),
-      received_at: new Date(),
+      source_at: bestTimestamp,
+      received_at: bestTimestamp,
     };
   }
 

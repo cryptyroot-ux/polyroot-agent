@@ -20,7 +20,7 @@ import type {
 import { SignedOrderSchema } from "@polyroot/domain";
 import { cashNeededFor } from "@polyroot/risk";
 import { SignerVault } from "@polyroot/signer";
-import { permitFingerprint } from "@polyroot/signer";
+import { computePayloadHash } from "@polyroot/signer";
 import { decimalToBase } from "@polyroot/signer";
 import { ulid } from "ulid";
 
@@ -92,7 +92,18 @@ export async function buildSignedOrder(
     marketContext: intent.market_id,
     venueMode: input.venueMode,
     now: input.now,
-    payloadHash: permitFingerprint(permit),
+    payloadHash: computePayloadHash({
+      schema_version: "1.1",
+      action: "ORDER_SUBMIT" as const,
+      permit,
+      wallet: input.wallet,
+      amountBase: sizeBase,
+      actionId: orderId,
+      marketContext: intent.market_id,
+      venueMode: input.venueMode,
+      now: input.now,
+      payloadHash: "",
+    }),
   };
   const signed = await signer.sign(request);
   if (!signed.ok) {

@@ -24,6 +24,7 @@
  * provider (out of scope of this module). Keys never live in this module.
  */
 
+import { createHash } from "crypto";
 import type {
   ExecutionPermit,
   WalletIdentity,
@@ -44,11 +45,16 @@ export type SignerAction = (typeof SIGNER_ALLOWED_ACTIONS)[number];
  * Canonical, signed, typed action request. This is the ONLY shape the vault
  * accepts — no arbitrary calldata, no free-form destination, no raw SDK
  * payload from the business layer (PM-WALLET-07).
+ *
+ * All fields are material. Mutating ANY field must change the payload hash
+ * and cause the vault to refuse the signature.
  */
 export interface SignRequest {
   schema_version: string;
   action: SignerAction;
+  /** Execution permit — MUST be valid, unexpired, unused, and bind to this action. */
   permit: ExecutionPermit;
+  /** Wallet identity — signer, account, funder must be distinct (WAL-03). */
   wallet: WalletIdentity;
   /** Exact amount in integer base units (never float; PM-LED-02). */
   amountBase: bigint;
@@ -60,7 +66,7 @@ export interface SignRequest {
   venueMode: VenueMode;
   /** Wall-clock freshness check source. */
   now: Date;
-  /** Precomputed canonical payload hash to record for audit. */
+  /** SHA-256 hash of the canonical serialized SignRequest (all fields above). */
   payloadHash: string;
 }
 
@@ -78,10 +84,58 @@ export interface SignerVaultDeps {
 }
 
 /**
- * Deterministic fingerprint of the canonical financial fields of a permit.
- * Both the vault and callers use this to bind the payload being signed to the
- * reservation's intent/policy/quote/lease versions. This is a deterministic
- * integrity tag; production promotion must back it with a real audited hash.
+ * Compute the canonical SHA-256 payload hash for a SignRequest.
+ * This is the single source of truth for the payload hash — both the vault
+ * and callers MUST use this function to ensure consistency.
+ *
+ * Serialization is deterministic: fields in fixed order, no optional fields,
+ * numbers as exact strings (no float), dates as ISO 8601 UTC.
+ */
+export function computePayloadHash(request: SignRequest): string {
+  const payload = [
+    request.schema_version,
+    request.action,
+    // Permit fields (all material for binding)
+    request.permit.permit_id,
+    request.permit.decision_id,
+    request.permit.intent_id,
+    request.permit.ledger_version,
+    request.permit.policy_version,
+    request.permit.policy_hash,
+    request.permit.quote_id,
+    String(request.permit.lease_epoch),
+    request.permit.reservation_ids.join(","),
+    String(request.permit.max_qty),
+    String(request.permit.max_cash),
+    request.permit.allowed_order_style.join(","),
+    request.permit.venue_mode,
+    request.permit.issued_at.toISOString(),
+    request.permit.expires_at.toISOString(),
+    String(request.permit.single_use),
+    request.permit.used_at ? request.permit.used_at.toISOString() : "null",
+    // Wallet identity (WAL-03: signer, account, funder distinct)
+    request.wallet.wallet_id,
+    request.wallet.wallet_type,
+    request.wallet.signer_address,
+    request.wallet.account_wallet,
+    request.wallet.funder,
+    String(request.wallet.chain_id),
+    request.wallet.verified_at.toISOString(),
+    // Amount & action
+    request.amountBase.toString(),
+    request.actionId,
+    request.marketContext,
+    request.venueMode,
+    request.now.toISOString(),
+  ].join("|");
+
+  return createHash("sha256").update(payload).digest("hex");
+}
+
+/**
+ * DEPRECATED: Legacy permit fingerprint using truncated hex.
+ * Kept for backward compatibility with existing tests.
+ * New code MUST use computePayloadHash().
  */
 export function permitFingerprint(permit: ExecutionPermit): string {
   const core = [
@@ -96,6 +150,7 @@ export function permitFingerprint(permit: ExecutionPermit): string {
     permit.reservation_ids.join(","),
     String(permit.max_qty),
     String(permit.max_cash),
+    permit.allowed_order_style.join(","),
     permit.venue_mode,
     permit.expires_at.toISOString(),
   ].join("|");
@@ -117,6 +172,16 @@ export class SignerVault {
    * refusal with a machine-readable reason code (never the secret).
    */
   async sign(request: SignRequest): Promise<SigningOutcome> {
+    // Verify payload hash matches canonical serialization BEFORE any other checks
+    const expectedHash = computePayloadHash(request);
+    if (request.payloadHash !== expectedHash) {
+      return {
+        ok: false,
+        reason: "payload hash mismatch",
+        code: "PAYLOAD_HASH_MISMATCH",
+      };
+    }
+
     const guard = this.checkAllowed(request);
     if (!guard.ok) return guard;
     try {
@@ -185,11 +250,17 @@ export class SignerVault {
       };
     }
 
-    // 4. Exact amount within permit reservation. `amountBase` is a SHARE
-    //    quantity, so the bound is the permit's share quota (`max_qty`) — NOT
-    //    the cash cap (`max_cash`, a money value in a different dimension).
-    //    Comparing shares against cash would let an over-quota order pass when
-    //    it stays under the cash ceiling.
+    // 3. Action on allowlist.
+    if (!SIGNER_ALLOWED_ACTIONS.includes(request.action)) {
+      return {
+        ok: false,
+        reason: "action not allowlisted",
+        code: "ACTION_NOT_ALLOWED",
+      };
+    }
+
+    // 4. Exact amount within permit reservation.
+    // amountBase is SHARE quantity, bound is permit's share quota (max_qty).
     const maxQtyBn = decimalToBase(request.permit.max_qty);
     if (request.amountBase > maxQtyBn) {
       return {
@@ -199,14 +270,27 @@ export class SignerVault {
       };
     }
 
-    // 6. Every request records a payload hash; a permit already tied to a
-    //    different payload is rejected (dedupe integrity, EXE-03).
-    const expectedHash = permitFingerprint(request.permit);
-    if (request.payloadHash !== expectedHash) {
+    // 5. Venue mode check (TABLE 17).
+    const modeCheck = VenueModeSchema.safeParse(request.venueMode);
+    if (!modeCheck.success) {
       return {
         ok: false,
-        reason: "payload hash mismatch",
-        code: "PAYLOAD_HASH_MISMATCH",
+        reason: "invalid venue mode",
+        code: "INVALID_VENUE_MODE",
+      };
+    }
+
+    // 6. Time freshness — permit must be within TTL.
+    if (request.now.getTime() > request.permit.expires_at.getTime()) {
+      return { ok: false, reason: "permit expired", code: "PERMIT_EXPIRED" };
+    }
+    if (request.permit.single_use &&
+        request.permit.used_at !== null &&
+        request.permit.used_at !== undefined) {
+      return {
+        ok: false,
+        reason: "permit already used",
+        code: "PERMIT_REUSED",
       };
     }
 

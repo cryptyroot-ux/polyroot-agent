@@ -4,6 +4,7 @@ import { orchestrate, type OrchestratorDeps } from "@polyroot/control";
 import { Executor, type OrderLifecycleState } from "@polyroot/executor";
 import { MoneyKernel, type BalanceStore, type KernelEventSink } from "@polyroot/risk";
 import { SignerVault } from "@polyroot/signer";
+import { MemPermitStore, MemRecoveryLedger } from "@polyroot/venue";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import {
   DEFAULT_RISK_POLICY,
@@ -185,7 +186,6 @@ function makeDeps(adapter: FakeAdapter, over: Partial<OrchestratorDeps> = {}): {
   used: Set<string>;
   balance: FakeBalanceStore;
 } {
-  const used = new Set<string>();
   const seen = new Map<string, OrderLifecycleState>();
   const executor = new Executor({
     adapter,
@@ -195,10 +195,9 @@ function makeDeps(adapter: FakeAdapter, over: Partial<OrchestratorDeps> = {}): {
       add: (id: string, state: OrderLifecycleState) => seen.set(id, state),
       get: (id: string) => seen.get(id),
     },
-    markPermitUsed: async (permitId: string, orderId: string) => {
-      used.add(permitId);
-    },
-    isPermitUsed: async (permitId: string) => used.has(permitId),
+    permitStore: new MemPermitStore({ clock: () => NOW }),
+    recoveryLedger: new MemRecoveryLedger(),
+    leaseEpoch: 1,
   });
   const balance = new FakeBalanceStore(1_000_000_000n);
   const kernel = new MoneyKernel({
@@ -219,13 +218,13 @@ function makeDeps(adapter: FakeAdapter, over: Partial<OrchestratorDeps> = {}): {
     now: () => NOW,
     ...over,
   };
-  return { deps, used, balance };
+  return { deps, balance };
 }
 
 describe("Control — orchestrator (signal → risk → build → submit)", () => {
   it("executes the full pipeline and submits", async () => {
     const adapter = new FakeAdapter();
-    const { deps, used, balance } = makeDeps(adapter);
+    const { deps, balance } = makeDeps(adapter);
     const res = await orchestrate(deps, {
       forecast: makeForecast(),
       book: makeBook(),
@@ -240,7 +239,7 @@ describe("Control — orchestrator (signal → risk → build → submit)", () =
       assert.equal(res.order.side, "BUY");
       assert.ok(res.order.permit_id && res.order.permit_id.length > 0);
       assert.equal(adapter.placeOrderCalls, 1);
-      assert.equal(used.size, 1);
+
       assert.equal(balance.committed, 5_000_000n);
     }
   });
