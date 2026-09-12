@@ -164,14 +164,60 @@ const basePolicy: RiskPolicy = {
 /* ── FT-01: Concurrent spend ──────────────────────────────────────────── */
 
 class MemBalance implements BalanceStore {
-  constructor(public balances = new Map<string, bigint>()) {}
-  async get(account: string, asset: string) {
-    return { availableBase: this.balances.get(`${account}:${asset}`) ?? 0n };
+  private balances = new Map<string, { available: bigint; committed: bigint }>();
+
+  constructor(initial?: Map<string, bigint>) {
+    if (initial) {
+      for (const [key, value] of initial) {
+        this.balances.set(key, { available: value, committed: 0n });
+      }
+    }
   }
-  async commit(account: string, asset: string, delta: number | bigint) {
-    const key = `${account}:${asset}`;
-    const cur = this.balances.get(key) ?? 0n;
-    this.balances.set(key, cur + BigInt(delta));
+
+  private getKey(account: string, asset: string): string {
+    return `${account}:${asset}`;
+  }
+
+  private getEntry(account: string, asset: string) {
+    const key = this.getKey(account, asset);
+    if (!this.balances.has(key)) {
+      this.balances.set(key, { available: 0n, committed: 0n });
+    }
+    return this.balances.get(key)!;
+  }
+
+  async get(account: string, asset: string) {
+    const entry = this.getEntry(account, asset);
+    return {
+      availableBase: entry.available,
+      committedBase: entry.committed,
+    };
+  }
+
+  async reserveFunds(account: string, asset: string, amount: bigint): Promise<void> {
+    const entry = this.getEntry(account, asset);
+    if (entry.available < amount) {
+      throw new Error("INSUFFICIENT_AVAILABLE");
+    }
+    entry.available -= amount;
+    entry.committed += amount;
+  }
+
+  async releaseFunds(account: string, asset: string, amount: bigint): Promise<void> {
+    const entry = this.getEntry(account, asset);
+    if (entry.committed < amount) {
+      throw new Error("INSUFFICIENT_COMMITTED");
+    }
+    entry.committed -= amount;
+    entry.available += amount;
+  }
+
+  async consumeFunds(account: string, asset: string, amount: bigint): Promise<void> {
+    const entry = this.getEntry(account, asset);
+    if (entry.committed < amount) {
+      throw new Error("INSUFFICIENT_COMMITTED");
+    }
+    entry.committed -= amount;
   }
 }
 class NoopSink implements KernelEventSink {

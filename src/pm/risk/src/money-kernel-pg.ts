@@ -9,6 +9,11 @@ import type { BalanceStore, KernelEventSink, BalanceEntry } from "./money-kernel
 /**
  * PostgreSQL BalanceStore implementation.
  * Uses the `balance_commit` atomic function from migration 0005.
+ * 
+ * Semantic alignment:
+ * - reserveFunds: moves available -> committed (positive delta in SQL)
+ * - releaseFunds: moves committed -> available (negative delta in SQL)
+ * - consumeFunds: moves committed -> final (negative delta in SQL)
  */
 export class PgBalanceStore implements BalanceStore {
   private readonly pool: Pool;
@@ -44,23 +49,46 @@ export class PgBalanceStore implements BalanceStore {
     };
   }
 
-  async commit(account: string, asset: string, deltaBase: bigint): Promise<void> {
-    // The SQL function returns TRUE on success, FALSE on failure (insufficient balance)
+  /** Reserve funds: move from available to committed (positive delta). */
+  async reserveFunds(account: string, asset: string, amountBase: bigint): Promise<void> {
     const result = await this.pool.query(
       `SELECT balance_commit($1, $2, $3)`,
-      [account, asset, deltaBase.toString()],
+      [account, asset, amountBase.toString()],
     );
 
     const success = result.rows[0]?.balance_commit;
     if (!success) {
-      // Determine the specific failure reason for better error messages
       const current = await this.get(account, asset);
-      const delta = deltaBase;
-      if (delta > 0n) {
-        throw new Error(`INSUFFICIENT_AVAILABLE: account=${account} asset=${asset} available=${current.availableBase} needed=${delta}`);
-      } else {
-        throw new Error(`INSUFFICIENT_COMMITTED: account=${account} asset=${asset} committed=${current.committedBase} release=${-delta}`);
-      }
+      throw new Error(`INSUFFICIENT_AVAILABLE: account=${account} asset=${asset} available=${current.availableBase} needed=${amountBase}`);
+    }
+  }
+
+  /** Release funds: move from committed back to available (negative delta). */
+  async releaseFunds(account: string, asset: string, amountBase: bigint): Promise<void> {
+    const result = await this.pool.query(
+      `SELECT balance_commit($1, $2, $3)`,
+      [account, asset, (-amountBase).toString()],
+    );
+
+    const success = result.rows[0]?.balance_commit;
+    if (!success) {
+      const current = await this.get(account, asset);
+      throw new Error(`INSUFFICIENT_COMMITTED: account=${account} asset=${asset} committed=${current.committedBase} release=${amountBase}`);
+    }
+  }
+
+  /** Consume funds: move from committed to final settlement (negative delta). */
+  async consumeFunds(account: string, asset: string, amountBase: bigint): Promise<void> {
+    // Same SQL operation as release: decrease committed
+    const result = await this.pool.query(
+      `SELECT balance_commit($1, $2, $3)`,
+      [account, asset, (-amountBase).toString()],
+    );
+
+    const success = result.rows[0]?.balance_commit;
+    if (!success) {
+      const current = await this.get(account, asset);
+      throw new Error(`INSUFFICIENT_COMMITTED_FOR_CONSUME: account=${account} asset=${asset} committed=${current.committedBase} consume=${amountBase}`);
     }
   }
 
@@ -82,12 +110,13 @@ export class PgKernelEventSink implements KernelEventSink {
 
   async push(topic: string, payload: unknown): Promise<void> {
     const metadata = { timestamp: new Date().toISOString() };
+    // Use a default aggregate type/id for generic events; callers should use pushWithContext for traceability
     await this.pool.query(
       `SELECT kernel_event_append($1, $2, $3, $4, $5)`,
       [
         topic,
-        "Unknown", // aggregate_type - caller should provide better context if needed
-        "00000000-0000-0000-0000-000000000000", // placeholder aggregate_id
+        "GENERIC",
+        "00000000-0000-0000-0000-000000000000",
         JSON.stringify(payload),
         JSON.stringify(metadata),
       ],
@@ -96,6 +125,7 @@ export class PgKernelEventSink implements KernelEventSink {
 
   /**
    * Push with explicit aggregate context for better traceability.
+   * Use this for financial events that need to be correlated.
    */
   async pushWithContext(
     topic: string,
@@ -104,16 +134,41 @@ export class PgKernelEventSink implements KernelEventSink {
     payload: unknown,
     metadata: Record<string, unknown> = {},
   ): Promise<void> {
+    // Parse aggregateId as UUID if possible, otherwise use a deterministic UUID from the string
+    let uuidAggregateId: string;
+    try {
+      // Check if it's already a valid UUID
+      uuidAggregateId = aggregateId;
+      // Validate UUID format
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(aggregateId)) {
+        // Generate deterministic UUID from string (using a simple hash)
+        const hash = await this.stringToDeterministicUUID(aggregateId);
+        uuidAggregateId = hash;
+      }
+    } catch {
+      const hash = await this.stringToDeterministicUUID(aggregateId);
+      uuidAggregateId = hash;
+    }
+
     await this.pool.query(
       `SELECT kernel_event_append($1, $2, $3, $4, $5)`,
       [
         topic,
         aggregateType,
-        aggregateId,
+        uuidAggregateId,
         JSON.stringify(payload),
         JSON.stringify({ timestamp: new Date().toISOString(), ...metadata }),
       ],
     );
+  }
+
+  /** Generate deterministic UUID from string for aggregate_id. */
+  private async stringToDeterministicUUID(str: string): Promise<string> {
+    // Use a simple hash to generate deterministic UUID
+    const crypto = await import("crypto");
+    const hash = crypto.createHash("sha256").update(str).digest("hex");
+    // Format as UUID v4 (using hash bytes)
+    return `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-${(parseInt(hash.slice(16,17), 16) % 4 + 8).toString(16)}${hash.slice(17,18)}-${hash.slice(18,30)}`;
   }
 
   async close(): Promise<void> {

@@ -41,8 +41,12 @@ export interface BalanceEntry {
 /** Injectable source of truth for current balances/commitments. */
 export interface BalanceStore {
   get(account: string, asset: string): Promise<BalanceEntry>;
-  /** Atomically move `delta` (negative=release) into committed reserve. */
-  commit(account: string, asset: string, deltaBase: bigint): Promise<void>;
+  /** Reserve funds: move from available to committed. */
+  reserveFunds(account: string, asset: string, amountBase: bigint): Promise<void>;
+  /** Release funds: move from committed back to available. */
+  releaseFunds(account: string, asset: string, amountBase: bigint): Promise<void>;
+  /** Consume funds: move from committed to final settlement (decrease committed). */
+  consumeFunds(account: string, asset: string, amountBase: bigint): Promise<void>;
 }
 
 /** Injectable append-only sink for financial events (audit trail, PR-LED). */
@@ -98,7 +102,8 @@ export function cashNeededFor(
 }
 
 export class MoneyKernel {
-  private readonly opts: MoneyKernelOpts;
+  private readonly opts: Required<MoneyKernelOpts>;
+  /** Track open reservations (in-memory for now; TODO: persist via DB query for restart safety). */
   private openCount = 0;
 
   constructor(opts: MoneyKernelOpts) {
@@ -107,7 +112,9 @@ export class MoneyKernel {
       hardMaxShares: opts.hardMaxShares ?? BigInt(Number.MAX_SAFE_INTEGER),
       hardMaxCash: opts.hardMaxCash ?? BigInt(Number.MAX_SAFE_INTEGER),
       maxOpenReservations: opts.maxOpenReservations ?? 16,
-      ...opts,
+      balance: opts.balance,
+      sink: opts.sink,
+      chainId: opts.chainId,
     };
   }
 
@@ -119,7 +126,7 @@ export class MoneyKernel {
     // ── Hard cap checks (never loosened by tier) ──
     if (
       req.amountSharesBase <= 0n ||
-      req.amountSharesBase > this.opts.hardMaxShares!
+      req.amountSharesBase > this.opts.hardMaxShares
     ) {
       return {
         ok: false,
@@ -127,7 +134,7 @@ export class MoneyKernel {
         reason: "shares outside hard cap",
       };
     }
-    if (req.maxCashBase <= 0n || req.maxCashBase > this.opts.hardMaxCash!) {
+    if (req.maxCashBase <= 0n || req.maxCashBase > this.opts.hardMaxCash) {
       return { ok: false, code: "CAP_CASH", reason: "cash outside hard cap" };
     }
     // Per-share price must be in (0, 1e6] base units. A negative or zero price
@@ -157,7 +164,9 @@ export class MoneyKernel {
         reason: "audited policy hash required",
       };
     }
-    if (this.openCount >= this.opts.maxOpenReservations!) {
+
+    // Track open reservations (in-memory for now; TODO: persist via DB query for restart safety)
+    if (this.openCount >= this.opts.maxOpenReservations) {
       return {
         ok: false,
         code: "RESERVATION_LIMIT",
@@ -166,7 +175,7 @@ export class MoneyKernel {
     }
 
     // ── Permit TTL must be sane ──
-    if (this.opts.permitTtlMs! <= 0) {
+    if (this.opts.permitTtlMs <= 0) {
       return {
         ok: false,
         code: "PERMIT_TTL",
@@ -214,7 +223,7 @@ export class MoneyKernel {
       allowed_order_style: ["LIMIT", "POST_ONLY"],
       venue_mode: req.venueMode,
       issued_at: req.now,
-      expires_at: new Date(req.now.getTime() + this.opts.permitTtlMs!),
+      expires_at: new Date(req.now.getTime() + this.opts.permitTtlMs),
       single_use: true,
       used_at: null,
     };
@@ -230,7 +239,8 @@ export class MoneyKernel {
     }
 
     // ── Commit funds and record reservation+permit atomically ──
-    await this.opts.balance.commit(req.account, req.asset, -cashNeeded);
+    // Use semantic method: reserveFunds moves available -> committed
+    await this.opts.balance.reserveFunds(req.account, req.asset, cashNeeded);
     this.openCount += 1;
     await this.opts.sink.push("RESERVATION_CREATED", {
       reservationId: permit.reservation_ids[0],
@@ -244,16 +254,33 @@ export class MoneyKernel {
     return { ok: true, permit, reservationId: permit.reservation_ids[0]! };
   }
 
-  /** Release a reservation's committed funds (negative-line cancel; PM-RISK-07). */
+  /** Release a reservation's committed funds back to available (negative-line cancel; PM-RISK-07). */
   async release(
     account: string,
     asset: string,
     cashBase: bigint,
   ): Promise<void> {
     if (cashBase < 0n) return;
-    await this.opts.balance.commit(account, asset, cashBase);
+    // Use semantic method: releaseFunds moves committed -> available
+    await this.opts.balance.releaseFunds(account, asset, cashBase);
     if (this.openCount > 0) this.openCount -= 1;
     await this.opts.sink.push("RESERVATION_RELEASED", {
+      account,
+      asset,
+      cashBase: String(cashBase),
+    });
+  }
+
+  /** Consume committed funds for final settlement (e.g., order fill). */
+  async consume(
+    account: string,
+    asset: string,
+    cashBase: bigint,
+  ): Promise<void> {
+    if (cashBase < 0n) return;
+    // Use semantic method: consumeFunds decreases committed (final economic posting)
+    await this.opts.balance.consumeFunds(account, asset, cashBase);
+    await this.opts.sink.push("RESERVATION_CONSUMED", {
       account,
       asset,
       cashBase: String(cashBase),

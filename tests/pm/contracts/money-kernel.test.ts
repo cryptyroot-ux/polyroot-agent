@@ -29,14 +29,25 @@ class FakeBalanceStore implements BalanceStore {
       committedBase: this.committed,
     };
   }
-  async commit(_a: string, _s: string, delta: bigint): Promise<void> {
-    if (delta < 0n) {
-      this.available += delta;
-      this.committed += -delta;
-    } else {
-      this.available += delta;
-      this.committed -= delta;
+  async reserveFunds(_a: string, _s: string, amount: bigint): Promise<void> {
+    if (this.available < amount) {
+      throw new Error("INSUFFICIENT_AVAILABLE");
     }
+    this.available -= amount;
+    this.committed += amount;
+  }
+  async releaseFunds(_a: string, _s: string, amount: bigint): Promise<void> {
+    if (this.committed < amount) {
+      throw new Error("INSUFFICIENT_COMMITTED");
+    }
+    this.committed -= amount;
+    this.available += amount;
+  }
+  async consumeFunds(_a: string, _s: string, amount: bigint): Promise<void> {
+    if (this.committed < amount) {
+      throw new Error("INSUFFICIENT_COMMITTED");
+    }
+    this.committed -= amount;
   }
 }
 
