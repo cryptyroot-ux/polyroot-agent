@@ -300,7 +300,7 @@ export class EgressFilter {
           return rule.category;
         }
       }
-    } catch (_) {
+    } catch {
       // Invalid URL falls through to unknown
     }
     return "unknown";

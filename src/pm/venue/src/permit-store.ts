@@ -69,18 +69,17 @@ export class PgPermitStore implements PermitStore {
    * Only succeeds if: permit exists, not used, not expired.
    * Uses PostgreSQL row lock to prevent concurrent claims.
    */
-  async claim(permitId: string, _orderId: string): Promise<boolean> {
-    // orderId is consumed for binding; permit binding occurs via
-    // Executor.submit → SignerVault payloadHash which includes permit_id.
-    // The permit_id binding is the authoritative single-use guard.
+  async claim(permitId: string, orderId: string): Promise<boolean> {
+    // The claim is now bound to the specific orderId.
     const result = await this.pool.query(
       `UPDATE execution_permits
-       SET used_at = now()
+       SET used_at = now(),
+           claimed_order_id = $2
        WHERE permit_id = $1
          AND used_at IS NULL
          AND expires_at > now()
        RETURNING permit_id`,
-      [permitId],
+      [permitId, orderId],
     );
     return result.rowCount === 1;
   }
@@ -144,14 +143,15 @@ export class MemPermitStore implements PermitStore {
     this.permits.set(permit.permit_id, { ...permit, claimed: existing?.claimed ?? false });
   }
 
-  async claim(permitId: string, _orderId: string): Promise<boolean> {
+  async claim(permitId: string, orderId: string): Promise<boolean> {
     const permit = this.permits.get(permitId);
     if (!permit) return false;
     if (permit.claimed) return false;
     if (this.clock() > permit.expires_at) return false;
     // Atomic in JS: check-then-set on the same object in single-threaded event loop
     permit.claimed = true;
-    // In real implementation, we'd also store orderId
+    // Store the orderId for binding check (optional for mem store, but we do it for consistency)
+    (permit as any).claimedOrderId = orderId;
     return true;
   }
 

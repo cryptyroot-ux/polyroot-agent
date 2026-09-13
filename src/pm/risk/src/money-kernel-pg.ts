@@ -92,6 +92,17 @@ export class PgBalanceStore implements BalanceStore {
     }
   }
 
+  /** Return the number of open reservations for an account/asset. */
+  async getOpenCount(account: string, asset: string): Promise<number> {
+    const result = await this.pool.query(
+      `SELECT COUNT(*)::int AS open_count
+       FROM balance_entries
+       WHERE account = $1 AND asset = $2 AND committed_base > 0`,
+      [account, asset],
+    );
+    return Number(result.rows[0]?.open_count ?? 0);
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }

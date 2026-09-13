@@ -47,6 +47,13 @@ export interface BalanceStore {
   releaseFunds(account: string, asset: string, amountBase: bigint): Promise<void>;
   /** Consume funds: move from committed to final settlement (decrease committed). */
   consumeFunds(account: string, asset: string, amountBase: bigint): Promise<void>;
+  /**
+   * Number of currently-open reservations for an account/asset.
+   * Derived from committed_base > 0 so it survives process restarts.
+   * Optional: in-memory stores may omit it (MoneyKernel falls back to its
+   * own counter when absent).
+   */
+  getOpenCount?(account: string, asset: string): Promise<number>;
 }
 
 /** Injectable append-only sink for financial events (audit trail, PR-LED). */
@@ -119,6 +126,27 @@ export class MoneyKernel {
   }
 
   /**
+   * Count open reservations from the durable balance store when available.
+   * Falls back to the in-memory counter for stores that do not implement
+   * getOpenCount (e.g. test doubles). Never throws: a broken counter must
+   * not abort a reservation.
+   */
+  private async countOpenReservations(
+    account: string,
+    asset: string,
+  ): Promise<number> {
+    const getOpenCount = (this.opts.balance as BalanceStore).getOpenCount;
+    if (typeof getOpenCount === "function") {
+      try {
+        return await getOpenCount.call(this.opts.balance, account, asset);
+      } catch {
+        return this.openCount;
+      }
+    }
+    return this.openCount;
+  }
+
+  /**
    * Atomically create a Reservation and issue its ExecutionPermit. Any check
    * failure leaves no reservation and no permit (no partial state).
    */
@@ -165,8 +193,13 @@ export class MoneyKernel {
       };
     }
 
-    // Track open reservations (in-memory for now; TODO: persist via DB query for restart safety)
-    if (this.openCount >= this.opts.maxOpenReservations) {
+    // Open-reservation limit is enforced against the durable count when the
+    // store exposes one; the in-memory counter is the fallback for stores
+    // without DB-backed committed tracking.
+    if (
+      await this.countOpenReservations(req.account, req.asset) >=
+      this.opts.maxOpenReservations
+    ) {
       return {
         ok: false,
         code: "RESERVATION_LIMIT",
@@ -241,6 +274,8 @@ export class MoneyKernel {
     // ── Commit funds and record reservation+permit atomically ──
     // Use semantic method: reserveFunds moves available -> committed
     await this.opts.balance.reserveFunds(req.account, req.asset, cashNeeded);
+    // The durable counter (committed_base) is the source of truth; the
+    // in-memory counter is kept in sync for stores that do not expose one.
     this.openCount += 1;
     await this.opts.sink.push("RESERVATION_CREATED", {
       reservationId: permit.reservation_ids[0],
