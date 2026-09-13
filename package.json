@@ -2,7 +2,7 @@
   "name": "polyroot",
   "version": "0.1.0",
   "private": true,
-  "description": "PolyRoot Agent — autonomous AI trading agent for Polymarket (fork of CloddsBot, controlled autonomy)",
+  "description": "PolyRoot Agent \u2014 autonomous AI trading agent for Polymarket (fork of CloddsBot, controlled autonomy)",
   "repository": {
     "type": "git",
     "url": "https://github.com/cryptyroot-ux/polyroot-agent"
@@ -38,7 +38,8 @@
     "generate:types": "turbo run generate:types",
     "clean": "turbo run clean && rm -rf node_modules dist .turbo",
     "ci": "npm run typecheck && npm run lint && npm run test && npm run build",
-    "release": "changeset publish"
+    "release": "changeset publish",
+    "test:migration": "node --test --import tsx \"tests/pm/db/**/*.test.ts\""
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.0",

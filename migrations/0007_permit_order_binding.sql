@@ -21,7 +21,7 @@ BEGIN
            claimed_order_id = p_order_id
      WHERE permit_id = p_permit_id
        AND used_at IS NULL
-       expires_at > now();
+       AND expires_at > now();
     RETURN FOUND;
 END $$;
 

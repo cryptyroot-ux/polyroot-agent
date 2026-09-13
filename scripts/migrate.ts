@@ -18,7 +18,7 @@ async function main() {
   const command = process.argv[2] || "latest";
   const databaseUrl =
     process.env.DATABASE_URL ||
-    "postgresql://postgres:postgres@localhost:5432/polyroot_dev";
+    "postgresql://postgres:postgres@127.0.0.1:5432/polyroot_dev";
 
   const pool = new Pool({ connectionString: databaseUrl, max: 1 });
 
