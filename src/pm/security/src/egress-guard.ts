@@ -18,6 +18,8 @@ export interface EgressCheckInput {
   redirectChain?: string[];
   responseSize?: number;
   delayMs?: number;
+  /** Skip the domain allowlist check (EgressFilter applies its own policy first). */
+  skipDomainCheck?: boolean;
 }
 
 /** IP address utilities for private/link-local/metadata range detection. */
@@ -126,23 +128,24 @@ export class EgressGuard {
     if (input.redirectChain && input.redirectChain.length > 0) {
       // Check if redirect chain exceeds max
       if (input.redirectChain.length > this.config.maxRedirects) {
-        return { 
-          ok: false, 
-          code: "MAX_REDIRECTS_EXCEEDED", 
-          reason: `Redirect chain exceeds maximum of ${this.config.maxRedirects}` 
+        return {
+          ok: false,
+          code: "MAX_REDIRECTS_EXCEEDED",
+          reason: `Redirect chain exceeds maximum of ${this.config.maxRedirects}`
         };
       }
-      
+
       // Validate each redirect destination - check IP first, skip domain check for redirect chain
       for (const redirectUrl of input.redirectChain) {
         const result = await this.checkSingleUrl(new URL(redirectUrl), { isRedirect: true, skipDomainCheck: true });
         if (!result.ok) return result;
       }
     }
-    
-    // Check main URL
+
+    // Check main URL - pass skipDomainCheck through
     const parsed = new URL(input.url);
-    const result = await this.checkSingleUrl(parsed);
+    const skipDomainCheck = input.skipDomainCheck === true;
+    const result = await this.checkSingleUrl(parsed, { skipDomainCheck });
     if (!result.ok) return result;
     
     // Check response size limit

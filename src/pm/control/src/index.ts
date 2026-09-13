@@ -10,3 +10,4 @@ export * from "./release.js";
 export * from "./charter.js";
 export * from "./state.js";
 export * from "./access-state.js";
+export * from "./deployment.js";

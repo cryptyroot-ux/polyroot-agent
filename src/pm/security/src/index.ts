@@ -78,8 +78,30 @@ export function redactSecrets(payload: Record<string, unknown>): Record<string, 
   return out;
 }
 
-// Egress Guard (PR-SEC-03, T-PR-SEC-03P0)
+// Egress Guard + Egress Filter (PR-SEC-03, T-PR-SEC-03P0)
 export { EgressGuard, type EgressGuardConfig, type EgressCheckResult } from "./egress-guard.js";
+export {
+  EgressFilter,
+  DEFAULT_CATEGORY_POLICY,
+  DEFAULT_CATEGORY_RULES,
+  type EgressAuditEntry,
+  type EgressCategory,
+  type EgressFilterConfig,
+  type EgressFilterResult,
+} from "./egress-filter.js";
+export type { EgressCheckInput } from "./egress-guard.js";
+
+// Security Proxy (PR-SEC-04, PR-SEC-07, T-PR-SEC-04, T-PR-SEC-07)
+export {
+  SecurityProxy,
+  containsSecretCanary,
+  redactForLogging,
+  type AuthIdentity,
+  type IngressCheckResult,
+  type IngressRequest,
+  type SecurityProxyConfig,
+  type SessionInfo,
+} from "./security-proxy.js";
 
 // Re-export venue capability types for consumers that need unified security boundary access
 export type { CapabilityDecision } from "@polyroot/venue";

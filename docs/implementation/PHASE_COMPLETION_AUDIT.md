@@ -20,7 +20,7 @@
 | 10d | Contract Tests + Artifact + Verify | 100% | 80% | 70% | 65% | 35% | **PARTIAL** |
 | 11 | Supervisor + Reconciler Persistence | 100% | 75% | 60% | 55% | 45% | **PARTIAL** |
 | 12 | Ledger + Strategy Planes | 100% | 70% | 60% | 55% | 45% | **PARTIAL** |
-| 13 | Security + Egress + Deployment | 100% | 40% | 30% | 25% | 75% | **PARTIAL** |
+| 13 | Security + Egress + Deployment | 100% | 70% | 65% | 55% | 45% | **PARTIAL** |
 | 14 | Final Gap + Traceability + Wrap | 100% | 30% | 20% | 15% | 85% | **PARTIAL** |
 
 ## Key Incomplete Subtasks (Phase 9-14)
@@ -51,10 +51,14 @@
 - [ ] No projection rebuild / duplicate event replay / partial fill / fee posting tests
 
 ### Phase 13: Security + Egress
-- [ ] `SecurityProxy` (ingress auth/mTLS) — **not implemented**
-- [ ] `EgressFilter` (compliance/audit) — **not implemented**
-- [ ] `SecurityProxy` + `EgressFilter` tests — **none**
-- [ ] Deployment workflows (canary/blue-green) — **none**
+- [x] `SecurityProxy` (ingress auth/mTLS) — **implemented** in `src/pm/security/src/security-proxy.ts`
+- [x] `EgressGuard` (SSRF/egress protection) — **implemented** in `src/pm/security/src/egress-guard.ts`
+- [x] `EgressFilter` (compliance/audit) — **implemented** in `src/pm/security/src/egress-filter.ts`
+- [x] `SecurityProxy` + `EgressFilter` contract tests — **added and passing** (`tests/pm/contracts/security-proxy.test.ts`, `tests/pm/contracts/egress-filter.test.ts`)
+- [x] Deployment workflows (canary/blue-green) — **implemented** in `src/pm/control/src/deployment.ts` (PR-OPS-07 / T-PR-OPS-07)
+- [x] PAPER canary deployment script — **implemented** in `scripts/deploy-canary.mjs`
+- [x] Release manifest generator — **implemented** in `scripts/generate-manifest.mjs` (CI manifest job)
+- [x] PR-OPS-07 contract tests — **added and passing** (`tests/pm/contracts/deployment.test.ts`)
 
 ### Phase 14: Final Gap + Traceability + Wrap
 - [ ] Traceability against **96 FINAL** requirements (not 124)
