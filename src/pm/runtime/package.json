@@ -17,13 +17,14 @@
     "dev": "tsc -w -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
-    "test": "node -e \"console.log('no package-scoped tests yet — see tests/pm')\"",
-    "test:unit": "node -e \"console.log('no package-scoped tests yet — see tests/pm')\"",
+    "test": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
+    "test:unit": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@polyroot/domain": "*",
     "@polyroot/intelligence": "*",
+    "@polyroot/runtime-pg": "*",
     "pg": "^8.11.5",
     "zod": "^3.22.4"
   },
