@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0.0",
-  "release_id": "00000000-0000-0000-0000-000000000000",
-  "timestamp_utc": "2026-09-13T07:06:10.047Z",
+  "release_id": "0e0c2735-4497-85fa-9d72-1a8e2dd01712",
+  "timestamp_utc": "2026-09-14T07:14:10.765Z",
   "git": {
     "repo": "https://github.com/cryptyroot-ux/polyroot-agent.git",
     "branch": "feature/phase13-security-deployment",
-    "commit_sha": "b046f798136c066ed8d35925f9ee75809b088862",
+    "commit_sha": "0e0c2735449785fa9d721a8e2dd01712fc77a41a",
     "tag": "safety-pre-finalization",
     "dirty": true
   },
@@ -27,8 +27,8 @@
   },
   "image": {
     "repository": "polyroot/trader",
-    "tag": "dev",
-    "digest": "sha256:bc0e42ea0935fe4de08316113d940e6a31aec220d2a1be0af2a73f297c2b5b8b"
+    "tag": "safety-pre-finalization",
+    "digest": "sha256:cfdeadca5f0503bda13de7d0e1a542991cd4c3eca56935f35ae121d4c40b1e2a"
   },
   "sdk": {
     "package": "@polymarket/client",
@@ -45,8 +45,11 @@
       "0002_pm_domain.sql",
       "0003_v11_charter_assets_graph_permits.sql",
       "0004_mandate_rename_constraints.sql",
-      "0005_kernel_events.sql",
-      "0006_paper_shadow_runtime.sql"
+      "0005_balance_store_event_sink_recovery_supervisor.sql",
+      "0006_paper_shadow_runtime.sql",
+      "0007_permit_order_binding.sql",
+      "0008_permit_payload_hash.sql",
+      "0009_recovery_ledger_fix.sql"
     ]
   },
   "strategies": {},
@@ -58,6 +61,6 @@
   "fork_disposition": "docs/ARTEFAK/fork_disposition.csv (TBD — required before G1)",
   "sbom": {
     "format": "spdx-json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    "sha256": "4e0e96674a2340e6c9db789fec5a5d456082b2faff4630e6655151ad14b43ada"
   }
 }

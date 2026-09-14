@@ -81,8 +81,8 @@ export class PolymarketVenueAdapter {
       status: "ACTIVE",
       is_neg_risk: false,
       venue_mode: this._mode,
-      yes_price: bestBid ?? 0.5,
-      no_price: bestAsk ?? 0.5,
+      yes_price: bestBid,
+      no_price: bestAsk,
       source_at: bestTimestamp,
       received_at: bestTimestamp,
     };

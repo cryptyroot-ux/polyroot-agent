@@ -101,3 +101,24 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
     assert.equal(res?.order_id, "venue_9");
   });
 });
+describe("R09: Market snapshot must not fabricate execution data", () => {
+  it("empty order book yields undefined yes_price and no_price", async () => {
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async () => ({ bids: [], asks: [] }),
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    const snap = await adapter.getOrderBook("empty-market");
+    assert.equal(snap.yes_price, undefined, "yes_price must be undefined when no bids exist");
+    assert.equal(snap.no_price, undefined, "no_price must be undefined when no asks exist");
+  });
+
+  it("missing bids yields undefined yes_price only", async () => {
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async () => ({ bids: [], asks: [{ price: "0.7", size: "50" }] }),
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    const snap = await adapter.getOrderBook("partial-market");
+    assert.equal(snap.yes_price, undefined, "yes_price must be undefined when bids empty");
+    assert.equal(snap.no_price, 0.7, "no_price must reflect actual ask");
+  });
+});
