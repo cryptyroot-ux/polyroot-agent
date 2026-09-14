@@ -21,7 +21,7 @@ export interface InFlightOrder {
   reconcileCount: number;
   resolved: boolean;
   resolvedAt: Date | undefined;
-  resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | "CANCEL_CERTAIN" | undefined;
+  resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | undefined;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -78,9 +78,9 @@ export class PgRecoveryLedger implements IRecoveryLedger {
 
   async resolve(orderId: string, fromVenue: boolean, result?: OrderResult): Promise<void> {
     if (!fromVenue) return;
-    // Default to CANCEL_CERTAIN when resolved from venue without a specific result
-    // (matches original behavior where any venue-sourced resolution = CANCEL_CERTAIN)
-    let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | "CANCEL_CERTAIN" = "CANCEL_CERTAIN";
+    // No default to CANCEL_CERTAIN: timeout/error without venue result is definitively unknown,
+    // treated as DEFINITIVE_REJECT. CANCEL_CERTAIN is reserved only for explicit cancel confirmations.
+    let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" = "DEFINITIVE_REJECT";
     if (result) {
       if (
         result.order_status === "LIVE" ||
@@ -214,9 +214,9 @@ export class MemRecoveryLedger implements IRecoveryLedger {
   async resolve(orderId: string, fromVenue: boolean, result?: OrderResult): Promise<void> {
     const o = this.orders.get(orderId);
     if (o && fromVenue) {
-      // Default to CANCEL_CERTAIN when resolved from venue without a specific result
-      // (matches original behavior where any venue-sourced resolution = CANCEL_CERTAIN)
-      let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | "CANCEL_CERTAIN" = "CANCEL_CERTAIN";
+      // No default to CANCEL_CERTAIN: timeout/error without venue result is
+      // treated as DEFINITIVE_REJECT. CANCEL_CERTAIN only with explicit venue cancel.
+      let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" = "DEFINITIVE_REJECT";
       if (result) {
         if (
           result.order_status === "LIVE" ||
@@ -240,8 +240,6 @@ export class MemRecoveryLedger implements IRecoveryLedger {
       if (resolvedState === "ACKNOWLEDGED") {
         o.state = "ACKNOWLEDGED";
         o.acknowledgedAt = new Date();
-      } else if (resolvedState === "CANCEL_CERTAIN") {
-        o.state = "CANCEL_CERTAIN";
       } else {
         o.state = "DEFINITIVE_REJECT";
       }

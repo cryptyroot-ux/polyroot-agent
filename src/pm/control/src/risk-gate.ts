@@ -21,7 +21,7 @@ import type {
 import { RiskDecisionSchema, RiskPolicySchema, TradeIntentSchema } from "@polyroot/domain";
 import { MoneyKernel, cashNeededFor } from "@polyroot/risk";
 import { decimalToBase } from "@polyroot/signer";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 export interface RiskGateInput {
   intent: TradeIntent;
@@ -117,7 +117,7 @@ export async function validateAndReserve(
   const sizeBase = decimalToBase(size);
   const priceBase = decimalToBase(price);
   const maxCashBase = cashNeededFor(sizeBase, priceBase);
-  const decisionId = ulid();
+  const decisionId = randomUUID();
 
   const reserved = await kernel.reserve({
     decisionId,

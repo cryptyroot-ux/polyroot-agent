@@ -202,7 +202,7 @@ export class PgProjectionEngine implements ProjectionEngine {
 
   async process(options: ProjectionOptions): Promise<ProjectionResult[]> {
     const checkpoint = await this.getCheckpoint(options.projectionName);
-    const startSeq = checkpoint > options.fromSequence ? checkpoint : options.fromSequence;
+    const startSeq = checkpoint >= options.fromSequence ? checkpoint + 1n : options.fromSequence;
 
     // Get events to process
     const replayOptions: EventCursor & { aggregateId?: string } = {

@@ -8,7 +8,7 @@
  * fields must never expand capabilities.
  */
 import { z } from "zod";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 /** Current canonical schema version for all domain objects. */
 export const SCHEMA_VERSION = "1.0.0" as const;
@@ -17,7 +17,7 @@ export const SCHEMA_VERSION = "1.0.0" as const;
  * Branded types for type safety
  */
 export type Brand<T, B> = T & { __brand: B };
-export type ULID = Brand<string, "ULID">;
+export type UUID = Brand<string, "UUID">;
 export type MarketId = Brand<string, "MarketId">;
 export type EventId = Brand<string, "EventId">;
 export type ConditionId = Brand<string, "ConditionId">;
@@ -36,10 +36,12 @@ export type WalletId = Brand<string, "WalletId">;
 export type WalletAddress = Brand<string, "WalletAddress">;
 
 /**
- * ULID generator
+ * UUID generator (RFC 4122 v4) for all financial identifiers.
+ * Non-financial identifiers (event_ids, market_ids, etc.) should
+ * continue using ULID where appropriate.
  */
 export function generateId<T extends string>(): Brand<string, T> {
-  return ulid() as Brand<string, T>;
+  return randomUUID() as unknown as Brand<string, T>;
 }
 
 /**
@@ -243,7 +245,7 @@ export type AssetKind = z.infer<typeof AssetKindSchema>;
 /** Signer / account / funder are distinct verified identifiers (PM-WAL-03). */
 export const WalletIdentitySchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  wallet_id: z.string().ulid(),
+  wallet_id: z.string().uuid(),
   wallet_type: WalletTypeSchema,
   signer_address: z.string().min(1),
   account_wallet: z.string().min(1),
@@ -273,8 +275,8 @@ export type AssetRecord = z.infer<typeof AssetRecordSchema>;
  */
 export const MandateSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  mandate_id: z.string().ulid(),
-  wallet_id: z.string().ulid(),
+  mandate_id: z.string().uuid(),
+  wallet_id: z.string().uuid(),
   release_manifest: z.string().min(1),
   policy_version: z.string().min(1),
   policy_hash: z.string().min(1),
@@ -396,9 +398,9 @@ export type ForecastComponent = z.infer<typeof ForecastComponentSchema>;
 /** Structured probabilistic forecast with lineage and abstention. */
 export const ForecastSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  forecast_id: z.string().ulid(),
+  forecast_id: z.string().uuid(),
   /** Backwards-compatible alias. */
-  id: z.string().ulid().optional(),
+  id: z.string().uuid().optional(),
   market_id: z.string().min(1),
   rules_version: z.string().min(1).optional(),
   graph_version: z.string().min(1).optional(),
@@ -428,7 +430,7 @@ export type Forecast = z.infer<typeof ForecastSchema>;
 /** Strategy proposal — proposal only, never a financial effect. */
 export const StrategyProposalSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  proposal_id: z.string().ulid(),
+  proposal_id: z.string().uuid(),
   strategy: z.string().min(1),
   strategy_version: z.string().min(1),
   strategy_params: z.record(z.unknown()).optional(),
@@ -448,7 +450,7 @@ export type StrategyProposal = z.infer<typeof StrategyProposalSchema>;
 /** Trade intent — durable, idempotent, credential-free. */
 export const TradeIntentSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  intent_id: z.string().ulid(),
+  intent_id: z.string().uuid(),
   dedupe_key: z.string().min(1),
   purpose: IntentPurposeSchema,
   market_id: z.string().min(1),
@@ -466,7 +468,7 @@ export const TradeIntentSchema = z.object({
   evidence_ids: z.array(z.string()).default([]),
   status: IntentStatusSchema.default("CREATED"),
   /** Backwards-compatible aliases for older scaffolds. */
-  id: z.string().ulid().optional(),
+  id: z.string().uuid().optional(),
   price: z.number().min(0).max(1).optional(),
   size: z.number().positive().optional(),
   order_type: z.enum(["LIMIT", "POST_ONLY", "FOK", "IOC"]).optional(),
@@ -483,8 +485,8 @@ export type TradeIntent = z.infer<typeof TradeIntentSchema>;
 /** Risk engine decision on an intent. */
 export const RiskDecisionSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  decision_id: z.string().ulid(),
-  intent_id: z.string().ulid(),
+  decision_id: z.string().uuid(),
+  intent_id: z.string().uuid(),
   status: z.enum(["ACCEPTED", "REJECTED", "MODIFIED"]),
   reservation_ids: z.array(z.string()).default([]),
   /** Backwards-compatible single-reservation alias. */
@@ -512,16 +514,16 @@ export const RiskDecisionSchema = z.object({
     .optional(),
   decided_at: z.date(),
   /** Backwards-compatible alias. */
-  id: z.string().ulid().optional(),
+  id: z.string().uuid().optional(),
 });
 export type RiskDecision = z.infer<typeof RiskDecisionSchema>;
 
 /** Short-lived execution permit — atomic with the reservation (PM-RISK-03). */
 export const ExecutionPermitSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  permit_id: z.string().ulid(),
-  decision_id: z.string().ulid(),
-  intent_id: z.string().ulid(),
+  permit_id: z.string().uuid(),
+  decision_id: z.string().uuid(),
+  intent_id: z.string().uuid(),
   ledger_version: z.string().min(1),
   policy_version: z.string().min(1),
   policy_hash: z.string().min(1),
@@ -544,7 +546,7 @@ export type ExecutionPermit = z.infer<typeof ExecutionPermitSchema>;
 /** Signed order ready for venue submission. */
 export const SignedOrderSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  order_id: z.string().ulid(),
+  order_id: z.string().uuid(),
   market_id: z.string().min(1),
   side: z.enum(["BUY", "SELL"]),
   price: z.number().min(0).max(1),
@@ -609,7 +611,7 @@ export type LedgerEventType = z.infer<typeof LedgerEventTypeSchema>;
 
 export const LedgerEventSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  id: z.string().ulid(),
+  id: z.string().uuid(),
   type: LedgerEventTypeSchema,
   aggregate_id: z.string().min(1),
   aggregate_type: z.enum([
@@ -830,7 +832,7 @@ export type SourceClass = z.infer<typeof SourceClassSchema>;
  */
 export const SourceRecordSchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
-  source_id: z.string().ulid(),
+  source_id: z.string().uuid(),
   url: z.string().min(1),
   epistemic_class: z.enum(["PRIMARY", "SECONDARY", "AGGREGATOR", "UNKNOWN"]),
   domain: z.string().min(1),

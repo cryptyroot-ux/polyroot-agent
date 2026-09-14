@@ -504,7 +504,12 @@ export async function runPaperLoopWithOrchestrator(
     params.onEntry(m);
     if (gate !== "ALLOW") continue; // entry or financially blocked -> no new order
     const size = params.sizeIntent(m, p);
-    await params.orchestrate({ ...m, p, size });
+    try {
+      await params.orchestrate({ ...m, p, size });
+    } catch {
+      // Orchestrate failure: skip simulation and do not record a decision.
+      continue;
+    }
     // Simulated fill for accounting (still no financial I/O):
     const fill = simulateFill({ ...params.feeInput, size, bid: m.bid, ask: m.ask });
     const pnl = fill.status === "CANCELLED" ? 0 : (p - 0.5) * fill.filledSize - (fill.makerFee + fill.takerFee);

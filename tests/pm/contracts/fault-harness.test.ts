@@ -9,13 +9,13 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 import {
   Executor,
   orderLifecycleNext,
   type OrderLifecycleState,
 } from "@polyroot/executor";
-import { MemPermitStore, MemRecoveryLedger } from "@polyroot/venue";
+import { MemPermitStore, MemRecoveryLedger, MemLeaseStore } from "@polyroot/venue";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import { RecoveryLedger, RecoveryInFlightOrder } from "@polyroot/venue";
 import type {
@@ -54,9 +54,9 @@ import {
 function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
   return {
     schema_version: "1.1",
-    permit_id: ulid(),
-    decision_id: ulid(),
-    intent_id: ulid(),
+    permit_id: randomUUID(),
+    decision_id: randomUUID(),
+    intent_id: randomUUID(),
     ledger_version: "0003",
     policy_version: "v0-bootstrap",
     policy_hash: "ph_audited",
@@ -137,6 +137,9 @@ function makeExecutor(adapter: FakeAdapter, now = new Date("2026-01-01T00:00:30Z
     permitStore: new MemPermitStore({ clock: () => now }),
     recoveryLedger: new MemRecoveryLedger(),
     leaseEpoch: 1,
+    walletId: "0xWALLET",
+    holder: "0xHOLDER",
+    leaseStore: new MemLeaseStore(),
   });
   return { ex, seen };
 }
@@ -230,6 +233,10 @@ class MemBalance implements BalanceStore {
     }
     entry.committed -= amount;
   }
+async getOpenCount(account: string, asset: string): Promise<number> {
+    const entry = this.getEntry(account, asset);
+    return entry.committed > 0n ? 1 : 0;
+  }
 }
 class NoopSink implements KernelEventSink {
   async push(_ev: string, _d: Record<string, unknown>): Promise<void> {}
@@ -244,8 +251,8 @@ describe("FT-01 — Concurrent spend: at most one reservation commits", () => {
       now: () => new Date("2026-01-01T00:00:00Z"),
     });
     const base = {
-      decisionId: ulid(),
-      intentId: ulid(),
+      decisionId: randomUUID(),
+      intentId: randomUUID(),
       account: "0xA",
       asset: "USDC",
       maxCashBase: 5_000_000n,
@@ -258,10 +265,10 @@ describe("FT-01 — Concurrent spend: at most one reservation commits", () => {
       leaseEpoch: 1,
       now: new Date("2026-01-01T00:00:00Z"),
     };
-    const r1 = await kernel.reserve({ ...base, decisionId: ulid(), intentId: ulid() });
+    const r1 = await kernel.reserve({ ...base, decisionId: randomUUID(), intentId: randomUUID() });
     assert.equal(r1.ok, true);
     // Second intent also needs 5 USDC but only 1 remains.
-    const r2 = await kernel.reserve({ ...base, decisionId: ulid(), intentId: ulid() });
+    const r2 = await kernel.reserve({ ...base, decisionId: randomUUID(), intentId: randomUUID() });
     assert.equal(r2.ok, false);
     if (!r2.ok) assert.equal(r2.code, "INSUFFICIENT_FUNDS");
   });

@@ -186,7 +186,8 @@ describe("In-flight recovery (PM-VENUE-03/06)", () => {
     // Only a venue-sourced definitive result resolves it.
     rl.resolve("ord_A", true);
     assert.equal(rl.needsReconcile("ord_A"), false);
-    assert.deepEqual(rl.certainCancels(), ["ord_A"]);
+    // Without explicit cancel result, defaults to DEFINITIVE_REJECT (not CANCEL_CERTAIN).
+    assert.deepEqual(rl.certainCancels(), []);
   });
 
   it("cancel certainty is not granted by our own request bookkeeping", () => {

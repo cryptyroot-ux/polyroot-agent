@@ -44,7 +44,7 @@ describe("PostgreSQL persistence integration (points #1-#3)", { skip: !DB_OK }, 
     assert.equal(before.availableBase, 5_000_000n);
 
     // Commit 2,000,000 (reserve) → available 3,000,000
-    await store.commit("pg_it_wallet", "pUSD", 2_000_000n);
+    await store.reserveFunds("pg_it_wallet", "pUSD", 2_000_000n);
     const after = await store.get("pg_it_wallet", "pUSD");
     assert.equal(after.availableBase, 3_000_000n);
     assert.equal(after.committedBase, 2_000_000n);
@@ -214,6 +214,7 @@ describe("G4-G6 runtime PostgreSQL integration", { skip: !DB_OK }, () => {
     const pool = new Pool({ connectionString: PG_URL });
 
     const paperLog = new PgPaperLog(pool);
+    await pool.query("TRUNCATE TABLE paper_log RESTART IDENTITY");
     const registry = new PgExperimentRegistry(pool);
 
     // Preregister before running (no cherry-picking)

@@ -16,6 +16,7 @@ import {
   computeEconomicMetrics,
   ExperimentRegistry,
   runPaperLoop,
+  runPaperLoopWithOrchestrator,
   type SimulatedFill,
 } from "@polyroot/runtime";
 
@@ -35,6 +36,7 @@ describe("PR-VAL-04: paper fill simulator", () => {
       partialFraction: 0.5,
       rng: () => 0.5,
     });
+
     assert.equal(fill.status, "FILLED");
     assert.equal(fill.filledSize, 10);
     assert.equal(fill.fillPrice, 0.4);
@@ -75,6 +77,34 @@ describe("PR-VAL-04: paper fill simulator", () => {
     });
     assert.equal(fill.status, "CANCELLED");
     assert.equal(fill.filledSize, 0);
+  });
+
+  it("does not simulate fill if orchestrate fails", async () => {
+    let orchestrateCalled = false;
+    const result = await runPaperLoopWithOrchestrator({
+      markets: [{ market_id: "m1", bid: 0.4, ask: 0.6 }],
+      feeInput: {
+        depth: 100,
+        taker: true,
+        makerFeeBps: 0,
+        takerFeeBps: 200,
+        latencyMs: 5,
+        cancelProbability: 0,
+        partialFraction: 0.5,
+        rng: () => 0.5,
+      },
+      forecast: () => 0.8,
+      sizeIntent: () => 10,
+      computeGate: () => "ALLOW",
+      onEntry: () => {},
+      orchestrate: async () => {
+        orchestrateCalled = true;
+        throw new Error("fail");
+      },
+    });
+
+    assert.equal(orchestrateCalled, true);
+    assert.equal(result.decisions.length, 0);
   });
 });
 
@@ -238,7 +268,7 @@ describe("G4: full autonomous paper loop", () => {
         cancelProbability: 0,
         partialFraction: 0.5,
         rng: () => 0.5,
-      },
+      }
     );
 
     assert.equal(result.decisions.length, 3);
@@ -273,7 +303,7 @@ describe("G4: full autonomous paper loop", () => {
         cancelProbability: 0.5,
         partialFraction: 0.5,
         rng: () => 0.9,
-      },
+      }
     );
     for (const d of result.decisions) {
       assert.equal(d.action, "NO_TRADE");

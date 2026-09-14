@@ -7,7 +7,7 @@
  * PostgreSQL implementations live in pg-*.ts files.
  */
 
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 import {
   type LedgerEvent,
   type TradeIntent,
@@ -81,7 +81,7 @@ export function mapEntriesToEvent(
 ): LedgerEvent {
   return {
     schema_version: "1.0.0",
-    id: ulid(),
+    id: randomUUID(),
     type: "INTENT_PROPOSED",
     aggregate_id: intent.intent_id,
     aggregate_type: "Intent",

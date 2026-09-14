@@ -4,7 +4,7 @@ import { orchestrate, type OrchestratorDeps } from "@polyroot/control";
 import { Executor, type OrderLifecycleState } from "@polyroot/executor";
 import { MoneyKernel, type BalanceStore, type KernelEventSink } from "@polyroot/risk";
 import { SignerVault } from "@polyroot/signer";
-import { MemPermitStore, MemRecoveryLedger } from "@polyroot/venue";
+import { MemPermitStore, MemRecoveryLedger, MemLeaseStore } from "@polyroot/venue";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import {
   DEFAULT_RISK_POLICY,
@@ -17,7 +17,7 @@ import {
   type VenueMode,
   type WalletIdentity,
 } from "@polyroot/domain";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 class FakeBalanceStore implements BalanceStore {
   available: bigint;
@@ -51,6 +51,10 @@ class FakeBalanceStore implements BalanceStore {
   async consumeFunds(_a: string, _s: string, amount: bigint): Promise<void> {
     if (this.committed < amount) throw new Error("INSUFFICIENT_COMMITTED");
     this.committed -= amount;
+  }
+
+  async getOpenCount(_a: string, _s: string): Promise<number> {
+    return 0;
   }
 }
 
@@ -104,7 +108,7 @@ class FakeAdapter implements VenueAdapter {
 function makeWallet(over: Partial<WalletIdentity> = {}): WalletIdentity {
   return {
     schema_version: "1.1",
-    wallet_id: ulid(),
+    wallet_id: randomUUID(),
     wallet_type: "DEPOSIT_WALLET",
     signer_address: "0xSIGNER",
     account_wallet: "0xACCOUNT",
@@ -118,7 +122,7 @@ function makeWallet(over: Partial<WalletIdentity> = {}): WalletIdentity {
 function makeIntent(over: Partial<TradeIntent> = {}): TradeIntent {
   return {
     schema_version: "1.1",
-    intent_id: ulid(),
+    intent_id: randomUUID(),
     dedupe_key: "dk_1",
     purpose: "ENTRY",
     market_id: "mkt_1",
@@ -133,7 +137,7 @@ function makeIntent(over: Partial<TradeIntent> = {}): TradeIntent {
 function makeForecast(over: Partial<Forecast> = {}): Forecast {
   return {
     schema_version: "1.1",
-    forecast_id: ulid(),
+    forecast_id: randomUUID(),
     market_id: "mkt_1",
     p_calibrated: 0.7,
     confidence: 0.8,
@@ -196,6 +200,9 @@ function makeDeps(adapter: FakeAdapter, over: Partial<OrchestratorDeps> = {}): {
       get: (id: string) => seen.get(id),
     },
     permitStore: new MemPermitStore({ clock: () => NOW }),
+    walletId: "0xWALLET",
+    holder: "0xHOLDER",
+    leaseStore: new MemLeaseStore(),
     recoveryLedger: new MemRecoveryLedger(),
     leaseEpoch: 1,
   });

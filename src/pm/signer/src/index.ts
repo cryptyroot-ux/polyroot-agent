@@ -66,6 +66,10 @@ export interface SignRequest {
   venueMode: VenueMode;
   /** Wall-clock freshness check source. */
   now: Date;
+  /** Order side (BUY/SELL) bound to the signed request. */
+  side: "BUY" | "SELL";
+  /** Price in base units (same decimals as COLLATERAL_DECIMALS). */
+  priceBase: bigint;
   /** SHA-256 hash of the canonical serialized SignRequest (all fields above). */
   payloadHash: string;
 }
@@ -127,6 +131,11 @@ export function computePayloadHash(request: SignRequest): string {
     request.marketContext,
     request.venueMode,
     request.now.toISOString(),
+    // Order binding (side + price) — critical for full payload binding.
+    // Defensive: callers that build a request without side/priceBase yet
+    // (e.g. computing a placeholder hash) must not crash the hash function.
+    request.side ?? "",
+    (request.priceBase !== undefined ? request.priceBase.toString() : ""),
   ].join("|");
 
   return createHash("sha256").update(payload).digest("hex");

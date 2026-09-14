@@ -77,16 +77,20 @@ export class PgBalanceStore implements BalanceStore {
     }
   }
 
-  /** Consume funds: move from committed to final settlement (negative delta). */
+  /** Consume funds: move from committed to final settlement (decrease committed only). */
   async consumeFunds(account: string, asset: string, amountBase: bigint): Promise<void> {
-    // Same SQL operation as release: decrease committed
+    // Directly decrease committed_base without affecting available_base.
+    // This represents final economic settlement; funds are removed, not returned.
     const result = await this.pool.query(
-      `SELECT balance_commit($1, $2, $3)`,
-      [account, asset, (-amountBase).toString()],
+      `UPDATE balance_entries
+       SET committed_base = GREATEST(committed_base - $3::numeric, 0),
+           updated_at = now()
+       WHERE account = $1 AND asset = $2
+         AND committed_base >= $3::numeric
+       RETURNING committed_base`,
+      [account, asset, amountBase.toString()],
     );
-
-    const success = result.rows[0]?.balance_commit;
-    if (!success) {
+    if (result.rowCount === 0) {
       const current = await this.get(account, asset);
       throw new Error(`INSUFFICIENT_COMMITTED_FOR_CONSUME: account=${account} asset=${asset} committed=${current.committedBase} consume=${amountBase}`);
     }

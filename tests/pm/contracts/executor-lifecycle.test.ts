@@ -13,7 +13,7 @@ import type {
   OrderResult,
   VenueMode,
 } from "@polyroot/domain";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 class FakeAdapter implements VenueAdapter {
   mode: VenueMode = "NORMAL";
@@ -55,9 +55,9 @@ class FakeAdapter implements VenueAdapter {
 function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
   return {
     schema_version: "1.1",
-    permit_id: ulid(),
-    decision_id: ulid(),
-    intent_id: ulid(),
+    permit_id: randomUUID(),
+    decision_id: randomUUID(),
+    intent_id: randomUUID(),
     ledger_version: "0003",
     policy_version: "v0-bootstrap",
     policy_hash: "ph_audited",
@@ -92,7 +92,7 @@ function makeSignedOrder(id = "ord_1", permitId?: string): SignedOrder {
   };
 }
 
-import { MemPermitStore, MemRecoveryLedger } from "@polyroot/venue";
+import { MemPermitStore, MemRecoveryLedger, MemLeaseStore } from "@polyroot/venue";
 
 function makeDeps(
   adapter: FakeAdapter,
@@ -112,6 +112,9 @@ function makeDeps(
     permitStore,
     recoveryLedger,
     leaseEpoch: 1,
+    walletId: "0xWALLET",
+    holder: "0xHOLDER",
+    leaseStore: new MemLeaseStore(),
   };
   return { deps, permitStore, recoveryLedger, seen };
 }

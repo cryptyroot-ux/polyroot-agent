@@ -7,6 +7,7 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
+import { createHash } from "crypto";
 import type { ExecutionPermit } from "@polyroot/domain";
 
 /** Interface for permit persistence and atomic claim. */
@@ -21,6 +22,8 @@ export interface PermitStore {
   isClaimed(permitId: string): Promise<boolean>;
   /** Get permit by ID for reconciliation. */
   get(permitId: string): Promise<ExecutionPermit | null>;
+  /** Close underlying resources. */
+  close(): Promise<void>;
 }
 
 /** PostgreSQL implementation using the execution_permits table. */
@@ -31,6 +34,31 @@ export class PgPermitStore implements PermitStore {
     this.pool = config instanceof Pool ? config : new Pool(typeof config === "string" ? { connectionString: config } : config);
   }
 
+  private computePermitHash(permit: ExecutionPermit): string {
+    const payload = [
+      permit.schema_version,
+      permit.permit_id,
+      permit.decision_id,
+      permit.intent_id,
+      permit.ledger_version,
+      permit.policy_version,
+      permit.policy_hash,
+      permit.quote_id,
+      String(permit.lease_epoch),
+      permit.reservation_ids.join(","),
+      String(permit.max_qty),
+      String(permit.max_cash),
+      permit.allowed_order_style.join(","),
+      permit.venue_mode,
+      permit.issued_at instanceof Date ? permit.issued_at.toISOString() : permit.issued_at,
+      permit.expires_at instanceof Date ? permit.expires_at.toISOString() : permit.expires_at,
+      String(permit.single_use),
+      permit.used_at ? (permit.used_at instanceof Date ? permit.used_at.toISOString() : permit.used_at) : "null",
+    ].join("|");
+
+    return createHash("sha256").update(payload).digest("hex");
+  }
+
   async save(permit: ExecutionPermit): Promise<void> {
     await this.pool.query(
       `INSERT INTO execution_permits (
@@ -39,8 +67,23 @@ export class PgPermitStore implements PermitStore {
         allowed_order_style, venue_mode, issued_at, expires_at, single_use, used_at, schema_version
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       ON CONFLICT (permit_id) DO UPDATE SET
-        used_at = EXCLUDED.used_at,
-        schema_version = EXCLUDED.schema_version`,
+        decision_id = EXCLUDED.decision_id,
+        intent_id = EXCLUDED.intent_id,
+        ledger_version = EXCLUDED.ledger_version,
+        policy_version = EXCLUDED.policy_version,
+        policy_hash = EXCLUDED.policy_hash,
+        quote_id = EXCLUDED.quote_id,
+        lease_epoch = EXCLUDED.lease_epoch,
+        reservation_ids = EXCLUDED.reservation_ids,
+        max_qty = EXCLUDED.max_qty,
+        max_cash = EXCLUDED.max_cash,
+        allowed_order_style = EXCLUDED.allowed_order_style,
+        venue_mode = EXCLUDED.venue_mode,
+        issued_at = EXCLUDED.issued_at,
+        expires_at = EXCLUDED.expires_at,
+        single_use = EXCLUDED.single_use,
+        schema_version = EXCLUDED.schema_version
+      `,
       [
         permit.permit_id,
         permit.decision_id,
@@ -64,22 +107,38 @@ export class PgPermitStore implements PermitStore {
     );
   }
 
-  /**
-   * Atomically claim a permit for an order.
-   * Only succeeds if: permit exists, not used, not expired.
-   * Uses PostgreSQL row lock to prevent concurrent claims.
-   */
   async claim(permitId: string, orderId: string): Promise<boolean> {
-    // The claim is now bound to the specific orderId.
+    const now = new Date();
+
+    // First, fetch the current permit to compute what the hash will be
+    const permitResult = await this.pool.query(
+      `SELECT * FROM execution_permits WHERE permit_id = $1`,
+      [permitId],
+    );
+
+    if (permitResult.rowCount === 0) return false;
+    const row = permitResult.rows[0];
+
+    if (row.used_at !== null) return false;
+    if (now > row.expires_at) return false;
+
+    // Create a shadow object to compute hash (match logic in domain)
+    const permitAfterClaim: ExecutionPermit = {
+      ...row,
+      used_at: now
+    };
+    const payloadHash = this.computePermitHash(permitAfterClaim);
+
     const result = await this.pool.query(
       `UPDATE execution_permits
-       SET used_at = now(),
-           claimed_order_id = $2
+       SET used_at = $3,
+           claimed_order_id = $2,
+           payload_hash = $4
        WHERE permit_id = $1
          AND used_at IS NULL
-         AND expires_at > now()
+         AND expires_at > $3
        RETURNING permit_id`,
-      [permitId, orderId],
+      [permitId, orderId, now, payloadHash],
     );
     return result.rowCount === 1;
   }
@@ -136,9 +195,6 @@ export class MemPermitStore implements PermitStore {
   }
 
   async save(permit: ExecutionPermit): Promise<void> {
-    // Preserve any existing single-use claim: an upsert must never silently
-    // clear a claim that was already recorded for this permit_id. The PG
-    // implementation mirrors this by only updating the fields it is asked to.
     const existing = this.permits.get(permit.permit_id);
     this.permits.set(permit.permit_id, { ...permit, claimed: existing?.claimed ?? false });
   }
@@ -148,9 +204,7 @@ export class MemPermitStore implements PermitStore {
     if (!permit) return false;
     if (permit.claimed) return false;
     if (this.clock() > permit.expires_at) return false;
-    // Atomic in JS: check-then-set on the same object in single-threaded event loop
     permit.claimed = true;
-    // Store the orderId for binding check (optional for mem store, but we do it for consistency)
     (permit as any).claimedOrderId = orderId;
     return true;
   }
@@ -163,10 +217,12 @@ export class MemPermitStore implements PermitStore {
   async get(permitId: string): Promise<ExecutionPermit | null> {
     const permit = this.permits.get(permitId);
     if (!permit) return null;
-    // `claimed` is intentionally not part of the public ExecutionPermit contract;
-    // it is the internal single-use flag consumed by claim()/isClaimed().
     const { claimed: _claimed, ...rest } = permit;
     void _claimed;
     return rest;
+  }
+
+  async close(): Promise<void> {
+    // No-op
   }
 }

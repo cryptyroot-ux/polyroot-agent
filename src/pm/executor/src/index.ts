@@ -35,6 +35,8 @@
  * dependency in the tests.
  */
 
+import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
+import type { IRecoveryLedger, PermitStore, LeaseStore } from "@polyroot/venue";
 import type {
   ExecutionPermit,
   OrderResult,
@@ -44,20 +46,35 @@ import type {
   VenueMode,
 } from "@polyroot/domain";
 import { ExecutionPermitSchema } from "@polyroot/domain";
-import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import { venueActionGate } from "@polyroot/venue";
 import { cashNeededFor } from "@polyroot/risk";
 import { decimalToBase } from "@polyroot/signer";
-import type { PermitStore } from "@polyroot/venue";
-import type { IRecoveryLedger } from "@polyroot/venue";
 
-export type { ExecutionPermit, SignedOrder, OrderResult };
-export type {
-  TradeIntent,
-  RiskDecision,
-  SubmitStatus,
-  OrderStatus,
-} from "@polyroot/domain";
+/* ── Executor dependencies ──────────────────────────────────────────────── */
+
+export interface ExecutorDeps {
+  adapter: VenueAdapter;
+  /** clock injection for permit TTL recheck. */
+  now: () => Date;
+  /** idempotency log: tracks every order_id already seen. */
+  seen: {
+    has(orderId: string): boolean;
+    add(orderId: string, state: OrderLifecycleState): void;
+    get(orderId: string): OrderLifecycleState | undefined;
+  };
+  /** Durable permit store with atomic single-use claim. */
+  permitStore: PermitStore;
+  /** Durable recovery ledger for in-flight orders and reconciliation. */
+  recoveryLedger: IRecoveryLedger;
+  /** Per-wallet lease epoch for executor fencing. */
+  leaseEpoch: number;
+  /** Wallet ID for lease acquisition. */
+  walletId: string;
+  /** Holder identifier for this executor instance. */
+  holder: string;
+  /** Durable lease store with epoch fencing. */
+  leaseStore: LeaseStore;
+}
 
 /* ── Order lifecycle state machine (TABLE 16) ───────────────────────────── */
 
@@ -122,26 +139,6 @@ export function orderLifecycleNext(
   }
 }
 
-/* ── Executor dependencies ──────────────────────────────────────────────── */
-
-export interface ExecutorDeps {
-  adapter: VenueAdapter;
-  /** clock injection for permit TTL recheck. */
-  now: () => Date;
-  /** idempotency log: tracks every order_id already seen. */
-  seen: {
-    has(orderId: string): boolean;
-    add(orderId: string, state: OrderLifecycleState): void;
-    get(orderId: string): OrderLifecycleState | undefined;
-  };
-  /** Durable permit store with atomic single-use claim. */
-  permitStore: PermitStore;
-  /** Durable recovery ledger for in-flight orders and reconciliation. */
-  recoveryLedger: IRecoveryLedger;
-  /** Per-wallet lease epoch for executor fencing. */
-  leaseEpoch: number;
-}
-
 /* ── Execute result ─────────────────────────────────────────────────────── */
 
 export type TrySubmitResult =
@@ -188,9 +185,30 @@ export class Executor {
     order: SignedOrder,
     permit: ExecutionPermit,
   ): Promise<TrySubmitResult> {
-    // 1. Idempotency — never submit an order we have already seen.
+    // 0. Lease epoch fencing — only the current lease holder may submit.
+    // This prevents split-brain on network partition or duplicate worker startup.
+    const leaseAcquired = await this.deps.leaseStore.acquireExecutorLease(
+      this.deps.walletId,
+      this.deps.holder,
+      this.deps.leaseEpoch,
+      30, // 30 seconds TTL
+    );
+    if (!leaseAcquired) {
+      return {
+        outcome: "PERMIT_INVALID",
+        code: "LEASE_NOT_ACQUIRED",
+        reason: "executor lease not acquired",
+      };
+    }
+
+    // Check for duplicate order ID (idempotency)
     const prior = this.deps.seen.get(order.order_id);
     if (prior && prior !== "DEFINITIVE_REJECT") {
+      // Release lease since we're not proceeding (duplicate order)
+      await this.deps.leaseStore.releaseExecutorLease(
+        this.deps.walletId,
+        this.deps.holder,
+      );
       return {
         outcome: "DUPLICATE",
         code: "ALREADY_SEEN",
@@ -215,7 +233,7 @@ export class Executor {
     }
 
     // 3. Permit–order binding: when the signed order carries a permit_id it
-    //    MUST match the presented permit. This prevents a permit issued for
+    //    MUST match the presented permit exactly. This prevents a permit issued for
     //    market A from being used to submit an order bound to market B.
     if (order.permit_id && order.permit_id !== permit.permit_id) {
       return {
@@ -243,30 +261,29 @@ export class Executor {
     //    retried cleanly (no false duplicate lock).
     const gate = venueActionGate(this.deps.adapter.mode, "ORDER_SUBMIT");
     if (!gate.allowed) {
+      // Release lease since we're not proceeding
+      await this.deps.leaseStore.releaseExecutorLease(
+        this.deps.walletId,
+        this.deps.holder,
+      );
       return { outcome: "MODE_FORBIDS", code: gate.code, reason: gate.reason };
     }
 
-    // 6. Lease epoch fencing — only the current lease holder may submit.
-    // This prevents split-brain on network partition or duplicate worker startup.
-    // The permit's lease_epoch must match the current executor lease epoch.
-    if (permit.lease_epoch !== this.deps.leaseEpoch) {
-      return {
-        outcome: "PERMIT_INVALID",
-        code: "LEASE_EPOCH_MISMATCH",
-        reason: `permit lease epoch ${permit.lease_epoch} != executor lease ${this.deps.leaseEpoch}`,
-      };
-    }
-
-    // 7. Persist the permit (idempotent upsert) so atomic claim has a record to lock.
+    // 6. Persist the permit (idempotent upsert) so atomic claim has a record to lock.
     await this.deps.permitStore.save(permit);
 
-    // 8. ATOMIC PERMIT CLAIM — single-use permit claimed atomically.
+    // 7. ATOMIC PERMIT CLAIM — single-use permit claimed atomically.
     // This replaces the check-then-act race with a single atomic operation.
     // Placed AFTER every harmless-rejectable check so a rejected order never
     // strands money authority.
     if (permit.single_use) {
       const claimed = await this.deps.permitStore.claim(permit.permit_id, order.order_id);
       if (!claimed) {
+        // Release lease since claim failed
+        await this.deps.leaseStore.releaseExecutorLease(
+          this.deps.walletId,
+          this.deps.holder,
+        );
         return {
           outcome: "PERMIT_INVALID",
           code: "PERMIT_USED",
@@ -306,10 +323,20 @@ export class Executor {
         // SUBMITTING and skip the venue query.
         this.deps.seen.add(order.order_id, "SUBMISSION_UNKNOWN");
         await this.deps.recoveryLedger.updateState(order.order_id, "SUBMISSION_UNKNOWN");
+        // Release lease since we're going to UNKNOWN state
+        await this.deps.leaseStore.releaseExecutorLease(
+          this.deps.walletId,
+          this.deps.holder,
+        );
         return { outcome: "NEEDS_RECONCILIATION", orderId: order.order_id };
       }
       const state = orderLifecycleNext("SUBMITTING", "DEFINITIVE_REJECT").state;
       await this.deps.recoveryLedger.updateState(order.order_id, state);
+      // Release lease since we're going to definitive reject state
+      await this.deps.leaseStore.releaseExecutorLease(
+        this.deps.walletId,
+        this.deps.holder,
+      );
       return {
         outcome: "PERMIT_INVALID",
         code: res.code,
@@ -325,6 +352,12 @@ export class Executor {
     await this.deps.recoveryLedger.updateState(order.order_id, st, res.result.order_id);
     this.deps.seen.add(order.order_id, st);
 
+    // Release lease since we have a definitive outcome
+    await this.deps.leaseStore.releaseExecutorLease(
+      this.deps.walletId,
+      this.deps.holder,
+    );
+
     // Resolve in recovery ledger with definitive venue result
     await this.deps.recoveryLedger.resolve(order.order_id, true, res.result);
 
@@ -335,32 +368,97 @@ export class Executor {
    * Cancel a single order, gated by venue mode. Returns a structured result.
    */
   async cancel(orderId: string): Promise<SubmitOutcome> {
+    // Acquire lease for cancel operation as well
+    const leaseAcquired = await this.deps.leaseStore.acquireExecutorLease(
+      this.deps.walletId,
+      this.deps.holder,
+      this.deps.leaseEpoch,
+      30, // 30 seconds TTL
+    );
+    if (!leaseAcquired) {
+      return {
+        ok: false,
+        code: "LEASE_NOT_ACQUIRED",
+        reason: `failed to acquire lease for wallet ${this.deps.walletId}`,
+      };
+    }
+
     const gate = venueActionGate(this.deps.adapter.mode, "ORDER_CANCEL");
     if (!gate.allowed) {
+      // Release lease since we're not proceeding
+      await this.deps.leaseStore.releaseExecutorLease(
+        this.deps.walletId,
+        this.deps.holder,
+      );
       return { ok: false, code: gate.code, reason: gate.reason };
     }
     // Record cancel request for reconciliation
     await this.deps.recoveryLedger.recordCancelRequested(orderId);
-    return this.deps.adapter.cancelOrder(orderId);
+    const res = await this.deps.adapter.cancelOrder(orderId);
+    // Release lease after cancel operation
+    await this.deps.leaseStore.releaseExecutorLease(
+      this.deps.walletId,
+      this.deps.holder,
+    );
+    return res;
   }
 
   /** Re-run reconciliation-driven resolution for an unknown order. */
   async reconcile(orderId: string): Promise<OrderLifecycleState> {
+    // For reconcile, we don't necessarily need to acquire lease since we're just
+    // querying state, but let's be safe and acquire it for consistency
+    const leaseAcquired = await this.deps.leaseStore.acquireExecutorLease(
+      this.deps.walletId,
+      this.deps.holder,
+      this.deps.leaseEpoch,
+      30, // 30 seconds TTL
+    );
+    if (!leaseAcquired) {
+      // If we can't acquire lease, we still return the current state but log this
+      // In practice, this might indicate a lease issue but we can still reconcile
+      // based on existing state
+    }
+
     const current = this.deps.seen.get(orderId) ?? "NOT_SEEN";
     // Reconciliation must never turn an unknown order back into a live submit.
-    if (current !== "SUBMISSION_UNKNOWN") return current;
+    if (current !== "SUBMISSION_UNKNOWN") {
+      // Release lease if we acquired it
+      if (leaseAcquired) {
+        await this.deps.leaseStore.releaseExecutorLease(
+          this.deps.walletId,
+          this.deps.holder,
+        );
+      }
+      return current;
+    }
 
     // Check if recovery ledger thinks this needs reconciliation
     const needsReconcile = await this.deps.recoveryLedger.needsReconcile(orderId);
     if (!needsReconcile) {
       // No longer needs reconciliation
+      // Release lease if we acquired it
+      if (leaseAcquired) {
+        await this.deps.leaseStore.releaseExecutorLease(
+          this.deps.walletId,
+          this.deps.holder,
+        );
+      }
       return current;
     }
 
     // Query the venue for the real status of the previously-unknown order.
     try {
       const result = await this.deps.adapter.getOrderStatus(orderId);
-      if (result === null) return "SUBMISSION_UNKNOWN"; // venue has no record yet
+      if (result === null) {
+        // Release lease if we acquired it
+        if (leaseAcquired) {
+          await this.deps.leaseStore.releaseExecutorLease(
+            this.deps.walletId,
+            this.deps.holder,
+          );
+        }
+        return "SUBMISSION_UNKNOWN"; // venue has no record yet
+      }
       // Order-level terminal states take precedence: a canceled / rejected /
       // expired order will never fill — mark it definitively done.
       if (
@@ -370,6 +468,13 @@ export class Executor {
       ) {
         this.deps.seen.add(orderId, "DEFINITIVE_REJECT");
         await this.deps.recoveryLedger.resolve(orderId, true, result);
+        // Release lease if we acquired it
+        if (leaseAcquired) {
+          await this.deps.leaseStore.releaseExecutorLease(
+            this.deps.walletId,
+            this.deps.holder,
+          );
+        }
         return "DEFINITIVE_REJECT";
       }
       // Venue acknowledged the submission — the order is working (LIVE /
@@ -377,12 +482,33 @@ export class Executor {
       if (result.submit_status === "ACKNOWLEDGED") {
         this.deps.seen.add(orderId, "ACKNOWLEDGED");
         await this.deps.recoveryLedger.resolve(orderId, true, result);
+        // Release lease if we acquired it
+        if (leaseAcquired) {
+          await this.deps.leaseStore.releaseExecutorLease(
+            this.deps.walletId,
+            this.deps.holder,
+          );
+        }
         return "ACKNOWLEDGED";
       }
       // Still indeterminate — keep the unknown state rather than guess.
+      // Release lease if we acquired it
+      if (leaseAcquired) {
+        await this.deps.leaseStore.releaseExecutorLease(
+          this.deps.walletId,
+          this.deps.holder,
+        );
+      }
       return "SUBMISSION_UNKNOWN";
     } catch {
       // Venue unreachable — keep the unknown state rather than guess.
+      // Release lease if we acquired it
+      if (leaseAcquired) {
+        await this.deps.leaseStore.releaseExecutorLease(
+          this.deps.walletId,
+          this.deps.holder,
+        );
+      }
       return "SUBMISSION_UNKNOWN";
     }
   }

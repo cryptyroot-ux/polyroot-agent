@@ -7,7 +7,7 @@
  * reach the network. The wired VenueAdapter (Phase 9) applies them.
  */
 
-import type { AccountMode, VenueCapability, VenueMode } from "@polyroot/domain";
+import type { AccountMode, VenueCapability, VenueMode, OrderResult } from "@polyroot/domain";
 
 /* ─── 0. Venue-mode action gate (TABLE 17, PM-VENUE-01) ────────────────── */
 
@@ -427,7 +427,15 @@ export class RateGovernor {
 
 /* ─── 4. In-flight uncertainty & restart recovery (PM-VENUE-03/06) ─────── */
 
-export type InFlightState = "SUBMITTED_UNKNOWN" | "CANCEL_UNKNOWN" | "CANCEL_CERTAIN";
+export const InFlightState = {
+  SUBMITTED_UNKNOWN: "SUBMITTED_UNKNOWN" as const,
+  CANCEL_UNKNOWN: "CANCEL_UNKNOWN" as const,
+  CANCEL_CERTAIN: "CANCEL_CERTAIN" as const,
+  ACKNOWLEDGED: "ACKNOWLEDGED" as const,
+  DEFINITIVE_REJECT: "DEFINITIVE_REJECT" as const,
+} as const;
+
+export type InFlightState = typeof InFlightState[keyof typeof InFlightState];
 
 export interface InternalInFlightOrder {
   orderId: string;
@@ -470,11 +478,27 @@ export class InternalRecoveryLedger {
   }
 
   /** Only a definitive venue-sourced result resolves the order. */
-  resolve(orderId: string, fromVenue: boolean) {
+  resolve(orderId: string, fromVenue: boolean, result?: OrderResult) {
     const o = this.orders.get(orderId);
     if (o && fromVenue) {
       o.resolved = true;
-      o.state = "CANCEL_CERTAIN";
+      // Determine final state from venue response; default to DEFINITIVE_REJECT.
+      if (result) {
+        if (
+          result.order_status === "LIVE" ||
+          result.order_status === "PARTIAL" ||
+          result.order_status === "MATCHED" ||
+          result.submit_status === "ACKNOWLEDGED"
+        ) {
+          o.state = "ACKNOWLEDGED";
+        } else {
+          // Any venue reject/error => definitive reject.
+          o.state = "DEFINITIVE_REJECT";
+        }
+      } else {
+        // No result (timeout) => definitive reject.
+        o.state = "DEFINITIVE_REJECT";
+      }
     }
   }
 

@@ -161,6 +161,17 @@ export class EgressFilter {
     // Apply category policy
     const policyDecision = this.applyPolicy(category);
 
+    // Category policy is authoritative for explicitly blocked categories. It must
+    // win over transport diagnostics such as DNS resolution failures.
+    if (policyDecision === "BLOCK") {
+      return this.buildResult(
+        input,
+        category,
+        policyDecision,
+        { ok: false, code: "POLICY_BLOCK", reason: `Blocked by policy for category ${category}`, finalUrl: undefined, redirectChain: undefined },
+      );
+    }
+
     // Run base egress guard check (SSRF, DNS rebind, etc.) WITHOUT the domain allowlist
     // so that policy and size/timeout decisions take precedence; the domain allowlist
     // is applied as a final safety net below.
@@ -179,10 +190,6 @@ export class EgressFilter {
     if (!guardResult.ok) {
       // Guard blocked for SSRF/private IP/metadata/redirect reasons - keep that decision
       finalOk = false;
-    } else if (policyDecision === "BLOCK") {
-      finalOk = false;
-      finalCode = "POLICY_BLOCK";
-      finalReason = `Blocked by policy for category ${category}`;
     } else if (policyDecision === "QUARANTINE") {
       // Quarantine means allow but log and maybe alert; we treat as allow for now.
       finalOk = true;
@@ -244,23 +251,83 @@ export class EgressFilter {
     );
 
     // Build result
-    const result: EgressFilterResult = {
-      ...guardResult,
+    return this.buildResult(input, category, policyDecision, {
       ok: finalOk,
+      code: finalCode,
+      reason: finalReason,
+      finalUrl: guardResult.finalUrl,
+      redirectChain: guardResult.redirectChain,
+    });
+  }
+
+  private buildResult(
+    input: EgressCheckInput,
+    category: EgressCategory,
+    policyDecision: EgressFilterResult["policyDecision"],
+    decision: {
+      ok: boolean;
+      code: string | undefined;
+      reason: string | undefined;
+      finalUrl: string | undefined;
+      redirectChain: string[] | undefined;
+    },
+  ): EgressFilterResult {
+    const auditId = Math.random().toString(36).substring(2, 15);
+    const loggedAt = new Date();
+
+    // Prepare audit entry (redact any payload-like fields from input)
+    const auditPayload = {
+      url: input.url,
+      method: undefined, // input doesn't have method; but we can extend if needed
+      redirectChain: input.redirectChain,
+      responseSize: input.responseSize,
+      delayMs: input.delayMs,
+    };
+    const redactedPayload = this.audit.redact(auditPayload as Record<string, unknown>);
+
+    // Log audit entry
+    this.audit.log({
+      category,
+      url: input.url,
+      decision: decision.ok ? "ALLOW" : "BLOCK",
+      reason: decision.reason ?? "no reason",
+      redactedPayload,
+      auditId,
+    });
+
+    // Emit metric (optional)
+    this.config.onMetric?.(
+      "egress_check_total",
+      1,
+      { category, decision: decision.ok ? "allow" : "block", reason: decision.code ?? "unknown" },
+    );
+
+    const result: EgressFilterResult = {
+      ok: decision.ok,
       category,
       policyDecision,
       auditId,
-      loggedAt: new Date(),
+      loggedAt,
     };
-    if (finalCode !== undefined) {
-      result.code = finalCode;
+    if (decision.code !== undefined) {
+      result.code = decision.code;
     } else {
       delete result.code;
     }
-    if (finalReason !== undefined) {
-      result.reason = finalReason;
+    if (decision.reason !== undefined) {
+      result.reason = decision.reason;
     } else {
       delete result.reason;
+    }
+    if (decision.finalUrl !== undefined) {
+      result.finalUrl = decision.finalUrl;
+    } else {
+      delete result.finalUrl;
+    }
+    if (decision.redirectChain !== undefined) {
+      result.redirectChain = decision.redirectChain;
+    } else {
+      delete result.redirectChain;
     }
     return result;
   }

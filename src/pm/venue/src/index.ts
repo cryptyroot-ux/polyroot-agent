@@ -33,5 +33,8 @@ export * from "./permit-store.js";
 // Durable recovery ledger for in-flight orders and reconciliation (PM-EXE-04/06)
 export * from "./recovery-ledger.js";
 
+// Lease store with epoch fencing (PR-OPS-02)
+export * from "./lease-store.js";
+
 // Re-export domain types used by the public surface.
 export type { AccountMode, VenueCapability };

@@ -11,7 +11,7 @@ import {
   type TradeIntent,
   type WalletIdentity,
 } from "@polyroot/domain";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 class FakeBalanceStore implements BalanceStore {
   available: bigint;
@@ -46,6 +46,10 @@ class FakeBalanceStore implements BalanceStore {
     if (this.committed < amount) throw new Error("INSUFFICIENT_COMMITTED");
     this.committed -= amount;
   }
+
+  async getOpenCount(_a: string, _s: string): Promise<number> {
+    return 0;
+  }
 }
 
 class FakeSink implements KernelEventSink {
@@ -70,7 +74,7 @@ function makeKernel(balance?: FakeBalanceStore) {
 function makeWallet(over: Partial<WalletIdentity> = {}): WalletIdentity {
   return {
     schema_version: "1.1",
-    wallet_id: ulid(),
+    wallet_id: randomUUID(),
     wallet_type: "DEPOSIT_WALLET",
     signer_address: "0xSIGNER",
     account_wallet: "0xACCOUNT",
@@ -84,7 +88,7 @@ function makeWallet(over: Partial<WalletIdentity> = {}): WalletIdentity {
 function makeIntent(over: Partial<TradeIntent> = {}): TradeIntent {
   return {
     schema_version: "1.1",
-    intent_id: ulid(),
+    intent_id: randomUUID(),
     dedupe_key: "dk_1",
     purpose: "ENTRY",
     market_id: "mkt_1",

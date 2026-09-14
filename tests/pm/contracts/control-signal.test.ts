@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { evaluateEdge } from "@polyroot/control";
 import type { Forecast, MarketSnapshot } from "@polyroot/domain";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 function close(a: number, b: number, eps = 1e-9): boolean {
   return Math.abs(a - b) < eps;
@@ -11,7 +11,7 @@ function close(a: number, b: number, eps = 1e-9): boolean {
 function makeForecast(over: Partial<Forecast> = {}): Forecast {
   return {
     schema_version: "1.1",
-    forecast_id: ulid(),
+    forecast_id: randomUUID(),
     market_id: "mkt_1",
     p_calibrated: 0.7,
     confidence: 0.8,

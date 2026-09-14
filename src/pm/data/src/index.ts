@@ -16,7 +16,7 @@ import {
 /* ─── PM-DATA-01: typed asset identity ───────────────────────────────── */
 
 export type ParsedAsset =
-  | { kind: "CTF"; asset_class: "CTF_TOKEN"; token_id: number; chain_id: number; address: string }
+  | { kind: "CTF"; asset_class: "CTF_TOKEN"; token_id: string; chain_id: number; address: string }
   | { kind: "POLY_V2"; asset_class: "POLY_V2_POSITION"; position_id: string; chain_id: number }
   | { kind: "UNKNOWN"; asset_class: "UNKNOWN"; raw: string };
 
@@ -31,7 +31,7 @@ export function parseAssetIdentity(raw: string, chainId: number): ParsedAsset {
     return {
       kind: "CTF",
       asset_class: "CTF_TOKEN",
-      token_id: Number(raw),
+      token_id: raw,
       chain_id: chainId,
       address: raw,
     };

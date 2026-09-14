@@ -24,11 +24,11 @@ import type { SubmitOutcome } from "./types.js";
 
 /** The minimal @polymarket/client surface this adapter depends on (0.9.0). */
 export interface PolymarketClientLike {
-  fetchOrderBook?(request: { market?: string; marketId?: string }): Promise<unknown>;
-  fetchMarket?(request: { marketId?: string }): Promise<unknown>;
+  fetchOrderBook?(request: { assetId: string }): Promise<unknown>;
+  fetchMarket?(request: { marketId: string }): Promise<unknown>;
   postOrder?(order: unknown): Promise<unknown>;
-  cancelOrder?(id: string | { id: string }): Promise<unknown>;
-  getOrderStatus?(orderId: string): Promise<unknown>;
+  cancelOrder?(request: { orderId: string }): Promise<unknown>;
+  fetchOrder?(request: { orderId: string }): Promise<unknown>;
 }
 
 interface SdkBookLevel {
@@ -55,7 +55,7 @@ export class PolymarketVenueAdapter {
 
   /** Map the SDK order book into a canonical MarketSnapshot (yes/no prices). */
   async getOrderBook(marketId: string): Promise<MarketSnapshot> {
-    const raw = (await this.client.fetchOrderBook?.({ marketId })) as {
+    const raw = (await this.client.fetchOrderBook?.({ assetId: marketId })) as {
       bids?: SdkBookLevel[];
       asks?: SdkBookLevel[];
     };
@@ -123,7 +123,7 @@ export class PolymarketVenueAdapter {
       return { ok: false, code: gate.code, reason: gate.reason };
     }
     try {
-      const result = (await this.client.cancelOrder?.(orderId)) as
+      const result = (await this.client.cancelOrder?.({ orderId })) as
         | { success?: boolean; cancelled?: boolean; errorMsg?: string }
         | undefined;
       const ok = Boolean(result?.success ?? result?.cancelled);
@@ -141,7 +141,7 @@ export class PolymarketVenueAdapter {
 
   /** Query venue for order status. Returns null when the venue has no record. */
   async getOrderStatus(orderId: string): Promise<OrderResult | null> {
-    const raw = (await this.client.getOrderStatus?.(orderId)) as
+    const raw = (await this.client.fetchOrder?.({ orderId })) as
       | { status?: string; orderID?: string; errorMsg?: string }
       | { success?: boolean; order_id?: string }
       | null

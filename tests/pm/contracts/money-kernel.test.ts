@@ -6,7 +6,7 @@ import {
   type KernelEventSink,
 } from "@polyroot/risk";
 import { DEFAULT_RISK_POLICY } from "@polyroot/domain";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 class FakeBalanceStore implements BalanceStore {
   available: bigint;
@@ -49,6 +49,9 @@ class FakeBalanceStore implements BalanceStore {
     }
     this.committed -= amount;
   }
+ async getOpenCount(_a: string, _s: string): Promise<number> {
+    return this.committed > 0n ? 1 : 0;
+  }
 }
 
 class FakeSink implements KernelEventSink {
@@ -60,8 +63,8 @@ class FakeSink implements KernelEventSink {
 
 function req(over = {}) {
   return {
-    decisionId: ulid(),
-    intentId: ulid(),
+    decisionId: randomUUID(),
+    intentId: randomUUID(),
     account: "0xACCOUNT",
     asset: "pUSD",
     amountSharesBase: 10_000_000n, // 10 shares
@@ -209,5 +212,55 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
     const res = await kernel.reserve(req());
     assert.equal(res.ok, true);
     if (res.ok) assert.equal(res.permit.policy_version, "v0-bootstrap");
+  });
+
+  it("consume reduces committed WITHOUT returning cash to available (no double-spend)", async () => {
+    // R01 acceptance: 100 pUSD balance, reserve 5, consume 5 → available=95M, committed=0
+    const balance = new FakeBalanceStore(100_000_000n); // 100 pUSD
+    const sink = new FakeSink();
+    const kernel = new MoneyKernel({
+      balance,
+      sink,
+      chainId: 137,
+    });
+    const res = await kernel.reserve(req({
+      amountSharesBase: 10_000_000n,  // 10 shares
+      perSharePriceBase: 500_000n,     // 0.5 pUSD/share → 5 pUSD committed
+    }));
+    assert.equal(res.ok, true);
+    assert.equal(balance.available, 95_000_000n);  // 100 - 5 = 95
+    assert.equal(balance.committed, 5_000_000n);
+
+    // Consume the committed funds (simulating an order fill)
+    await kernel.consume("0xACCOUNT", "pUSD", 5_000_000n);
+
+    // CRITICAL: available must NOT increase; committed must go to 0
+    assert.equal(balance.available, 95_000_000n, "available must stay at 95 pUSD after consume");
+    assert.equal(balance.committed, 0n, "committed must be 0 after consume");
+
+    // Verify consume emitted correct event
+    const consumed = sink.events.filter(e => e.topic === "RESERVATION_CONSUMED");
+    assert.equal(consumed.length, 1);
+  });
+
+  it("consume refuses when committed is insufficient", async () => {
+    const balance = new FakeBalanceStore(100_000_000n);
+    const kernel = new MoneyKernel({
+      balance,
+      sink: new FakeSink(),
+      chainId: 137,
+    });
+    // Reserve 5 pUSD
+    const res = await kernel.reserve(req({
+      perSharePriceBase: 500_000n,
+    }));
+    assert.equal(res.ok, true);
+    assert.equal(balance.committed, 5_000_000n);
+
+    // Try to consume more than committed
+    await assert.rejects(
+      () => kernel.consume("0xACCOUNT", "pUSD", 10_000_000n),
+      /INSUFFICIENT_COMMITTED/,
+    );
   });
 });

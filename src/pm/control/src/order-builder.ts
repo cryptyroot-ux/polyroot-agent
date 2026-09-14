@@ -22,7 +22,7 @@ import { cashNeededFor } from "@polyroot/risk";
 import { SignerVault } from "@polyroot/signer";
 import { computePayloadHash } from "@polyroot/signer";
 import { decimalToBase } from "@polyroot/signer";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 export interface OrderBuildInput {
   intent: TradeIntent;
@@ -81,7 +81,7 @@ export async function buildSignedOrder(
   const side: "BUY" | "SELL" = intent.side === "SELL" ? "SELL" : "BUY";
 
   // 4. Sign the canonical action with the exact clamped amount.
-  const orderId = ulid();
+  const orderId = randomUUID();
   const request = {
     schema_version: "1.1",
     action: "ORDER_SUBMIT" as const,
@@ -92,6 +92,8 @@ export async function buildSignedOrder(
     marketContext: intent.market_id,
     venueMode: input.venueMode,
     now: input.now,
+    side,
+    priceBase,
     payloadHash: computePayloadHash({
       schema_version: "1.1",
       action: "ORDER_SUBMIT" as const,
@@ -102,6 +104,8 @@ export async function buildSignedOrder(
       marketContext: intent.market_id,
       venueMode: input.venueMode,
       now: input.now,
+      side,
+      priceBase,
       payloadHash: "",
     }),
   };

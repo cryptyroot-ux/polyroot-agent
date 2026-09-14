@@ -7,14 +7,14 @@ import {
   type SigningOutcome,
 } from "@polyroot/signer";
 import type { ExecutionPermit, WalletIdentity } from "@polyroot/domain";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
   const base: ExecutionPermit = {
     schema_version: "1.1",
-    permit_id: ulid(),
-    decision_id: ulid(),
-    intent_id: ulid(),
+    permit_id: randomUUID(),
+    decision_id: randomUUID(),
+    intent_id: randomUUID(),
     ledger_version: "0003",
     policy_version: "v0-bootstrap",
     policy_hash: "ph_audited",
@@ -36,7 +36,7 @@ function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
 function makeWallet(over: Partial<WalletIdentity> = {}): WalletIdentity {
   const base: WalletIdentity = {
     schema_version: "1.1",
-    wallet_id: ulid(),
+    wallet_id: randomUUID(),
     wallet_type: "DEPOSIT_WALLET",
     signer_address: "0xSIGNER",
     account_wallet: "0xACCOUNT",
@@ -62,6 +62,8 @@ function makeReq(over = {}) {
     marketContext: "mkt_1",
     venueMode: "NORMAL" as const,
     now: new Date("2026-01-01T00:00:30Z"),
+    side: "BUY" as const,
+    priceBase: 500_000n,
   };
   const req = { ...base, ...over };
   if (!("payloadHash" in over)) {

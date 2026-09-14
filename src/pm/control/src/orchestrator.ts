@@ -82,13 +82,43 @@ export async function orchestrate(
     };
   }
 
+  // Bind edge side/price to intent – reject mismatched intent.
+  // Edge sides are YES/NO while intents may use BUY/SELL or the equivalent YES/NO.
+  const intentSide = input.intent.side === "BUY" ? "YES" : input.intent.side === "SELL" ? "NO" : input.intent.side;
+  if (intentSide !== edge.side) {
+    return {
+      ok: false,
+      stage: "EDGE",
+      code: "SIDE_MISMATCH",
+      reason: `intent side ${input.intent.side} does not match edge side ${edge.side}`,
+    };
+  }
+  // Ensure intent price matches the edge reference price (quote).
+  if (
+    input.intent.limit_price !== undefined &&
+    edge.reference_price !== null &&
+    input.intent.limit_price !== edge.reference_price
+  ) {
+    return {
+      ok: false,
+      stage: "EDGE",
+      code: "PRICE_MISMATCH",
+      reason: `intent price ${input.intent.limit_price} differs from edge price ${edge.reference_price}`,
+    };
+  }
+  // Align intent price to edge reference if not explicitly set.
+  const boundIntent: typeof input.intent = {
+    ...input.intent,
+    limit_price: input.intent.limit_price ?? edge.reference_price ?? undefined,
+  };
+
   const now = deps.now();
   const venueMode = deps.venueMode();
 
   // ── Stage RISK: policy limits + atomic reservation → permit ───────────────
   const gate = await validateAndReserve(
     {
-      intent: input.intent,
+      intent: boundIntent,
       policy: deps.policy,
       wallet: deps.wallet,
       venueMode,
@@ -111,7 +141,7 @@ export async function orchestrate(
   // ── Stage BUILD: clamp to permit + sign ───────────────────────────────────
   const built = await buildSignedOrder(
     {
-      intent: input.intent,
+      intent: boundIntent,
       permit: gate.permit,
       wallet: deps.wallet,
       venueMode,

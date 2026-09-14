@@ -28,7 +28,7 @@ import type {
   VenueMode,
 } from "@polyroot/domain";
 import { ExecutionPermitSchema, VenueModeSchema } from "@polyroot/domain";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 /** Integer base-unit balance for a given account/asset (never float). */
 export interface BalanceEntry {
@@ -50,15 +50,26 @@ export interface BalanceStore {
   /**
    * Number of currently-open reservations for an account/asset.
    * Derived from committed_base > 0 so it survives process restarts.
-   * Optional: in-memory stores may omit it (MoneyKernel falls back to its
-   * own counter when absent).
    */
-  getOpenCount?(account: string, asset: string): Promise<number>;
+  getOpenCount(account: string, asset: string): Promise<number>;
 }
 
 /** Injectable append-only sink for financial events (audit trail, PR-LED). */
 export interface KernelEventSink {
   push(topic: string, payload: unknown): Promise<void>;
+}
+
+/** Authority for atomic reservation and permit creation. */
+export interface MoneyAuthority {
+  reserve(
+    account: string,
+    asset: string,
+    cashNeededBase: bigint,
+    decisionId: string,
+    intentId: string,
+    leaseEpoch: number,
+    now: Date
+  ): Promise<{ reservationId: string; permitId: string }>;
 }
 
 export interface MoneyKernelOpts {
@@ -74,6 +85,20 @@ export interface MoneyKernelOpts {
   maxOpenReservations?: number;
   /** Chain id enforced for identity (matches permit lease/wallet). */
   chainId: number;
+  /** Authority for atomic reservation and permit creation. */
+  authority?: MoneyAuthority;
+}
+
+/** Resolved options with defaults applied. */
+interface ResolvedMoneyKernelOpts {
+  permitTtlMs: number;
+  hardMaxShares: bigint;
+  hardMaxCash: bigint;
+  maxOpenReservations: number;
+  balance: BalanceStore;
+  sink: KernelEventSink;
+  chainId: number;
+  authority: MoneyAuthority | undefined;
 }
 
 export interface ReserveRequest {
@@ -103,15 +128,14 @@ export type ReserveResult =
  */
 export function cashNeededFor(
   amountSharesBase: bigint,
-  perSharePriceBase: bigint,
+  perSharePriceBase: bigint
 ): bigint {
   return (amountSharesBase * perSharePriceBase) / 1_000_000n;
 }
 
 export class MoneyKernel {
-  private readonly opts: Required<MoneyKernelOpts>;
-  /** Track open reservations (in-memory for now; TODO: persist via DB query for restart safety). */
-  private openCount = 0;
+  private readonly opts: ResolvedMoneyKernelOpts;
+  private readonly authority: MoneyAuthority | undefined;
 
   constructor(opts: MoneyKernelOpts) {
     this.opts = {
@@ -122,28 +146,21 @@ export class MoneyKernel {
       balance: opts.balance,
       sink: opts.sink,
       chainId: opts.chainId,
+      authority: opts.authority,
     };
+    this.authority = opts.authority;
   }
 
   /**
-   * Count open reservations from the durable balance store when available.
-   * Falls back to the in-memory counter for stores that do not implement
-   * getOpenCount (e.g. test doubles). Never throws: a broken counter must
-   * not abort a reservation.
+   * Count open reservations from the durable balance store.
+   * All BalanceStore implementations must implement getOpenCount.
    */
   private async countOpenReservations(
     account: string,
-    asset: string,
+    asset: string
   ): Promise<number> {
     const getOpenCount = (this.opts.balance as BalanceStore).getOpenCount;
-    if (typeof getOpenCount === "function") {
-      try {
-        return await getOpenCount.call(this.opts.balance, account, asset);
-      } catch {
-        return this.openCount;
-      }
-    }
-    return this.openCount;
+    return await getOpenCount.call(this.opts.balance, account, asset);
   }
 
   /**
@@ -193,9 +210,7 @@ export class MoneyKernel {
       };
     }
 
-    // Open-reservation limit is enforced against the durable count when the
-    // store exposes one; the in-memory counter is the fallback for stores
-    // without DB-backed committed tracking.
+    // Open-reservation limit is enforced against the durable count.
     if (
       await this.countOpenReservations(req.account, req.asset) >=
       this.opts.maxOpenReservations
@@ -221,7 +236,7 @@ export class MoneyKernel {
     // Cash needed = shares * price (integer base units). price is per share in base units.
     const cashNeeded = cashNeededFor(
       req.amountSharesBase,
-      req.perSharePriceBase,
+      req.perSharePriceBase
     );
     if (cashNeeded > req.maxCashBase) {
       return {
@@ -238,17 +253,65 @@ export class MoneyKernel {
       };
     }
 
+    // Use authority if available for atomic reservation and permit creation.
+    if (this.authority) {
+      const { reservationId, permitId } = await this.authority.reserve(
+        req.account,
+        req.asset,
+        cashNeeded,
+        req.decisionId,
+        req.intentId,
+        req.leaseEpoch,
+        req.now
+      );
+
+      // Build the permit (single-use, versioned, TTL-bound)
+      const permit: ExecutionPermit = {
+        schema_version: "1.1",
+        permit_id: permitId,
+        decision_id: req.decisionId,
+        intent_id: req.intentId,
+        ledger_version: "0003",
+        policy_version: req.policy.policy_version,
+        policy_hash: req.policyHash,
+        quote_id: `quote_${randomUUID()}`,
+        lease_epoch: req.leaseEpoch,
+        reservation_ids: [reservationId],
+        max_qty: Number(req.amountSharesBase) / 1_000_000,
+        max_cash: Number(req.maxCashBase) / 1_000_000,
+        allowed_order_style: ["LIMIT", "POST_ONLY"],
+        venue_mode: req.venueMode,
+        issued_at: req.now,
+        expires_at: new Date(req.now.getTime() + this.opts.permitTtlMs),
+        single_use: true,
+        used_at: null,
+      };
+
+      // Validate the permit we are about to persist.
+      const parsed = ExecutionPermitSchema.safeParse(permit);
+      if (!parsed.success) {
+        // This should not happen if we built it correctly, but just in case.
+        return {
+          ok: false,
+          code: "PERMIT_INVALID",
+          reason: parsed.error.message,
+        };
+      }
+
+      return { ok: true, permit, reservationId };
+    }
+
     // ── Build the permit (single-use, versioned, TTL-bound) ──
-    const reservationId = `res_${ulid()}`;
+    const reservationId = randomUUID();
     const permit: ExecutionPermit = {
       schema_version: "1.1",
-      permit_id: ulid(),
+      permit_id: randomUUID(),
       decision_id: req.decisionId,
       intent_id: req.intentId,
       ledger_version: "0003",
       policy_version: req.policy.policy_version,
       policy_hash: req.policyHash,
-      quote_id: `quote_${ulid()}`,
+      quote_id: `quote_${randomUUID()}`,
       lease_epoch: req.leaseEpoch,
       reservation_ids: [reservationId],
       max_qty: Number(req.amountSharesBase) / 1_000_000,
@@ -274,9 +337,7 @@ export class MoneyKernel {
     // ── Commit funds and record reservation+permit atomically ──
     // Use semantic method: reserveFunds moves available -> committed
     await this.opts.balance.reserveFunds(req.account, req.asset, cashNeeded);
-    // The durable counter (committed_base) is the source of truth; the
-    // in-memory counter is kept in sync for stores that do not expose one.
-    this.openCount += 1;
+    // The durable counter (committed_base) is the source of truth.
     await this.opts.sink.push("RESERVATION_CREATED", {
       reservationId: permit.reservation_ids[0],
       permitId: permit.permit_id,
@@ -293,12 +354,11 @@ export class MoneyKernel {
   async release(
     account: string,
     asset: string,
-    cashBase: bigint,
+    cashBase: bigint
   ): Promise<void> {
     if (cashBase < 0n) return;
     // Use semantic method: releaseFunds moves committed -> available
     await this.opts.balance.releaseFunds(account, asset, cashBase);
-    if (this.openCount > 0) this.openCount -= 1;
     await this.opts.sink.push("RESERVATION_RELEASED", {
       account,
       asset,
@@ -310,7 +370,7 @@ export class MoneyKernel {
   async consume(
     account: string,
     asset: string,
-    cashBase: bigint,
+    cashBase: bigint
   ): Promise<void> {
     if (cashBase < 0n) return;
     // Use semantic method: consumeFunds decreases committed (final economic posting)

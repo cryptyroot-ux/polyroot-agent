@@ -120,6 +120,11 @@ jobs:
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
+      - name: Run migration smoke tests
+        run: npm run test:migration
+        env:
+          TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+
       - name: Run unit tests
         run: npm run test:unit
 

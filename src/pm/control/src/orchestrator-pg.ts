@@ -102,6 +102,9 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
   const permitStore = new (await import("@polyroot/venue")).PgPermitStore(deps.pgConfig);
   const recoveryLedger = new (await import("@polyroot/venue")).PgRecoveryLedger(deps.pgConfig);
 
+  // ── PostgreSQL-backed Executor Lease Store (epoch fencing, PR-OPS-02) ─────
+  const leaseStore = new (await import("@polyroot/venue")).PgLeaseStore(deps.pgConfig);
+
   // ── Executor with in-memory seen cache (DB-backed recovery ledger for crash safety) ──
   const seenCache = new Map<string, import("@polyroot/executor").OrderLifecycleState>();
 
@@ -121,6 +124,9 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
     },
     permitStore,
     recoveryLedger,
+    leaseStore,
+    walletId: deps.wallet.wallet_id,
+    holder: deps.wallet.signer_address,
     leaseEpoch: deps.leaseEpoch(),
   });
 
@@ -196,6 +202,7 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
       riskPool.end(),
       (await import("@polyroot/venue")).PgPermitStore.prototype.close?.call(permitStore),
       (await import("@polyroot/venue")).PgRecoveryLedger.prototype.close?.call(recoveryLedger),
+      leaseStore.close(),
     ]);
   }
 

@@ -4,9 +4,9 @@ import { PolymarketVenueAdapter, type PolymarketClientLike } from "@polyroot/ven
 
 function makeFakeClient(): PolymarketClientLike {
   return {
-    fetchOrderBook: async () => ({
+    fetchOrderBook: async ({ assetId }) => ({
       market: "0xabc",
-      asset_id: "123",
+      asset_id: assetId,
       timestamp: Date.now(),
       bids: [{ price: "0.4", size: "100" }],
       asks: [{ price: "0.6", size: "120" }],
@@ -23,6 +23,19 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
     assert.equal(snap.no_price, 0.6);
     assert.ok(snap.source_at instanceof Date);
     assert.ok(snap.received_at instanceof Date);
+  });
+
+  it("fetches the order book by assetId (SDK 0.9.0 shape)", async () => {
+    let seen: unknown;
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async (req) => {
+        seen = req;
+        return { bids: [], asks: [] };
+      },
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    await adapter.getOrderBook("token-456");
+    assert.deepEqual(seen, { assetId: "token-456" });
   });
 
   it("defaults to NORMAL and setMode narrows venue mode deterministically", () => {
@@ -55,5 +68,36 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
     });
     assert.equal(res.ok, true);
     if (res.ok) assert.equal(res.result.order_id, "venue_123");
+  });
+
+  it("cancelOrder calls SDK cancelOrder({ orderId }) shape", async () => {
+    let seen: unknown;
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async () => ({ bids: [], asks: [] }),
+      cancelOrder: async (req) => {
+        seen = req;
+        return { success: true };
+      },
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    const res = await adapter.cancelOrder("venue_9");
+    assert.equal(res.ok, true);
+    assert.deepEqual(seen, { orderId: "venue_9" });
+  });
+
+  it("getOrderStatus uses the SDK fetchOrder({ orderId }) surface", async () => {
+    let seen: unknown;
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async () => ({ bids: [], asks: [] }),
+      fetchOrder: async (req) => {
+        seen = req;
+        return { status: "LIVE", orderID: "venue_9" };
+      },
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    const res = await adapter.getOrderStatus("venue_9");
+    assert.deepEqual(seen, { orderId: "venue_9" });
+    assert.ok(res);
+    assert.equal(res?.order_id, "venue_9");
   });
 });

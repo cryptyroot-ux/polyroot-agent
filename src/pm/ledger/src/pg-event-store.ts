@@ -101,6 +101,19 @@ export class PgEventStore implements EventStore {
           throw new Error(`invalid LedgerEvent: ${parsed.error.message}`);
         }
         const e = parsed.data;
+
+        // Idempotency check: if an event with this exact id already exists,
+        // skip insertion and track as duplicate.
+        const existing = await client.query(
+          `SELECT id, sequence FROM kernel_events WHERE id = $1`,
+          [e.id],
+        );
+        if (existing.rows.length > 0) {
+          results.push({ eventId: existing.rows[0].id, sequence: existing.rows[0].sequence, created: false });
+          continue;
+        }
+
+        // Insert the event
         const r = await client.query(
           `INSERT INTO kernel_events (topic, aggregate_type, aggregate_id, payload, metadata, created_at)
            VALUES ($1, $2, $3, $4, $5, now())
@@ -123,27 +136,27 @@ export class PgEventStore implements EventStore {
   }
 
   async getEvent(id: string): Promise<LedgerEvent | undefined> {
-    const result = await this.withClient(async (client) => {
-      const r = await client.query(
-        `SELECT id, type, aggregate_type, aggregate_id, payload, metadata, sequence, created_at
-         FROM kernel_events WHERE id = $1`,
-        [id],
-      );
-      if (r.rows.length === 0) return undefined;
-      return {
-        id: r.rows[0].id,
-        type: r.rows[0].type,
-        aggregate_type: r.rows[0].aggregate_type,
-        aggregate_id: r.rows[0].aggregate_id,
-        payload: r.rows[0].payload,
-        metadata: r.rows[0].metadata,
-        sequence: r.rows[0].sequence,
-        timestamp: r.rows[0].created_at,
-        schema_version: r.rows[0].metadata?.["schema_version"] ?? "1.0.0",
-      };
-    });
-    return result;
-  }
+      const result = await this.withClient(async (client) => {
+        const r = await client.query(
+          `SELECT id, topic, aggregate_type, aggregate_id, payload, metadata, sequence, created_at
+           FROM kernel_events WHERE id = $1`,
+          [id],
+        );
+        if (r.rows.length === 0) return undefined;
+        return {
+          id: r.rows[0].id,
+          type: r.rows[0].topic,
+          aggregate_type: r.rows[0].aggregate_type,
+          aggregate_id: r.rows[0].aggregate_id,
+          payload: r.rows[0].payload,
+          metadata: r.rows[0].metadata,
+          sequence: r.rows[0].sequence,
+          timestamp: r.rows[0].created_at,
+          schema_version: r.rows[0].metadata?.["schema_version"] ?? "1.0.0",
+        };
+      });
+      return result;
+    }
 
   async replay(cursor: EventCursor & { aggregateId?: string }): Promise<LedgerEvent[]> {
     const client = await this.pool.connect();

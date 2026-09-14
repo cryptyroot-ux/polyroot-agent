@@ -10,10 +10,10 @@
  */
 
 import { z } from "zod";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 export const CharterSchema = z.object({
-  charter_id: z.string().default(() => ulid()),
+  charter_id: z.string().default(() => randomUUID()),
   wallet_id: z.string().min(1),
   capital_usd_cap: z.number().positive(),
   daily_loss_stop_pct: z.number().min(0).max(1),

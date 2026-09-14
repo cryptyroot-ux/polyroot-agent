@@ -8,12 +8,12 @@ import type {
   TradeIntent,
   WalletIdentity,
 } from "@polyroot/domain";
-import { ulid } from "ulid";
+import { randomUUID } from "crypto";
 
 function makeWallet(over: Partial<WalletIdentity> = {}): WalletIdentity {
   return {
     schema_version: "1.1",
-    wallet_id: ulid(),
+    wallet_id: randomUUID(),
     wallet_type: "DEPOSIT_WALLET",
     signer_address: "0xSIGNER",
     account_wallet: "0xACCOUNT",
@@ -27,9 +27,9 @@ function makeWallet(over: Partial<WalletIdentity> = {}): WalletIdentity {
 function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
   return {
     schema_version: "1.1",
-    permit_id: ulid(),
-    decision_id: ulid(),
-    intent_id: ulid(),
+    permit_id: randomUUID(),
+    decision_id: randomUUID(),
+    intent_id: randomUUID(),
     ledger_version: "0003",
     policy_version: "v0-bootstrap",
     policy_hash: "ph_audited",
@@ -51,7 +51,7 @@ function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
 function makeIntent(over: Partial<TradeIntent> = {}): TradeIntent {
   return {
     schema_version: "1.1",
-    intent_id: ulid(),
+    intent_id: randomUUID(),
     dedupe_key: "dk_1",
     purpose: "ENTRY",
     market_id: "mkt_1",
