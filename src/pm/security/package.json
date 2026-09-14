@@ -20,7 +20,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@polyroot/domain": "*"
+    "@polyroot/domain": "*",
+    "@polyroot/venue": "*"
   },
   "devDependencies": {
     "@polyroot/tsconfig": "*",
