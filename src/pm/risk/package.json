@@ -23,7 +23,6 @@
   },
   "dependencies": {
     "@polyroot/domain": "*",
-    "@polyroot/risk-pg": "*",
     "@polyroot/strategy": "*",
     "decimal.js": "^10.4.3",
     "pg": "^8.11.5",
