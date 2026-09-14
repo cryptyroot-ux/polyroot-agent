@@ -108,10 +108,11 @@ export class PgKernelEventSink implements KernelEventSink {
 
   async push(topic: string, payload: unknown): Promise<void> {
     const payloadStr = JSON.stringify(payload);
-    const payloadHash = createHash("sha256").update(payloadStr).digest("hex");
+    const metadata = JSON.stringify({ payloadHash: createHash("sha256").update(payloadStr).digest("hex") });
     await this.pool.query(
-      `INSERT INTO kernel_events (topic, payload, payload_hash) VALUES ($1, $2, $3)`,
-      [topic, payloadStr, payloadHash],
+      `INSERT INTO kernel_events (topic, aggregate_type, aggregate_id, payload, metadata, created_at)
+       VALUES ($1, 'system', '00000000-0000-0000-0000-000000000000'::uuid, $2::jsonb, $3::jsonb, now())`,
+      [topic, payloadStr, metadata],
     );
   }
 
@@ -223,4 +224,24 @@ export class PgMoneyAuthority implements MoneyAuthority {
 
 export function createPgMoneyAuthority(config: PgBalanceStoreConfig): PgMoneyAuthority {
   return new PgMoneyAuthority(config);
+}
+
+/**
+ * Create all PostgreSQL-backed store ports from a single connection string/pool.
+ * Compatibility factory kept for existing wiring (orchestrator-pg.ts).
+ */
+export function createPgStores(config: PoolConfig | string | PgBalanceStoreConfig): {
+  balanceStore: PgBalanceStore;
+  eventSink: PgKernelEventSink;
+  pool: Pool;
+} {
+  const pool =
+    config && typeof config === "object" && "pool" in config && config.pool
+      ? config.pool
+      : new Pool(typeof config === "string" ? { connectionString: config } : config);
+  return {
+    balanceStore: new PgBalanceStore(pool),
+    eventSink: new PgKernelEventSink(pool),
+    pool,
+  };
 }
