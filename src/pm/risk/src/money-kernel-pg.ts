@@ -1,15 +1,20 @@
 /**
- * @polyroot/risk — PostgreSQL BalanceStore implementations.
+ * @polyroot/risk — PostgreSQL implementations for BalanceStore, KernelEventSink, and MoneyAuthority.
  *
  * Canonical financial operations with explicit SQL semantics:
  *   reserveFunds:  available -= amount,  committed += amount
  *   releaseFunds:  available += amount,  committed -= amount
  *   consumeFunds:  available unchanged,  committed -= amount
+ *
+ * MoneyAuthority wraps the full reservation+permit lifecycle in a single
+ * PostgreSQL transaction — all-or-nothing on commit, rollback on any failure.
  */
 
 import { Pool, type PoolConfig, type PoolClient } from "pg";
-import type { BalanceStore, KernelEventSink, BalanceEntry } from "./money-kernel.js";
+import { randomUUID } from "crypto";
 import { createHash } from "crypto";
+import type { BalanceStore, KernelEventSink, BalanceEntry } from "./money-kernel.js";
+import type { MoneyAuthority } from "./money-kernel.js";
 
 export interface PgBalanceStoreConfig extends PoolConfig {
   pool?: Pool;
@@ -20,7 +25,7 @@ export class PgBalanceStore implements BalanceStore {
   constructor(config: PoolConfig | string | Pool | PgBalanceStoreConfig) {
     if (config instanceof Pool) {
       this.pool = config;
-    } else if (config && typeof config === 'object' && 'pool' in config && config.pool) {
+    } else if (config && typeof config === "object" && "pool" in config && config.pool) {
       this.pool = config.pool;
     } else {
       this.pool = new Pool(typeof config === "string" ? { connectionString: config } : config);
@@ -43,15 +48,10 @@ export class PgBalanceStore implements BalanceStore {
     return { account, asset, availableBase: BigInt(row.available_base), committedBase: BigInt(row.committed_base) };
   }
 
-  /** Reserve: available -= amount, committed += amount */
   async reserveFunds(account: string, asset: string, amount: bigint): Promise<void> {
     const result = await this.pool.query(
-      `UPDATE balance_entries
-       SET available_base = available_base - $3,
-           committed_base = committed_base + $3,
-           updated_at = now()
-       WHERE account = $1 AND asset = $2 AND available_base >= $3
-       RETURNING account`,
+      `UPDATE balance_entries SET available_base = available_base - $3, committed_base = committed_base + $3, updated_at = now()
+       WHERE account = $1 AND asset = $2 AND available_base >= $3 RETURNING account`,
       [account, asset, amount.toString()],
     );
     if (result.rowCount === 0) {
@@ -59,15 +59,10 @@ export class PgBalanceStore implements BalanceStore {
     }
   }
 
-  /** Release: available += amount, committed -= amount */
   async releaseFunds(account: string, asset: string, amount: bigint): Promise<void> {
     const result = await this.pool.query(
-      `UPDATE balance_entries
-       SET available_base = available_base + $3,
-           committed_base = committed_base - $3,
-           updated_at = now()
-       WHERE account = $1 AND asset = $2 AND committed_base >= $3
-       RETURNING account`,
+      `UPDATE balance_entries SET available_base = available_base + $3, committed_base = committed_base - $3, updated_at = now()
+       WHERE account = $1 AND asset = $2 AND committed_base >= $3 RETURNING account`,
       [account, asset, amount.toString()],
     );
     if (result.rowCount === 0) {
@@ -75,14 +70,10 @@ export class PgBalanceStore implements BalanceStore {
     }
   }
 
-  /** Consume: available unchanged, committed -= amount (final economic posting). */
   async consumeFunds(account: string, asset: string, amount: bigint): Promise<void> {
     const result = await this.pool.query(
-      `UPDATE balance_entries
-       SET committed_base = committed_base - $3,
-           updated_at = now()
-       WHERE account = $1 AND asset = $2 AND committed_base >= $3
-       RETURNING account`,
+      `UPDATE balance_entries SET committed_base = committed_base - $3, updated_at = now()
+       WHERE account = $1 AND asset = $2 AND committed_base >= $3 RETURNING account`,
       [account, asset, amount.toString()],
     );
     if (result.rowCount === 0) {
@@ -90,7 +81,6 @@ export class PgBalanceStore implements BalanceStore {
     }
   }
 
-  /** Count open reservations for this account/asset (Milestone B3). */
   async getOpenCount(account: string, asset: string): Promise<number> {
     const result = await this.pool.query(
       `SELECT COUNT(*)::int AS cnt FROM reservations WHERE account = $1 AND asset = $2 AND status = 'OPEN'`,
@@ -120,8 +110,7 @@ export class PgKernelEventSink implements KernelEventSink {
     const payloadStr = JSON.stringify(payload);
     const payloadHash = createHash("sha256").update(payloadStr).digest("hex");
     await this.pool.query(
-      `INSERT INTO kernel_events (topic, payload, payload_hash)
-       VALUES ($1, $2, $3)`,
+      `INSERT INTO kernel_events (topic, payload, payload_hash) VALUES ($1, $2, $3)`,
       [topic, payloadStr, payloadHash],
     );
   }
@@ -129,4 +118,109 @@ export class PgKernelEventSink implements KernelEventSink {
   async getPool(): Promise<Pool> {
     return this.pool;
   }
+}
+
+/**
+ * PgMoneyAuthority — Atomic financial authorization via PostgreSQL transaction.
+ *
+ * All financial side-effects (balance, reservation, permit, event) happen
+ * inside a single REPEATABLE READ transaction.  If ANY step fails the entire
+ * operation is ROLLBACKed.  No intermediate partial state survives.
+ */
+export class PgMoneyAuthority implements MoneyAuthority {
+  private readonly pool: Pool;
+  private readonly maxOpenReservations: number;
+
+  constructor(config: PoolConfig | string | Pool | PgBalanceStoreConfig) {
+    if (config instanceof Pool) {
+      this.pool = config;
+    } else if (config && typeof config === "object" && "pool" in config && config.pool) {
+      this.pool = config.pool;
+    } else {
+      this.pool = new Pool(typeof config === "string" ? { connectionString: config } : config);
+    }
+    this.maxOpenReservations = 16;
+  }
+
+  async reserve(
+    account: string,
+    asset: string,
+    cashNeededBase: bigint,
+    decisionId: string,
+    intentId: string,
+    leaseEpoch: number,
+    now: Date,
+  ): Promise<{ reservationId: string; permitId: string }> {
+    const reservationId = randomUUID();
+    const permitId = randomUUID();
+    const expiresAt = new Date(now.getTime() + 60_000);
+
+    const client: PoolClient = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+
+      // 1. Lock balance row and check availability
+      const bal = await client.query(
+        `SELECT available_base FROM balance_entries WHERE account = $1 AND asset = $2 FOR UPDATE`,
+        [account, asset],
+      );
+      if (bal.rowCount === 0 || BigInt(bal.rows[0].available_base) < cashNeededBase) {
+        await client.query("ROLLBACK");
+        return { reservationId: "", permitId: "" };
+      }
+
+      // 2. Check open-reservation limit
+      const openCount = await client.query(
+        `SELECT COUNT(*)::int AS cnt FROM reservations WHERE account = $1 AND asset = $2 AND status = 'OPEN'`,
+        [account, asset],
+      );
+      if ((openCount.rows[0]?.cnt ?? 0) >= this.maxOpenReservations) {
+        await client.query("ROLLBACK");
+        return { reservationId: "", permitId: "" };
+      }
+
+      // 3. Reserve funds
+      await client.query(
+        `UPDATE balance_entries SET available_base = available_base - $3, committed_base = committed_base + $3, updated_at = now()
+         WHERE account = $1 AND asset = $2 AND available_base >= $3`,
+        [account, asset, cashNeededBase.toString()],
+      );
+
+      // 4. Insert reservation row
+      await client.query(
+        `INSERT INTO reservations (reservation_id, decision_id, intent_id, account, asset, amount_base, status, created_at, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'OPEN', now(), $7)`,
+        [reservationId, decisionId, intentId, account, asset, cashNeededBase.toString(), expiresAt.toISOString()],
+      );
+
+      // 5. Insert execution permit row
+      await client.query(
+        `INSERT INTO execution_permits (permit_id, decision_id, intent_id, reservation_ids, lease_epoch, max_qty, max_cash, issued_at, expires_at, single_use, used_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now(), $8, true, NULL)`,
+        [permitId, decisionId, intentId, [reservationId], leaseEpoch, cashNeededBase.toString(), cashNeededBase.toString(), expiresAt.toISOString()],
+      );
+
+      // 6. Insert kernel event
+      const eventPayload = JSON.stringify({ reservationId, permitId, intentId, account, asset, cashBase: cashNeededBase.toString(), leaseEpoch });
+      const payloadHash = createHash("sha256").update(eventPayload).digest("hex");
+      await client.query(
+        `INSERT INTO kernel_events (topic, payload, payload_hash) VALUES ($1, $2, $3)`,
+        ["RESERVATION_CREATED", eventPayload, payloadHash],
+      );
+
+      // 7. Commit — all-or-nothing
+      await client.query("COMMIT");
+      return { reservationId, permitId };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+}
+
+export function createPgMoneyAuthority(config: PgBalanceStoreConfig): PgMoneyAuthority {
+  return new PgMoneyAuthority(config);
 }
