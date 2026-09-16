@@ -59,6 +59,11 @@ export interface KernelEventSink {
   push(topic: string, payload: unknown): Promise<void>;
 }
 
+/** Result of a MoneyAuthority operation. */
+export type MoneyAuthorityResult =
+  | { ok: true; reservationId: string; permitId: string }
+  | { ok: false; reason: string; code: string };
+
 /** Authority for atomic reservation and permit creation. */
 export interface MoneyAuthority {
   reserve(
@@ -69,7 +74,7 @@ export interface MoneyAuthority {
     intentId: string,
     leaseEpoch: number,
     now: Date
-  ): Promise<{ reservationId: string; permitId: string }>;
+  ): Promise<MoneyAuthorityResult>;
 }
 
 export interface MoneyKernelOpts {
@@ -255,7 +260,7 @@ export class MoneyKernel {
 
     // Use authority if available for atomic reservation and permit creation.
     if (this.authority) {
-      const { reservationId, permitId } = await this.authority.reserve(
+      const res = await this.authority.reserve(
         req.account,
         req.asset,
         cashNeeded,
@@ -264,6 +269,14 @@ export class MoneyKernel {
         req.leaseEpoch,
         req.now
       );
+      if (!res.ok) {
+        return {
+          ok: false,
+          code: res.code,
+          reason: res.reason,
+        };
+      }
+      const { reservationId, permitId } = res;
 
       // Build the permit (single-use, versioned, TTL-bound)
       const permit: ExecutionPermit = {

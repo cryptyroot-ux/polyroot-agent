@@ -151,7 +151,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
     intentId: string,
     leaseEpoch: number,
     now: Date,
-  ): Promise<{ reservationId: string; permitId: string }> {
+  ): Promise<import("./money-kernel.js").MoneyAuthorityResult> {
     const reservationId = randomUUID();
     const permitId = randomUUID();
     const expiresAt = new Date(now.getTime() + 60_000);
@@ -168,7 +168,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
       );
       if (bal.rowCount === 0 || BigInt(bal.rows[0].available_base) < cashNeededBase) {
         await client.query("ROLLBACK");
-        return { reservationId: "", permitId: "" };
+        return { ok: false, reason: "INSUFFICIENT_AVAILABLE_BALANCE", code: "INSUFFICIENT_AVAILABLE_BALANCE" };
       }
 
       // 2. Check open-reservation limit
@@ -178,7 +178,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
       );
       if ((openCount.rows[0]?.cnt ?? 0) >= this.maxOpenReservations) {
         await client.query("ROLLBACK");
-        return { reservationId: "", permitId: "" };
+        return { ok: false, reason: "RESERVATION_LIMIT_EXCEEDED", code: "RESERVATION_LIMIT_EXCEEDED" };
       }
 
       // 3. Reserve funds
@@ -202,20 +202,31 @@ export class PgMoneyAuthority implements MoneyAuthority {
         [permitId, decisionId, intentId, [reservationId], leaseEpoch, cashNeededBase.toString(), cashNeededBase.toString(), expiresAt.toISOString()],
       );
 
-      // 6. Insert kernel event
+      // 6. Insert kernel event (audit trail) — schema has NO payload_hash col,
+      //    store hash inside metadata JSONB instead.
       const eventPayload = JSON.stringify({ reservationId, permitId, intentId, account, asset, cashBase: cashNeededBase.toString(), leaseEpoch });
       const payloadHash = createHash("sha256").update(eventPayload).digest("hex");
       await client.query(
-        `INSERT INTO kernel_events (topic, payload, payload_hash) VALUES ($1, $2, $3)`,
-        ["RESERVATION_CREATED", eventPayload, payloadHash],
+        `SELECT kernel_event_append($1, $2, $3, $4, $5)`,
+        [
+          "RESERVATION_CREATED",
+          "execution_permits",
+          permitId,
+          eventPayload,
+          JSON.stringify({ payloadHash, leaseEpoch }),
+        ],
       );
 
       // 7. Commit — all-or-nothing
       await client.query("COMMIT");
-      return { reservationId, permitId };
+      return { ok: true, reservationId, permitId };
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
-      throw err;
+      return {
+        ok: false,
+        reason: err instanceof Error ? err.message : String(err),
+        code: "MONEY_AUTHORITY_FAILED",
+      };
     } finally {
       client.release();
     }
