@@ -55,7 +55,7 @@ function makeReq(over = {}) {
   // Build base permit first, then allow overrides
   const permit = makePermit();
   const wallet = makeWallet();
-  
+
   const base = {
     schema_version: "1.1",
     action: "ORDER_SUBMIT" as const,
@@ -74,10 +74,10 @@ function makeReq(over = {}) {
     expectedChainId: 137,
     expectedLeaseEpoch: 1,
   };
-  
+
   // Allow overrides to modify the base
   const req = { ...base, ...over };
-  
+
   // If permit was overridden, sync dependent fields
   if (over.permit) {
     req.permit = over.permit;
@@ -86,7 +86,7 @@ function makeReq(over = {}) {
     req.quoteId = over.permit.quote_id;
     req.expectedLeaseEpoch = over.permit.lease_epoch;
   }
-  
+
   // Recompute payloadHash if not provided
   if (!("payloadHash" in over)) {
     req.payloadHash = computePayloadHash(req as any);

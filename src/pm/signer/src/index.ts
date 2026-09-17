@@ -356,7 +356,7 @@ export class SignerVault {
         reason: "cash required exceeds permit cash ceiling",
         code: "CASH_EXCEEDS_PERMIT",
       };
-}
+    }
 
     // 12. Lease epoch binding — permit must be for current authoritative lease.
     if (request.permit.lease_epoch !== request.expectedLeaseEpoch) {

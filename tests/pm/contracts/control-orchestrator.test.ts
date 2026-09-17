@@ -228,7 +228,10 @@ function makeDeps(
   });
   const deps: OrchestratorDeps = {
     kernel,
-    signer: new SignerVault({ expectedChainId: 137, cryptoSigner: async () => "sig_orch" }),
+    signer: new SignerVault({
+      expectedChainId: 137,
+      cryptoSigner: async () => "sig_orch",
+    }),
     executor,
     wallet: makeWallet(),
     policy: makePolicy(),

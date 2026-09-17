@@ -350,7 +350,8 @@ export class PgMoneyAuthority implements MoneyAuthority {
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
       const msg = err instanceof Error ? err.message : String(err);
-      const code = err instanceof Error && "code" in err ? (err as any).code : "";
+      const code =
+        err instanceof Error && "code" in err ? (err as any).code : "";
       // PostgreSQL serialization/deadlock conflicts are TRANSIENT — a bounded
       // retry with an authoritative re-read is safe (the duplicate-intent guard
       // and balance lock prevent double-allocation). Surface a typed code so the
@@ -363,7 +364,11 @@ export class PgMoneyAuthority implements MoneyAuthority {
           code: "DUPLICATE_INTENT",
         };
       }
-      if (code === "40001" || code === "40P01" || /serializ|deadlock/i.test(msg)) {
+      if (
+        code === "40001" ||
+        code === "40P01" ||
+        /serializ|deadlock/i.test(msg)
+      ) {
         return {
           ok: false,
           reason: "transient serialization conflict",

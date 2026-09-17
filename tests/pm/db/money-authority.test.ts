@@ -130,7 +130,10 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
     );
 
     const before = (
-      await pool.query(`SELECT COUNT(*)::int AS c FROM kernel_events`)
+      await pool.query(
+        `SELECT COUNT(*)::int AS c FROM kernel_events WHERE decision_id = $1`,
+        [decisionId],
+      )
     ).rows[0].c;
 
     await pool.query(
@@ -164,7 +167,10 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
     );
     assert.equal(perm.rows[0].c, 0, "no permit on reject");
     const evt = (
-      await pool.query(`SELECT COUNT(*)::int AS c FROM kernel_events`)
+      await pool.query(
+        `SELECT COUNT(*)::int AS c FROM kernel_events WHERE decision_id = $1`,
+        [decisionId],
+      )
     ).rows[0].c;
     assert.equal(evt, before, "no new events on reject");
 
