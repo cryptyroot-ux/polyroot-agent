@@ -52,20 +52,42 @@ async function outcome(p: Promise<SigningOutcome>): Promise<SigningOutcome> {
 }
 
 function makeReq(over = {}) {
+  // Build base permit first, then allow overrides
+  const permit = makePermit();
+  const wallet = makeWallet();
+  
   const base = {
     schema_version: "1.1",
     action: "ORDER_SUBMIT" as const,
-    permit: makePermit(),
-    wallet: makeWallet(),
+    permit,
+    wallet,
     amountBase: 10_000_000n,
     actionId: "act_1",
+    intentId: permit.intent_id,
     marketContext: "mkt_1",
     venueMode: "NORMAL" as const,
     now: new Date("2026-01-01T00:00:30Z"),
     side: "BUY" as const,
     priceBase: 500_000n,
+    policyHash: "ph_audited",
+    quoteId: permit.quote_id,
+    expectedChainId: 137,
+    expectedLeaseEpoch: 1,
   };
+  
+  // Allow overrides to modify the base
   const req = { ...base, ...over };
+  
+  // If permit was overridden, sync dependent fields
+  if (over.permit) {
+    req.permit = over.permit;
+    req.intentId = over.permit.intent_id;
+    req.policyHash = over.permit.policy_hash;
+    req.quoteId = over.permit.quote_id;
+    req.expectedLeaseEpoch = over.permit.lease_epoch;
+  }
+  
+  // Recompute payloadHash if not provided
   if (!("payloadHash" in over)) {
     req.payloadHash = computePayloadHash(req as any);
   }
@@ -76,6 +98,7 @@ describe("Signer Vault — TABLE 8 pre-sign invariants (PM-WALLET-07)", () => {
   const vault = () =>
     new SignerVault({
       maxClockSkewMs: 5000,
+      expectedChainId: 137,
       cryptoSigner: async (r) => `sig_${r.actionId}`,
     });
 
@@ -140,6 +163,7 @@ describe("Signer Vault — TABLE 8 pre-sign invariants (PM-WALLET-07)", () => {
 
   it("treats the crypto-signer error as a typed refusal", async () => {
     const v = new SignerVault({
+      expectedChainId: 137,
       cryptoSigner: async () => {
         throw new Error("kms unreachable");
       },

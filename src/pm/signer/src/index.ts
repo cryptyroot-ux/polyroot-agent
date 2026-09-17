@@ -60,6 +60,8 @@ export interface SignRequest {
   amountBase: bigint;
   /** Canonical domain-level order/action id being signed. */
   actionId: string;
+  /** Intent id the permit authorizes — must equal permit.intent_id. */
+  intentId: string;
   /** Market id / condition id scoped to the permit. */
   marketContext: string;
   /** Venue mode observed immediately before signing (TABLE 17 matrix). */
@@ -72,6 +74,14 @@ export interface SignRequest {
   priceBase: bigint;
   /** SHA-256 hash of the canonical serialized SignRequest (all fields above). */
   payloadHash: string;
+  /** Active policy hash — must match permit.policy_hash. */
+  policyHash: string;
+  /** Quote id — must match permit.quote_id. */
+  quoteId: string;
+  /** Expected chain id for this wallet. */
+  expectedChainId: number;
+  /** Current authoritative lease epoch — must match permit.lease_epoch. */
+  expectedLeaseEpoch: number;
 }
 
 export type SigningOutcome =
@@ -84,6 +94,8 @@ export type CryptoSigner = (request: SignRequest) => Promise<string>;
 export interface SignerVaultDeps {
   /** Maximum accepted clock skew for the permit TTL check (ms). */
   maxClockSkewMs?: number;
+  /** Expected chain ID for this signer (e.g., 137 for Polygon). */
+  expectedChainId: number;
   cryptoSigner: CryptoSigner;
 }
 
@@ -128,9 +140,15 @@ export function computePayloadHash(request: SignRequest): string {
     // Amount & action
     request.amountBase.toString(),
     request.actionId,
+    request.intentId,
     request.marketContext,
     request.venueMode,
     request.now.toISOString(),
+    // Binding fields
+    request.policyHash,
+    request.quoteId,
+    String(request.expectedChainId),
+    String(request.expectedLeaseEpoch),
     // Order binding (side + price) — critical for full payload binding.
     // Defensive: callers that build a request without side/priceBase yet
     // (e.g. computing a placeholder hash) must not crash the hash function.
@@ -169,10 +187,12 @@ export function permitFingerprint(permit: ExecutionPermit): string {
 export class SignerVault {
   private readonly maxClockSkewMs: number;
   private readonly cryptoSigner: CryptoSigner;
+  private readonly expectedChainId: number;
 
   constructor(deps: SignerVaultDeps) {
     this.maxClockSkewMs = deps.maxClockSkewMs ?? 5_000;
     this.cryptoSigner = deps.cryptoSigner;
+    this.expectedChainId = deps.expectedChainId;
   }
 
   /**
@@ -206,14 +226,7 @@ export class SignerVault {
   checkAllowed(
     request: SignRequest,
   ): { ok: true } | { ok: false; reason: string; code: string } {
-    if (!SIGNER_ALLOWED_ACTIONS.includes(request.action)) {
-      return {
-        ok: false,
-        reason: "action not allowlisted",
-        code: "ACTION_NOT_ALLOWED",
-      };
-    }
-
+    // 1. Permit schema validation.
     const parsed = ExecutionPermitSchema.safeParse(request.permit);
     if (!parsed.success) {
       return {
@@ -223,7 +236,16 @@ export class SignerVault {
       };
     }
 
-    // 1. Permit unexpired (with bounded clock skew).
+    // 2. Action on allowlist.
+    if (!SIGNER_ALLOWED_ACTIONS.includes(request.action)) {
+      return {
+        ok: false,
+        reason: "action not allowlisted",
+        code: "ACTION_NOT_ALLOWED",
+      };
+    }
+
+    // 3. Permit unexpired (with bounded clock skew).
     const skew = Math.abs(
       request.now.getTime() - request.permit.issued_at.getTime(),
     );
@@ -259,16 +281,61 @@ export class SignerVault {
       };
     }
 
-    // 3. Action on allowlist.
-    if (!SIGNER_ALLOWED_ACTIONS.includes(request.action)) {
+    // 3. Chain identity — wallet must be on expected chain.
+    if (request.wallet.chain_id !== this.expectedChainId) {
       return {
         ok: false,
-        reason: "action not allowlisted",
-        code: "ACTION_NOT_ALLOWED",
+        reason: "wallet chain mismatch",
+        code: "CHAIN_MISMATCH",
       };
     }
 
-    // 4. Exact amount within permit reservation.
+    // 4. Intent binding — permit must bind to this action's intent.
+    if (request.permit.intent_id !== request.intentId) {
+      return {
+        ok: false,
+        reason: "permit intent_id does not match request intentId",
+        code: "INTENT_MISMATCH",
+      };
+    }
+
+    // 5. Policy hash binding — permit must reflect the active policy.
+    if (request.permit.policy_hash !== request.policyHash) {
+      return {
+        ok: false,
+        reason: "permit policy_hash does not match active policy",
+        code: "POLICY_HASH_MISMATCH",
+      };
+    }
+
+    // 6. Quote binding — permit must bind to the quoted market data.
+    if (request.permit.quote_id !== request.quoteId) {
+      return {
+        ok: false,
+        reason: "permit quote_id does not match request quoteId",
+        code: "QUOTE_MISMATCH",
+      };
+    }
+
+    // 7. Venue mode binding — permit must match the current venue mode.
+    if (request.permit.venue_mode !== request.venueMode) {
+      return {
+        ok: false,
+        reason: "permit venue_mode does not match request venueMode",
+        code: "VENUE_MODE_MISMATCH",
+      };
+    }
+
+    // 8. Lease epoch binding — permit must be for current authoritative lease.
+    if (request.permit.lease_epoch !== request.expectedLeaseEpoch) {
+      return {
+        ok: false,
+        reason: "permit lease_epoch does not match expected lease epoch",
+        code: "LEASE_EPOCH_MISMATCH",
+      };
+    }
+
+    // 10. Exact amount within permit reservation.
     // amountBase is SHARE quantity, bound is permit's share quota (max_qty).
     const maxQtyBn = decimalToBase(request.permit.max_qty);
     if (request.amountBase > maxQtyBn) {
@@ -279,20 +346,33 @@ export class SignerVault {
       };
     }
 
-    // 5. Venue mode check (TABLE 17).
-    const modeCheck = VenueModeSchema.safeParse(request.venueMode);
-    if (!modeCheck.success) {
+    // 11. Cash ceiling — amount in cash must not exceed permit's cash ceiling.
+    // amountBase is shares; compute cash = amount * price.
+    const cashNeeded = (request.amountBase * request.priceBase) / 1_000_000n;
+    const maxCashBn = decimalToBase(request.permit.max_cash);
+    if (cashNeeded > maxCashBn) {
       return {
         ok: false,
-        reason: "invalid venue mode",
-        code: "INVALID_VENUE_MODE",
+        reason: "cash required exceeds permit cash ceiling",
+        code: "CASH_EXCEEDS_PERMIT",
+      };
+}
+
+    // 12. Lease epoch binding — permit must be for current authoritative lease.
+    if (request.permit.lease_epoch !== request.expectedLeaseEpoch) {
+      return {
+        ok: false,
+        reason: "permit lease_epoch does not match expected lease epoch",
+        code: "LEASE_EPOCH_MISMATCH",
       };
     }
 
-    // 6. Time freshness — permit must be within TTL.
+    // 13. Time freshness — permit must be within TTL.
     if (request.now.getTime() > request.permit.expires_at.getTime()) {
       return { ok: false, reason: "permit expired", code: "PERMIT_EXPIRED" };
     }
+
+    // 16. Single-use permit must not already be marked used.
     if (
       request.permit.single_use &&
       request.permit.used_at !== null &&
@@ -302,6 +382,24 @@ export class SignerVault {
         ok: false,
         reason: "permit already used",
         code: "PERMIT_REUSED",
+      };
+    }
+
+    // 17. Wallet identity — signer, account and funder are distinct (WAL-03).
+    if (request.wallet.signer_address === request.wallet.funder) {
+      return {
+        ok: false,
+        reason: "signer and funder must be distinct",
+        code: "IDENTITY_CONFLICT",
+      };
+    }
+
+    // 18. Action on allowlist.
+    if (!SIGNER_ALLOWED_ACTIONS.includes(request.action)) {
+      return {
+        ok: false,
+        reason: "action not allowlisted",
+        code: "ACTION_NOT_ALLOWED",
       };
     }
 

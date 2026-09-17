@@ -466,6 +466,7 @@ describe("FT-13 — Unknown venue mode: no new orders; read continues", () => {
 describe("FT-14 — Signer compromise attempt: vault rejects mismatch", () => {
   it("altering amount after permit → vault refuses to sign", async () => {
     const vault = new SignerVault({
+      expectedChainId: 137,
       cryptoSigner: async () => "0xdeadbeef",
       maxClockSkewMs: 5_000,
     });
@@ -485,15 +486,20 @@ describe("FT-14 — Signer compromise attempt: vault rejects mismatch", () => {
         },
         amountBase,
         actionId,
+        intentId: permit.intent_id,
         marketContext: "mkt_1",
         venueMode: "NORMAL",
         now: new Date("2026-01-01T00:00:30Z"),
-        payloadHash: "", // dummy
+        policyHash: "ph_audited",
+        quoteId: permit.quote_id,
+        expectedChainId: 137,
+        expectedLeaseEpoch: 1,
+        side: "BUY" as const,
+        priceBase: 500_000n,
       };
-      return {
-        ...base,
-        payloadHash: computePayloadHash(base),
-      };
+      const req = { ...base };
+      req.payloadHash = computePayloadHash(req);
+      return req;
     };
     // Honors the permit share quota: 50 shares signed cleanly.
     const ok = await vault.sign(makeReq(decimalToBase(50)));

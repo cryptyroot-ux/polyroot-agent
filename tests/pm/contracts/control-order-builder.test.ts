@@ -75,7 +75,7 @@ function buildInput(over: Partial<OrderBuildInput> = {}): OrderBuildInput {
 }
 
 function signer(cryptoSigner = async () => "sig_ctrl"): SignerVault {
-  return new SignerVault({ cryptoSigner });
+  return new SignerVault({ expectedChainId: 137, cryptoSigner });
 }
 
 describe("Control — order builder (buildSignedOrder)", () => {
@@ -107,6 +107,7 @@ describe("Control — order builder (buildSignedOrder)", () => {
       }),
       vault,
     );
+    console.log("TEST 1 result:", JSON.stringify(res, null, 2));
     assert.equal(res.ok, true);
     if (res.ok) assert.ok(Math.abs(res.order.size - 100) < 1e-9);
   });
