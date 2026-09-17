@@ -117,7 +117,7 @@ export class PgBalanceStore implements BalanceStore {
 
   async getOpenCount(account: string, asset: string): Promise<number> {
     const result = await this.pool.query(
-      `SELECT COUNT(*)::int AS cnt FROM reservations WHERE account = $1 AND asset = $2 AND status = 'OPEN'`,
+      `SELECT COUNT(*)::int AS cnt FROM reservations WHERE account = $1 AND asset = $2 AND status = 'ACTIVE'`,
       [account, asset],
     );
     return result.rows[0]?.cnt ?? 0;
@@ -252,7 +252,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
 
       // 2. Check open-reservation limit
       const openCount = await client.query(
-        `SELECT COUNT(*)::int AS cnt FROM reservations WHERE account = $1 AND asset = $2 AND status = 'OPEN'`,
+        `SELECT COUNT(*)::int AS cnt FROM reservations WHERE account = $1 AND asset = $2 AND status = 'ACTIVE'`,
         [account, asset],
       );
       if ((openCount.rows[0]?.cnt ?? 0) >= this.maxOpenReservations) {
