@@ -355,7 +355,10 @@ export class PgMoneyAuthority implements MoneyAuthority {
       await client.query("ROLLBACK").catch(() => {});
       const msg = err instanceof Error ? err.message : String(err);
       const pgError = err as { code?: string | number };
-      const code = typeof pgError.code === "string" || typeof pgError.code === "number" ? String(pgError.code) : "";
+      const code =
+        typeof pgError.code === "string" || typeof pgError.code === "number"
+          ? String(pgError.code)
+          : "";
       // PostgreSQL serialization/deadlock conflicts are TRANSIENT — a bounded
       // retry with an authoritative re-read is safe (the duplicate-intent guard
       // and balance lock prevent double-allocation). Surface a typed code so the

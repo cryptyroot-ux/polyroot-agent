@@ -4,16 +4,35 @@
  */
 
 // Re-export domain types
-export type { TradeIntent, RiskDecision, RiskPolicy, Portfolio } from "@polyroot/domain";
+export type {
+  TradeIntent,
+  RiskDecision,
+  RiskPolicy,
+  Portfolio,
+} from "@polyroot/domain";
 
 // EV Calculator
-export { EVCalculator, evaluateEdge, type EVCalculatorInput } from "./ev-calculator.js";
+export {
+  EVCalculator,
+  evaluateEdge,
+  type EVCalculatorInput,
+} from "./ev-calculator.js";
 
 // Sizing Engine
-export { SizingEngine, type SizingInput, type SizingResult, pctToBps } from "./sizing-engine.js";
+export {
+  SizingEngine,
+  type SizingInput,
+  type SizingResult,
+  pctToBps,
+} from "./sizing-engine.js";
 
 // Reservation Manager
-export { ReservationManager, type ReservationManagerDeps, type Reservation, isReservationValid } from "./reservation-manager.js";
+export {
+  ReservationManager,
+  type ReservationManagerDeps,
+  type Reservation,
+  isReservationValid,
+} from "./reservation-manager.js";
 
 // Money Kernel (PM-RISK-01..08, Blueprint B9)
 export * from "./money-kernel.js";

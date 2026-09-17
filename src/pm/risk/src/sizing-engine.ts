@@ -47,7 +47,13 @@ export interface SizingResult {
   /** Whether sizing was capped by any limit */
   capped: boolean;
   /** Which cap was hit (if any) */
-  capReason: "ORDER_PCT" | "MARKET_PCT" | "PORTFOLIO_PCT" | "MIN_EDGE" | "ZERO_SIZE" | undefined;
+  capReason:
+    | "ORDER_PCT"
+    | "MARKET_PCT"
+    | "PORTFOLIO_PCT"
+    | "MIN_EDGE"
+    | "ZERO_SIZE"
+    | undefined;
 }
 
 export class SizingEngine {
@@ -66,7 +72,11 @@ export class SizingEngine {
     } = input;
 
     // 1. Check minimum edge threshold (use min_edge_per_share if set, else min_edge_after_cost)
-    const minEdgeThreshold = BigInt(Math.round((policy.min_edge_per_share ?? policy.min_edge_after_cost) * 10_000));
+    const minEdgeThreshold = BigInt(
+      Math.round(
+        (policy.min_edge_per_share ?? policy.min_edge_after_cost) * 10_000,
+      ),
+    );
     const evBps = price > 0n ? (ev * 10_000n) / price : 0n;
 
     if (evBps <= minEdgeThreshold) {
@@ -83,36 +93,41 @@ export class SizingEngine {
     // edge = EV / price (for YES) or EV / (1 - price) for NO
     const edgeNumerator = ev;
     const edgeDenominator = side === "YES" ? price : 1_000_000n - price;
-    const edgeFraction = edgeDenominator > 0n ? edgeNumerator / edgeDenominator : 0n;
+    const edgeFraction =
+      edgeDenominator > 0n ? edgeNumerator / edgeDenominator : 0n;
 
     // odds = (1 - price) / price for YES, price / (1 - price) for NO
     const oddsNumerator = side === "YES" ? 1_000_000n - price : price;
     const oddsDenominator = side === "YES" ? price : 1_000_000n - price;
-    const oddsFraction = oddsDenominator > 0n ? oddsNumerator / oddsDenominator : 0n;
+    const oddsFraction =
+      oddsDenominator > 0n ? oddsNumerator / oddsDenominator : 0n;
 
     // Kelly fraction = edge / odds (scaled by 1e6)
-    const kellyFraction = oddsFraction > 0n
-      ? (edgeFraction * 1_000_000n) / oddsFraction
-      : 0n;
+    const kellyFraction =
+      oddsFraction > 0n ? (edgeFraction * 1_000_000n) / oddsFraction : 0n;
 
     // Apply fractional Kelly (default 25%)
-    const fraction = BigInt(Math.round((policy.kelly_fraction ?? 0.25) * 10_000));
+    const fraction = BigInt(
+      Math.round((policy.kelly_fraction ?? 0.25) * 10_000),
+    );
     const fractionalKelly = (kellyFraction * fraction) / 10_000n;
 
     // 3. Compute max position by each cap (in shares base units)
     const maxOrderBps = BigInt(Math.round(policy.max_order_pct * 10_000));
     const maxMarketBps = BigInt(Math.round(policy.max_market_pct * 10_000));
-    const maxPortfolioBps = BigInt(Math.round(policy.max_portfolio_pct * 10_000));
+    const maxPortfolioBps = BigInt(
+      Math.round(policy.max_portfolio_pct * 10_000),
+    );
 
     const maxOrderSize = (portfolioValue * maxOrderBps) / 10_000n;
     const maxMarketSize = (portfolioValue * maxMarketBps) / 10_000n;
-    const remainingMarketCap = maxMarketSize > marketExposure
-      ? maxMarketSize - marketExposure
-      : 0n;
+    const remainingMarketCap =
+      maxMarketSize > marketExposure ? maxMarketSize - marketExposure : 0n;
     const maxPortfolioSize = (portfolioValue * maxPortfolioBps) / 10_000n;
-    const remainingPortfolioCap = maxPortfolioSize > portfolioExposure
-      ? maxPortfolioSize - portfolioExposure
-      : 0n;
+    const remainingPortfolioCap =
+      maxPortfolioSize > portfolioExposure
+        ? maxPortfolioSize - portfolioExposure
+        : 0n;
 
     // Kelly size = portfolio_value * fractional_kelly
     const kellySize = (portfolioValue * fractionalKelly) / 1_000_000n;

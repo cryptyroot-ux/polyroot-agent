@@ -52,18 +52,19 @@ export class ReservationManager {
    * Create a new reservation from a permit.
    * The permit must be valid and unclaimed.
    */
-  async createFromPermit(
-    _permit: {
-      permit_id: string;
-      intent_id: string;
-      decision_id: string;
-      account: string;
-      asset: string;
-      max_qty: number; // shares
-      max_cash: number; // cash
-      expires_at: Date;
-    },
-  ): Promise<{ ok: true; reservationId: string } | { ok: false; code: string; reason: string }> {
+  async createFromPermit(_permit: {
+    permit_id: string;
+    intent_id: string;
+    decision_id: string;
+    account: string;
+    asset: string;
+    max_qty: number; // shares
+    max_cash: number; // cash
+    expires_at: Date;
+  }): Promise<
+    | { ok: true; reservationId: string }
+    | { ok: false; code: string; reason: string }
+  > {
     // Implementation would persist to reservations table
     // For now, this is a stub that the tests can use
     return {
@@ -76,7 +77,10 @@ export class ReservationManager {
    * Consume a reservation (order filled).
    * Moves reservation to CONSUMED state and updates balance.
    */
-  async consume(_reservationId: string, _filledAmount: bigint): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+  async consume(
+    _reservationId: string,
+    _filledAmount: bigint,
+  ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
     // Implementation would:
     // 1. Load reservation
     // 2. Verify status = ACTIVE
@@ -90,7 +94,10 @@ export class ReservationManager {
    * Release a reservation (order cancelled or expired).
    * Moves reservation to RELEASED state and returns funds to available.
    */
-  async release(_reservationId: string, _reason: "CANCELLED" | "EXPIRED" | "REJECTED"): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+  async release(
+    _reservationId: string,
+    _reason: "CANCELLED" | "EXPIRED" | "REJECTED",
+  ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
     // Implementation would:
     // 1. Load reservation
     // 2. Verify status = ACTIVE
@@ -102,7 +109,9 @@ export class ReservationManager {
   /**
    * Mark reservation as expired (background job for expired reservations).
    */
-  async expire(_reservationId: string): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+  async expire(
+    _reservationId: string,
+  ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
     // Implementation would:
     // 1. Load reservation
     // 2. Verify status = ACTIVE
@@ -129,11 +138,14 @@ export class ReservationManager {
 /**
  * Check if a reservation is still valid for trading.
  */
-export function isReservationValid(reservation: {
-  status: string;
-  expires_at: Date;
-  used_at: Date | null;
-}, now: Date = new Date()): boolean {
+export function isReservationValid(
+  reservation: {
+    status: string;
+    expires_at: Date;
+    used_at: Date | null;
+  },
+  now: Date = new Date(),
+): boolean {
   if (reservation.status !== "ACTIVE") return false;
   if (reservation.used_at !== null) return false;
   if (now > reservation.expires_at) return false;

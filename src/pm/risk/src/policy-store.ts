@@ -11,7 +11,9 @@ export interface PolicyStore {
   /** Get the current active policy. */
   get(): Promise<import("@polyroot/domain").RiskPolicy>;
   /** Update the policy (creates new version). */
-  update(policy: Partial<import("@polyroot/domain").RiskPolicy>): Promise<import("@polyroot/domain").RiskPolicy>;
+  update(
+    policy: Partial<import("@polyroot/domain").RiskPolicy>,
+  ): Promise<import("@polyroot/domain").RiskPolicy>;
 }
 
 export interface MemPolicyStoreDeps {
@@ -23,7 +25,8 @@ export interface MemPolicyStoreDeps {
  */
 export class MemPolicyStore {
   private policy: import("@polyroot/domain").RiskPolicy;
-  private versions: Map<string, import("@polyroot/domain").RiskPolicy> = new Map();
+  private versions: Map<string, import("@polyroot/domain").RiskPolicy> =
+    new Map();
 
   constructor(deps: MemPolicyStoreDeps = {}) {
     const { initial = {} } = deps;
@@ -57,7 +60,9 @@ export class MemPolicyStore {
     return { ...this.policy };
   }
 
-  async update(patch: Partial<import("@polyroot/domain").RiskPolicy>): Promise<import("@polyroot/domain").RiskPolicy> {
+  async update(
+    patch: Partial<import("@polyroot/domain").RiskPolicy>,
+  ): Promise<import("@polyroot/domain").RiskPolicy> {
     this.policy = {
       ...this.policy,
       ...patch,
@@ -70,5 +75,7 @@ export class MemPolicyStore {
 
 export interface PolicyStore {
   get(): Promise<import("@polyroot/domain").RiskPolicy>;
-  update(patch: Partial<import("@polyroot/domain").RiskPolicy>): Promise<import("@polyroot/domain").RiskPolicy>;
+  update(
+    patch: Partial<import("@polyroot/domain").RiskPolicy>,
+  ): Promise<import("@polyroot/domain").RiskPolicy>;
 }
