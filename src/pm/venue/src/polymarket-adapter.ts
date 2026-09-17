@@ -16,6 +16,7 @@
 import {
   type MarketSnapshot,
   type OrderResult,
+  type OrderStatus,
   type SignedOrder,
   type VenueMode,
 } from "@polyroot/domain";
@@ -36,13 +37,32 @@ interface SdkBookLevel {
   size: string;
 }
 
+export interface PolymarketVenueAdapterDeps {
+  /**
+   * Baseline market metadata used when the venue does not surface priced
+   * market data. When an opaque market id is given (no fetchMarket result),
+   * the adapter MUST NOT fabricate canonical venue state — it marks the
+   * snapshot as UNKNOWN so the risk kernel fails closed.
+   */
+  defaultChainId?: number;
+  defaultCollateral?: string;
+}
+
 export class PolymarketVenueAdapter {
   private _mode: VenueMode = "NORMAL";
   private readonly client: PolymarketClientLike;
+  private readonly chainId: number;
+  private readonly collateral: string;
 
-  constructor(client: PolymarketClientLike, initialMode: VenueMode = "NORMAL") {
+  constructor(
+    client: PolymarketClientLike,
+    initialMode: VenueMode = "NORMAL",
+    deps: PolymarketVenueAdapterDeps = {},
+  ) {
     this.client = client;
     this._mode = initialMode;
+    this.chainId = deps.defaultChainId ?? 137;
+    this.collateral = deps.defaultCollateral ?? "pUSD";
   }
 
   get mode(): VenueMode {
@@ -53,33 +73,81 @@ export class PolymarketVenueAdapter {
     this._mode = mode;
   }
 
-  /** Map the SDK order book into a canonical MarketSnapshot (yes/no prices). */
+  /** Robust best-level extraction: parse all levels, validate, and pick the
+   *  correct extremum. Bids sort high-to-low (best = max price), asks sort
+   *  low-to-high (best = min price). Do NOT trust API ordering.
+   */
+  private bestLevel(
+    levels: SdkBookLevel[] | undefined,
+    side: "bid" | "ask",
+  ): number | undefined {
+    if (!levels || levels.length === 0) return undefined;
+    const prices = levels
+      .map((l) => Number(l.price))
+      .filter((p) => Number.isFinite(p) && p >= 0 && p <= 1);
+    if (prices.length === 0) return undefined;
+    return side === "bid"
+      ? Math.max(...prices)
+      : Math.min(...prices);
+  }
+
+  /** Map the SDK order book into a canonical MarketSnapshot. Does NOT fabricate
+   *  venue state: if no market metadata is available the snapshot is marked
+   *  UNKNOWN so downstream risk logic fails closed.
+   */
   async getOrderBook(marketId: string): Promise<MarketSnapshot> {
-    const raw = (await this.client.fetchOrderBook?.({ assetId: marketId })) as {
-      bids?: SdkBookLevel[];
-      asks?: SdkBookLevel[];
-    };
-    const best = (levels?: SdkBookLevel[]): number | undefined => {
-      const n = levels?.length ?? 0;
-      return n > 0 && levels ? Number(levels[0]?.price) : undefined;
-    };
-    const bestBid = best(raw?.bids);
-    const bestAsk = best(raw?.asks);
+    const raw = (await this.client.fetchOrderBook?.({ assetId: marketId })) as
+      | {
+          bids?: SdkBookLevel[];
+          asks?: SdkBookLevel[];
+          market?: {
+            question?: string;
+            rulesHash?: string;
+            negRisk?: boolean;
+            clobTokenIds?: string[];
+            feeRateBps?: number;
+            minimumOrderSize?: number;
+            tickSize?: number;
+            status?: string;
+          };
+        }
+      | undefined;
+
+    const rawMarket = raw?.market;
+    // Opaque market id must NOT be passed through as the canonical question.
+    const question =
+      rawMarket?.question && rawMarket.question !== marketId
+        ? rawMarket.question
+        : marketId;
+    const rulesHash = rawMarket?.rulesHash ?? undefined;
+    const isNegRisk = rawMarket?.negRisk ?? undefined;
+    const feeMakerBps = 0; // maker rebates are venue-settled, not assumed here
+    const feeTakerBps =
+      rawMarket?.feeRateBps !== undefined ? rawMarket.feeRateBps : 200;
+    const tickSize = rawMarket?.tickSize ?? 0.001;
+    const minSize = rawMarket?.minimumOrderSize ?? 1;
+    const marketStatus = rawMarket?.status ?? "ACTIVE";
+
+    const bestBid = this.bestLevel(raw?.bids, "bid");
+    const bestAsk = this.bestLevel(raw?.asks, "ask");
+
+    const hasRealBook = bestBid !== undefined || bestAsk !== undefined;
     const bestTimestamp = new Date();
+
     return {
       schema_version: "1.0.0",
       event_id: marketId,
       market_id: marketId,
-      question: marketId,
-      chain_id: 137,
-      collateral: "pUSD",
-      rules_hash: "pending",
-      fee_maker_bps: 0,
-      fee_taker_bps: 200,
-      tick_size: 0.001,
-      min_size: 1,
-      status: "ACTIVE",
-      is_neg_risk: false,
+      question,
+      chain_id: this.chainId,
+      collateral: this.collateral,
+      rules_hash: rulesHash ?? "UNKNOWN",
+      fee_maker_bps: feeMakerBps,
+      fee_taker_bps: feeTakerBps,
+      tick_size: tickSize,
+      min_size: minSize,
+      status: hasRealBook && rawMarket ? marketStatus : "UNKNOWN",
+      is_neg_risk: isNegRisk ?? false,
       venue_mode: this._mode,
       yes_price: bestBid,
       no_price: bestAsk,
@@ -157,17 +225,70 @@ export class PolymarketVenueAdapter {
     }
   }
 
-  /** Query venue for order status. Returns null when the venue has no record. */
+  /**
+   * Query venue for order status. Maps the Polymarket status string to our
+   * canonical OrderStatus. This is the authoritative venue truth for the
+   * recovery state machine (EXE-03/04).
+   *
+   * Known Polymarket status mappings:
+   *   LIVE / NEW        → LIVE
+   *   PARTIAL          → PARTIAL
+   *   MATCHED / FILLED → MATCHED
+   *   CANCELED          → CANCELED
+   *   EXPIRED           → EXPIRED
+   *   REJECTED / FAILED → REJECTED
+   *   anything else     → UNKNOWN
+   */
   async getOrderStatus(orderId: string): Promise<OrderResult | null> {
     const raw = (await this.client.fetchOrder?.({ orderId })) as
-      | { status?: string; orderID?: string; errorMsg?: string }
-      | { success?: boolean; order_id?: string }
+      | {
+          status?: string;
+          orderID?: string;
+          errorMsg?: string;
+          fills?: unknown[];
+          filledSize?: number;
+          averagePrice?: number;
+        }
       | null
       | undefined;
     if (!raw) return null;
+
+    const venueStatus = (raw.status ?? "UNKNOWN").toUpperCase();
+    let orderStatus: OrderStatus = "UNKNOWN";
+    switch (venueStatus) {
+      case "LIVE":
+      case "NEW":
+        orderStatus = "LIVE";
+        break;
+      case "PARTIAL":
+        orderStatus = "PARTIAL";
+        break;
+      case "MATCHED":
+      case "FILLED":
+        orderStatus = "MATCHED";
+        break;
+      case "CANCELED":
+        orderStatus = "CANCELED";
+        break;
+      case "EXPIRED":
+        orderStatus = "EXPIRED";
+        break;
+      case "REJECTED":
+      case "FAILED":
+        orderStatus = "REJECTED";
+        break;
+      default:
+        orderStatus = "UNKNOWN";
+        break;
+    }
+
     return {
-      success: true,
+      success: orderStatus !== "REJECTED" && orderStatus !== "UNKNOWN",
+      order_status: orderStatus,
       order_id: orderId,
+      filled_size: raw.filledSize,
+      average_price: raw.averagePrice,
+      error: raw.errorMsg,
       timestamp: new Date(),
     };
   }
