@@ -66,7 +66,10 @@ export class ReservationManager {
     max_qty: number; // shares
     expires_at: Date;
     currency?: string;
-  }): Promise<{ ok: true; reservationId: string } | { ok: false; code: string; reason: string }> {
+  }): Promise<
+    | { ok: true; reservationId: string }
+    | { ok: false; code: string; reason: string }
+  > {
     const reservationId = randomUUID();
     if (!this.deps.pool) {
       // In-memory mode (tests): just return a synthetic id.
@@ -107,7 +110,10 @@ export class ReservationManager {
    *   WHERE id=$1 AND status='ACTIVE'
    * then decrement committed balance.
    */
-  async consume(reservationId: string, filledAmount: bigint): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+  async consume(
+    reservationId: string,
+    filledAmount: bigint,
+  ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
     if (!this.deps.pool) return { ok: true }; // in-memory mode
     const client = await this.deps.pool.connect();
     try {
@@ -121,15 +127,26 @@ export class ReservationManager {
       );
       if (r.rowCount !== 1) {
         await client.query("ROLLBACK");
-        return { ok: false, code: "RESERVATION_NOT_ACTIVE", reason: "reservation not active" };
+        return {
+          ok: false,
+          code: "RESERVATION_NOT_ACTIVE",
+          reason: "reservation not active",
+        };
       }
-      const { account, asset } = r.rows[0] as { account: string; asset: string };
+      const { account, asset } = r.rows[0] as {
+        account: string;
+        asset: string;
+      };
       await this.deps.balanceStore.consumeFunds(account, asset, filledAmount);
       await client.query("COMMIT");
       return { ok: true };
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
-      return { ok: false, code: "CONSUME_FAILED", reason: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        code: "CONSUME_FAILED",
+        reason: err instanceof Error ? err.message : String(err),
+      };
     } finally {
       client.release();
     }
@@ -153,22 +170,36 @@ export class ReservationManager {
       );
       if (r.rowCount !== 1) {
         await client.query("ROLLBACK");
-        return { ok: false, code: "RESERVATION_NOT_ACTIVE", reason: "reservation not active" };
+        return {
+          ok: false,
+          code: "RESERVATION_NOT_ACTIVE",
+          reason: "reservation not active",
+        };
       }
-      const { account, asset, amount } = r.rows[0] as { account: string; asset: string; amount: string };
+      const { account, asset, amount } = r.rows[0] as {
+        account: string;
+        asset: string;
+        amount: string;
+      };
       await this.deps.balanceStore.releaseFunds(account, asset, BigInt(amount));
       await client.query("COMMIT");
       return { ok: true };
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
-      return { ok: false, code: "RELEASE_FAILED", reason: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        code: "RELEASE_FAILED",
+        reason: err instanceof Error ? err.message : String(err),
+      };
     } finally {
       client.release();
     }
   }
 
   /** Expire overdue reservations atomically. */
-  async expire(reservationId: string): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+  async expire(
+    reservationId: string,
+  ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
     return this.release(reservationId, "EXPIRED");
   }
 

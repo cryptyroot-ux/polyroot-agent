@@ -117,13 +117,15 @@ export class SizingEngine {
     // 2. Compute Kelly fraction using fixed-point to preserve precision.
     // edge = EV / price for YES, EV / (1 - price) for NO.
     const edgeDenominator = side === "YES" ? price : SCALE - price;
-    const edgeFractionScaled = edgeDenominator > 0n ? divScale(ev, edgeDenominator) : 0n;
+    const edgeFractionScaled =
+      edgeDenominator > 0n ? divScale(ev, edgeDenominator) : 0n;
 
     // odds = (1 - price) / price for YES, price / (1 - price) for NO.
     const oddsNumerator = side === "YES" ? SCALE - price : price;
     const oddsDenominator = side === "YES" ? price : SCALE - price;
     // odds scaled by SCALE.
-    const oddsScaled = oddsDenominator > 0n ? divScale(oddsNumerator, oddsDenominator) : 0n;
+    const oddsScaled =
+      oddsDenominator > 0n ? divScale(oddsNumerator, oddsDenominator) : 0n;
 
     // Kelly fraction = edge / odds (both scaled).
     const kellyFraction =
@@ -131,19 +133,27 @@ export class SizingEngine {
 
     // Apply fractional Kelly (default 25%).
     // kellyFraction is scaled by SCALE (1e6); fraction is in basis points (2500 = 25%).
-    const fraction = BigInt(Math.round((policy.kelly_fraction ?? 0.25) * 10_000));
+    const fraction = BigInt(
+      Math.round((policy.kelly_fraction ?? 0.25) * 10_000),
+    );
     const fractionalKelly = (kellyFraction * fraction) / 10_000n;
 
     // 3. Compute max position by each cap (in base units).
     const maxOrderBps = BigInt(Math.round(policy.max_order_pct * 10_000));
     const maxMarketBps = BigInt(Math.round(policy.max_market_pct * 10_000));
-    const maxPortfolioBps = BigInt(Math.round(policy.max_portfolio_pct * 10_000));
+    const maxPortfolioBps = BigInt(
+      Math.round(policy.max_portfolio_pct * 10_000),
+    );
 
     const maxOrderSize = mulScale(portfolioValue, maxOrderBps);
     const maxMarketSize = mulScale(portfolioValue, maxMarketBps);
-    const remainingMarketCap = maxMarketSize > marketExposure ? maxMarketSize - marketExposure : 0n;
+    const remainingMarketCap =
+      maxMarketSize > marketExposure ? maxMarketSize - marketExposure : 0n;
     const maxPortfolioSize = mulScale(portfolioValue, maxPortfolioBps);
-    const remainingPortfolioCap = maxPortfolioSize > portfolioExposure ? maxPortfolioSize - portfolioExposure : 0n;
+    const remainingPortfolioCap =
+      maxPortfolioSize > portfolioExposure
+        ? maxPortfolioSize - portfolioExposure
+        : 0n;
 
     // Kelly size = portfolio_value * fractional_kelly.
     const kellySize = mulScale(portfolioValue, fractionalKelly);
