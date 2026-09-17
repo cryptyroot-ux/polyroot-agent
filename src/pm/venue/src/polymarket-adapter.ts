@@ -86,9 +86,7 @@ export class PolymarketVenueAdapter {
       .map((l) => Number(l.price))
       .filter((p) => Number.isFinite(p) && p >= 0 && p <= 1);
     if (prices.length === 0) return undefined;
-    return side === "bid"
-      ? Math.max(...prices)
-      : Math.min(...prices);
+    return side === "bid" ? Math.max(...prices) : Math.min(...prices);
   }
 
   /** Map the SDK order book into a canonical MarketSnapshot. Does NOT fabricate
