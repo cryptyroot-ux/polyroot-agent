@@ -214,3 +214,7 @@ export interface OutboxProcessor {
   getCheckpoint(processorName: string): Promise<string | undefined>;
   resetCheckpoint(processorName: string): Promise<void>;
 }
+
+export * from "./pg-event-store.js";
+export * from "./pg-projection-engine.js";
+export * from "./pg-outbox-processor.js";

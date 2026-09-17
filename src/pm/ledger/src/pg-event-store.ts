@@ -50,31 +50,17 @@ export class PgEventStore implements EventStore {
 
     const e = parsed.data;
 
-    // Idempotency check: if an event with this exact id already exists,
-    // return it without inserting.
-    const existing = await this.withClient(async (client) => {
-      const r = await client.query(
-        `SELECT id, sequence FROM kernel_events WHERE id = $1`,
-        [e.id],
-      );
-      if (r.rows.length > 0) {
-        return { eventId: r.rows[0].id, sequence: r.rows[0].sequence };
-      }
-      return null;
-    });
-
-    if (existing) {
-      return { eventId: existing.eventId, sequence: existing.sequence, created: false };
-    }
-
-    // Insert the event. sequence is generated from the kernel_events_seq
-    // sequence generator; we delegate to the DB for monotonically increasing.
+    // Insert the event, persisting the domain event ID as the row's PRIMARY
+    // KEY. ON CONFLICT DO NOTHING makes duplicate append atomic (idempotent)
+    // even under concurrency: the second writer sees zero affected rows.
     const result = await this.withClient(async (client) => {
       const r = await client.query(
-        `INSERT INTO kernel_events (topic, aggregate_type, aggregate_id, payload, metadata, created_at)
-         VALUES ($1, $2, $3, $4, $5, now())
-         RETURNING id, sequence`,
+        `INSERT INTO kernel_events (id, topic, aggregate_type, aggregate_id, payload, metadata, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now())
+         ON CONFLICT (id) DO NOTHING
+         RETURNING id, sequence, created_at`,
         [
+          e.id,
           e.type,
           e.aggregate_type,
           e.aggregate_id,
@@ -82,10 +68,17 @@ export class PgEventStore implements EventStore {
           e.metadata ?? JSON.stringify({}),
         ],
       );
-      return { eventId: r.rows[0].id, sequence: r.rows[0].sequence };
+      if (r.rows.length > 0) {
+        return { eventId: r.rows[0].id, sequence: r.rows[0].sequence, created: true };
+      }
+      const existing = await client.query(
+        `SELECT id, sequence FROM kernel_events WHERE id = $1`,
+        [e.id],
+      );
+      return { eventId: existing.rows[0].id, sequence: existing.rows[0].sequence, created: false };
     });
 
-    return { eventId: result.eventId, sequence: result.sequence, created: true };
+    return { eventId: result.eventId, sequence: result.sequence, created: result.created };
   }
 
   async appendMany(events: LedgerEvent[]): Promise<AppendResult[]> {
@@ -102,23 +95,15 @@ export class PgEventStore implements EventStore {
         }
         const e = parsed.data;
 
-        // Idempotency check: if an event with this exact id already exists,
-        // skip insertion and track as duplicate.
-        const existing = await client.query(
-          `SELECT id, sequence FROM kernel_events WHERE id = $1`,
-          [e.id],
-        );
-        if (existing.rows.length > 0) {
-          results.push({ eventId: existing.rows[0].id, sequence: existing.rows[0].sequence, created: false });
-          continue;
-        }
-
-        // Insert the event
+        // Insert with the domain event id as PRIMARY KEY. ON CONFLICT makes
+        // duplicate appends idempotent (returns the existing row).
         const r = await client.query(
-          `INSERT INTO kernel_events (topic, aggregate_type, aggregate_id, payload, metadata, created_at)
-           VALUES ($1, $2, $3, $4, $5, now())
+          `INSERT INTO kernel_events (id, topic, aggregate_type, aggregate_id, payload, metadata, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, now())
+           ON CONFLICT (id) DO NOTHING
            RETURNING id, sequence`,
           [
+            e.id,
             e.type,
             e.aggregate_type,
             e.aggregate_id,
@@ -126,7 +111,15 @@ export class PgEventStore implements EventStore {
             e.metadata ?? JSON.stringify({}),
           ],
         );
-        results.push({ eventId: r.rows[0].id, sequence: r.rows[0].sequence, created: true });
+        if (r.rows.length > 0) {
+          results.push({ eventId: r.rows[0].id, sequence: r.rows[0].sequence, created: true });
+        } else {
+          const existing = await client.query(
+            `SELECT id, sequence FROM kernel_events WHERE id = $1`,
+            [e.id],
+          );
+          results.push({ eventId: existing.rows[0].id, sequence: existing.rows[0].sequence, created: false });
+        }
       }
       await client.query(`COMMIT`);
       return results;
@@ -174,7 +167,7 @@ export class PgEventStore implements EventStore {
       const orderBy = `ORDER BY sequence ASC`;
 
       const r = await client.query(
-        `SELECT id, type, aggregate_type, aggregate_id, payload, metadata, sequence, created_at
+        `SELECT id, topic, aggregate_type, aggregate_id, payload, metadata, sequence, created_at
          FROM kernel_events ${whereClause}
          ${orderBy}`,
         params,
@@ -182,7 +175,7 @@ export class PgEventStore implements EventStore {
 
       return r.rows.map((row) => ({
         id: row.id,
-        type: row.type,
+        type: row.topic,
         aggregate_type: row.aggregate_type,
         aggregate_id: row.aggregate_id,
         payload: row.payload,

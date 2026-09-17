@@ -207,6 +207,103 @@ describe("PostgreSQL persistence integration (points #1-#3)", { skip: !DB_OK }, 
     await pool.end();
   });
 });
+describe("EventStore idempotency and replay (P0-1)", { skip: !DB_OK }, () => {
+  it("append persists domain event.id, duplicate append returns existing with created=false", async () => {
+    const { PgEventStore } = await import("@polyroot/ledger");
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: PG_URL });
+    const store = new PgEventStore(pool);
+
+    const domainEventId = crypto.randomUUID();
+    const event = {
+      schema_version: "1.0.0",
+      id: domainEventId,
+      type: "INTENT_PROPOSED" as const,
+      aggregate_id: crypto.randomUUID(),
+      aggregate_type: "Intent" as const,
+      payload: { test: "idempotency" },
+      timestamp: new Date(),
+    };
+
+    // First append: created=true, eventId matches domain id exactly
+    const r1 = await store.append(event);
+    assert.equal(r1.created, true, "first append must be created=true");
+    assert.equal(r1.eventId, domainEventId, "persisted eventId must match domain id");
+
+    // Second append: created=false, same eventId, same sequence
+    const r2 = await store.append(event);
+    assert.equal(r2.created, false, "duplicate append must be created=false");
+    assert.equal(r2.eventId, domainEventId, "duplicate eventId must match domain id");
+    assert.equal(r2.sequence, r1.sequence, "duplicate sequence must match first");
+
+    // Verify exactly one row in DB for this event id
+    const countResult = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM kernel_events WHERE id = $1`,
+      [domainEventId],
+    );
+    assert.equal(countResult.rows[0].c, 1, "exactly one row for duplicate event");
+
+    // Verify getEvent returns the persisted domain id
+    const fetched = await store.getEvent(domainEventId);
+    assert.ok(fetched, "getEvent must find the persisted event");
+    assert.equal(fetched.id, domainEventId);
+    assert.equal(fetched.type, "INTENT_PROPOSED");
+
+    await pool.end();
+  });
+
+  it("replay returns events in sequence order and uses correct topic column", async () => {
+    const { PgEventStore } = await import("@polyroot/ledger");
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: PG_URL });
+    const store = new PgEventStore(pool);
+
+    const aggId = crypto.randomUUID();
+    const makeEvent = (idx: number) => ({
+      schema_version: "1.0.0" as string,
+      id: crypto.randomUUID(),
+      type: "RESERVATION_CREATED" as const,
+      aggregate_id: aggId,
+      aggregate_type: "Reservation" as const,
+      payload: { step: idx },
+      timestamp: new Date(Date.now() + idx),
+    });
+
+    // Append 3 events for the same aggregate
+    const events = [makeEvent(1), makeEvent(2), makeEvent(3)];
+    for (const ev of events) await store.append(ev);
+
+    // Replay from sequence 0 (all events)
+    const all = await store.replay({ fromSequence: 0n });
+    assert.ok(all.length >= 3, `expected >=3 events in replay, got ${all.length}`);
+
+    // The 3 events for this aggregate must appear in ascending sequence order
+    const ours = all.filter((e) => e.aggregate_id === aggId);
+    assert.equal(ours.length, 3);
+    assert.ok(ours[0].sequence < ours[1].sequence, "events must be ordered by sequence");
+    assert.ok(ours[1].sequence < ours[2].sequence, "events must be ordered by sequence");
+
+    // Verify topic→type mapping works (not a SQL column error)
+    for (const e of ours) {
+      assert.equal(e.type, "RESERVATION_CREATED");
+    }
+
+    // Aggregate replay filter
+    const filtered = await store.replay({ fromSequence: 0n, aggregateId: aggId });
+    assert.equal(filtered.length, 3);
+    for (const e of filtered) {
+      assert.equal(e.aggregate_id, aggId);
+    }
+
+    // lastSequence must be at least the highest sequence of our events
+    const maxSeq = Math.max(...ours.map((e) => Number(e.sequence)));
+    const last = await store.lastSequence();
+    assert.ok(Number(last) >= maxSeq, "lastSequence must be >= max event sequence");
+
+    await pool.end();
+  });
+});
+
 describe("G4-G6 runtime PostgreSQL integration", { skip: !DB_OK }, () => {
   it("G4: paper log + experiment registry round-trip through the real DB", async () => {
     const { PgPaperLog, PgExperimentRegistry } = await import("@polyroot/runtime");

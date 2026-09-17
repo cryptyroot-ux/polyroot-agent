@@ -17,6 +17,7 @@
 
 import { Pool, type PoolConfig } from "pg";
 import { type EventStore, type EventCursor, type ProjectionEngine, type ProjectionResult, type ProjectionOptions } from "./index.js";
+import { type LedgerEvent } from "@polyroot/domain";
 
 /** Type for a single kernel event row. */
 interface KernelEventRow {
@@ -175,9 +176,11 @@ export class PgProjectionEngine implements ProjectionEngine {
     const toSequence = options.toSequence ?? undefined;
     const limit = options.limit ?? undefined;
 
-    // Truncate the projection table first (full rebuild)
+    // Truncate the projection tables first (full rebuild) — BOTH the canonical
+    // projection and the durable balance_entries so no stale balance survives.
     await this.withClient(async (client) => {
       await client.query(`TRUNCATE balance_projections`);
+      await client.query(`TRUNCATE balance_entries`);
     });
 
     // Reset checkpoint to 0
@@ -214,16 +217,19 @@ export class PgProjectionEngine implements ProjectionEngine {
     if (events.length === 0) return [];
 
     // Convert to kernel event rows
-    const kernelEvents: KernelEventRow[] = events.map((e) => ({
-      id: e.id,
-      type: e.type,
-      aggregate_type: e.aggregate_type,
-      aggregate_id: e.aggregate_id,
-      payload: e.payload,
-      metadata: e.metadata,
-      sequence: (e.metadata?.["sequence"] as bigint) ?? 0n,
-      created_at: e.timestamp,
-    }));
+    const kernelEvents: KernelEventRow[] = events.map((e) => {
+      const seq = (e as LedgerEvent & { sequence?: bigint }).sequence ?? 0n;
+      return {
+        id: e.id,
+        type: e.type,
+        aggregate_type: e.aggregate_type,
+        aggregate_id: e.aggregate_id,
+        payload: e.payload,
+        metadata: e.metadata,
+        sequence: seq,
+        created_at: e.timestamp,
+      };
+    });
 
     const results: ProjectionResult[] = [];
 
@@ -295,10 +301,16 @@ export class PgProjectionEngine implements ProjectionEngine {
     projectionName: string,
     sequence: bigint,
   ): Promise<void> {
+    // Upsert so a first run (row missing) still advances the checkpoint.
     await client.query(
-      `UPDATE projection_checkpoints
-       SET last_event_seq = $2, updated_at = now()
-       WHERE projection_name = $1`,
+      `INSERT INTO projection_checkpoints (projection_name, last_event_seq, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (projection_name) DO UPDATE SET
+         last_event_seq = CASE
+           WHEN projection_checkpoints.last_event_seq >= $2 THEN projection_checkpoints.last_event_seq
+           ELSE $2
+         END,
+         updated_at = now()`,
       [projectionName, sequence],
     );
   }
