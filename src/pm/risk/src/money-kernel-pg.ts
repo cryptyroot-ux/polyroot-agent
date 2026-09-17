@@ -201,6 +201,8 @@ export class PgMoneyAuthority implements MoneyAuthority {
     intentId: string,
     leaseEpoch: number,
     now: Date,
+    /** Share quantity in base units (e.g. 100 shares => 100_000_000 base). */
+    amountSharesBase?: bigint,
   ): Promise<import("./money-kernel.js").MoneyAuthorityResult> {
     const reservationId = randomUUID();
     const permitId = randomUUID();
@@ -210,6 +212,22 @@ export class PgMoneyAuthority implements MoneyAuthority {
     try {
       await client.query("BEGIN");
       await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+
+      // 0. Duplicate-intent guard: exactly one reservation per (intent_id, asset).
+      //    Re-appending the same economic intent is a deterministic idempotent
+      //    no-op, not a second authorization.
+      const dup = await client.query(
+        `SELECT id FROM reservations WHERE intent_id = $1::uuid AND account = $2 AND asset = $3 AND status = 'ACTIVE' LIMIT 1`,
+        [intentId, account, asset],
+      );
+      if (dup.rowCount && dup.rowCount > 0) {
+        await client.query("ROLLBACK");
+        return {
+          ok: false,
+          reason: "duplicate economic intent",
+          code: "DUPLICATE_INTENT",
+        };
+      }
 
       // 1. Lock balance row and check availability
       const bal = await client.query(
@@ -295,7 +313,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
           "", // quote_id - not in risk_decisions
           leaseEpoch,
           [reservationId],
-          cashNeededBase.toString(),
+          (amountSharesBase ?? cashNeededBase).toString(),
           cashNeededBase.toString(),
           riskDecision.allowed_order_style ?? [],
           riskDecision.venue_mode ?? "default",
@@ -331,9 +349,30 @@ export class PgMoneyAuthority implements MoneyAuthority {
       return { ok: true, reservationId, permitId };
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = err instanceof Error && "code" in err ? (err as any).code : "";
+      // PostgreSQL serialization/deadlock conflicts are TRANSIENT — a bounded
+      // retry with an authoritative re-read is safe (the duplicate-intent guard
+      // and balance lock prevent double-allocation). Surface a typed code so the
+      // caller can retry deterministically instead of treating it as a fatal
+      // money failure.
+      if (code === "23505") {
+        return {
+          ok: false,
+          reason: "duplicate economic intent (unique violation)",
+          code: "DUPLICATE_INTENT",
+        };
+      }
+      if (code === "40001" || code === "40P01" || /serializ|deadlock/i.test(msg)) {
+        return {
+          ok: false,
+          reason: "transient serialization conflict",
+          code: "SERIALIZATION_CONFLICT",
+        };
+      }
       return {
         ok: false,
-        reason: err instanceof Error ? err.message : String(err),
+        reason: msg,
         code: "MONEY_AUTHORITY_FAILED",
       };
     } finally {

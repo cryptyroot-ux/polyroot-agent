@@ -86,6 +86,8 @@ export interface MoneyAuthority {
     intentId: string,
     leaseEpoch: number,
     now: Date,
+    /** Share quantity in base units (e.g. 100 shares => 100_000_000 base). */
+    amountSharesBase?: bigint,
   ): Promise<MoneyAuthorityResult>;
 }
 
@@ -280,6 +282,7 @@ export class MoneyKernel {
         req.intentId,
         req.leaseEpoch,
         req.now,
+        req.amountSharesBase,
       );
       if (!res.ok) {
         return {
