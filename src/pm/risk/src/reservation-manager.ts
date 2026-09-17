@@ -5,12 +5,17 @@
  * This is the authoritative state machine for reservation lifecycle.
  *
  * State machine:
- *   CREATED → ACTIVE → CONSUMED | RELEASED | EXPIRED
+ *   ACTIVE → CONSUMED | RELEASED | EXPIRED
  *
- * All state transitions are persisted to the database for durability.
+ * All state transitions are persisted to the database for durability and
+ * enforced atomically (no partial transitions).
  */
 
+import { randomUUID } from "crypto";
+import type { Pool } from "pg";
 import type { BalanceStore } from "./money-kernel.js";
+
+export type ReservationStatus = "ACTIVE" | "CONSUMED" | "RELEASED" | "EXPIRED";
 
 export interface Reservation {
   id: string;
@@ -20,10 +25,11 @@ export interface Reservation {
   asset: string;
   amount: bigint; // in base units (shares * 1e6)
   currency: string;
-  status: "ACTIVE" | "CONSUMED" | "RELEASED" | "EXPIRED";
+  status: ReservationStatus;
   createdAt: Date;
   expiresAt: Date;
   consumedAt?: Date;
+  releasedAt?: Date;
   permitId: string;
 }
 
@@ -39,6 +45,7 @@ export interface ReservationManagerDeps {
     } | null>;
     claim(permitId: string, orderId: string): Promise<boolean>;
   };
+  pool?: Pool;
 }
 
 export class ReservationManager {
@@ -48,90 +55,174 @@ export class ReservationManager {
     this.deps = deps;
   }
 
-  /**
-   * Create a new reservation from a permit.
-   * The permit must be valid and unclaimed.
-   */
-  async createFromPermit(_permit: {
+  /** Create a reservation atomically (INSERT-only). Returns the reservation id. */
+  async createFromPermit(args: {
     permit_id: string;
     intent_id: string;
     decision_id: string;
     account: string;
     asset: string;
+    amount: bigint; // reserved cash (base units)
     max_qty: number; // shares
-    max_cash: number; // cash
     expires_at: Date;
-  }): Promise<
-    | { ok: true; reservationId: string }
-    | { ok: false; code: string; reason: string }
-  > {
-    // Implementation would persist to reservations table
-    // For now, this is a stub that the tests can use
-    return {
-      ok: true,
-      reservationId: crypto.randomUUID(),
-    };
+    currency?: string;
+  }): Promise<{ ok: true; reservationId: string } | { ok: false; code: string; reason: string }> {
+    const reservationId = randomUUID();
+    if (!this.deps.pool) {
+      // In-memory mode (tests): just return a synthetic id.
+      return { ok: true, reservationId };
+    }
+    try {
+      await this.deps.pool.query(
+        `INSERT INTO reservations (
+           id, risk_decision_id, intent_id, account, asset, amount, currency,
+           status, created_at, expires_at, consumed_at, permit_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', now(), $8, NULL, $9)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          reservationId,
+          args.decision_id,
+          args.intent_id,
+          args.account,
+          args.asset,
+          args.amount.toString(),
+          args.currency ?? "pUSD",
+          args.expires_at,
+          args.permit_id,
+        ],
+      );
+      return { ok: true, reservationId };
+    } catch (err) {
+      return {
+        ok: false,
+        code: "RESERVATION_CREATE_FAILED",
+        reason: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
   /**
-   * Consume a reservation (order filled).
-   * Moves reservation to CONSUMED state and updates balance.
+   * Consume a reservation atomically:
+   *   UPDATE reservations SET status='CONSUMED', consumed_at=now()
+   *   WHERE id=$1 AND status='ACTIVE'
+   * then decrement committed balance.
    */
-  async consume(
-    _reservationId: string,
-    _filledAmount: bigint,
-  ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
-    // Implementation would:
-    // 1. Load reservation
-    // 2. Verify status = ACTIVE
-    // 3. Call balanceStore.consumeFunds(account, asset, amount)
-    // 4. Update reservation status to CONSUMED, set consumedAt
-    // 5. Update permit claimed_order_id
-    return { ok: true };
+  async consume(reservationId: string, filledAmount: bigint): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+    if (!this.deps.pool) return { ok: true }; // in-memory mode
+    const client = await this.deps.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query(
+        `UPDATE reservations
+         SET status='CONSUMED', consumed_at=now()
+         WHERE id=$1 AND status='ACTIVE'
+         RETURNING account, asset`,
+        [reservationId],
+      );
+      if (r.rowCount !== 1) {
+        await client.query("ROLLBACK");
+        return { ok: false, code: "RESERVATION_NOT_ACTIVE", reason: "reservation not active" };
+      }
+      const { account, asset } = r.rows[0] as { account: string; asset: string };
+      await this.deps.balanceStore.consumeFunds(account, asset, filledAmount);
+      await client.query("COMMIT");
+      return { ok: true };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      return { ok: false, code: "CONSUME_FAILED", reason: err instanceof Error ? err.message : String(err) };
+    } finally {
+      client.release();
+    }
   }
 
-  /**
-   * Release a reservation (order cancelled or expired).
-   * Moves reservation to RELEASED state and returns funds to available.
-   */
+  /** Release/rescind reservation funds atomically. */
   async release(
-    _reservationId: string,
+    reservationId: string,
     _reason: "CANCELLED" | "EXPIRED" | "REJECTED",
   ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
-    // Implementation would:
-    // 1. Load reservation
-    // 2. Verify status = ACTIVE
-    // 4. Call balanceStore.releaseFunds(account, asset, amount)
-    // 5. Update reservation status to RELEASED, set released_at
-    return { ok: true };
+    if (!this.deps.pool) return { ok: true };
+    const client = await this.deps.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query(
+        `UPDATE reservations
+         SET status='RELEASED', released_at=now()
+         WHERE id=$1 AND status='ACTIVE'
+         RETURNING account, asset, amount`,
+        [reservationId],
+      );
+      if (r.rowCount !== 1) {
+        await client.query("ROLLBACK");
+        return { ok: false, code: "RESERVATION_NOT_ACTIVE", reason: "reservation not active" };
+      }
+      const { account, asset, amount } = r.rows[0] as { account: string; asset: string; amount: string };
+      await this.deps.balanceStore.releaseFunds(account, asset, BigInt(amount));
+      await client.query("COMMIT");
+      return { ok: true };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      return { ok: false, code: "RELEASE_FAILED", reason: err instanceof Error ? err.message : String(err) };
+    } finally {
+      client.release();
+    }
   }
 
-  /**
-   * Mark reservation as expired (background job for expired reservations).
-   */
-  async expire(
-    _reservationId: string,
-  ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
-    // Implementation would:
-    // 1. Load reservation
-    // 2. Verify status = ACTIVE
-    // 3. Call balanceStore.releaseFunds(account, asset, amount)
-    // 4. Update reservation status to EXPIRED, set released_at
-    return { ok: true };
+  /** Expire overdue reservations atomically. */
+  async expire(reservationId: string): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
+    return this.release(reservationId, "EXPIRED");
   }
 
-  /**
-   * Get all active reservations for an account/asset.
-   */
-  async getActive(_account: string, _asset: string): Promise<Reservation[]> {
-    return [];
+  async getActive(account: string, asset: string): Promise<Reservation[]> {
+    if (!this.deps.pool) return [];
+    const r = await this.deps.pool.query(
+      `SELECT * FROM reservations WHERE account=$1 AND asset=$2 AND status='ACTIVE'`,
+      [account, asset],
+    );
+    return r.rows.map((row) => this.mapRow(row));
   }
 
-  /**
-   * Get reservation by ID.
-   */
-  async get(_reservationId: string): Promise<Reservation | null> {
-    return null;
+  async get(reservationId: string): Promise<Reservation | null> {
+    if (!this.deps.pool) return null;
+    const r = await this.deps.pool.query(
+      `SELECT * FROM reservations WHERE id=$1`,
+      [reservationId],
+    );
+    if (r.rowCount === 0) return null;
+    return this.mapRow(r.rows[0]);
+  }
+
+  private mapRow(row: {
+    id: string;
+    intent_id: string;
+    risk_decision_id?: string;
+    decision_id?: string;
+    account: string;
+    asset: string;
+    amount: string | number;
+    currency?: string;
+    status: string;
+    created_at: Date;
+    expires_at: Date;
+    consumed_at?: Date | null;
+    released_at?: Date | null;
+    permit_id: string;
+  }): Reservation {
+    const result: Reservation = {
+      id: row.id,
+      intentId: row.intent_id,
+      decisionId: row.decision_id ?? row.risk_decision_id ?? "",
+      account: row.account,
+      asset: row.asset,
+      amount: BigInt(row.amount ?? 0),
+      currency: row.currency ?? "pUSD",
+      status: row.status as ReservationStatus,
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+      permitId: row.permit_id,
+    };
+    if (row.consumed_at) result.consumedAt = row.consumed_at;
+    if (row.released_at) result.releasedAt = row.released_at;
+    return result;
   }
 }
 

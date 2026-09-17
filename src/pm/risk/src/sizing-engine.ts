@@ -11,7 +11,28 @@
  *   f = fraction * f*  (fraction typically 0.25 for 25% Kelly)
  *
  * All amounts in base units (1e6 = $1).
+ *
+ * Fixed-point precision: all intermediate fractions are kept in SCALE-scaled
+ * integer units so small EV values are not truncated to zero by integer division.
  */
+
+export const SCALE = 1_000_000n;
+
+/**
+ * Fixed-point multiply: (a/SCALE) * (b/SCALE) = (a*b)/SCALE^2, returned scaled.
+ */
+function mulScale(a: bigint, b: bigint): bigint {
+  return (a * b) / SCALE;
+}
+
+/**
+ * Fixed-point divide: (a/SCALE) / (b/SCALE) = a/b, returned scaled.
+ * Equivalent to (a * SCALE) / b.
+ */
+function divScale(a: bigint, b: bigint): bigint {
+  if (b === 0n) return 0n;
+  return (a * SCALE) / b;
+}
 
 export interface SizingInput {
   /** EV in base units (output from EVCalculator) */
@@ -40,7 +61,7 @@ export interface SizingInput {
 export interface SizingResult {
   /** Optimal size in base units (shares * 1e6) */
   size: bigint;
-  /** Kelly fraction used */
+  /** Kelly fraction used (scaled by SCALE) */
   kellyFraction: bigint;
   /** Edge per share in basis points */
   edgePerShareBps: bigint;
@@ -59,6 +80,9 @@ export interface SizingResult {
 export class SizingEngine {
   /**
    * Compute the optimal position size given edge, price, and portfolio constraints.
+   *
+   * Precision: edge and odds fractions are computed in SCALE-scaled fixed-point
+   * so a small positive EV (e.g. 20 base units) does NOT truncate to zero.
    */
   static size(input: SizingInput): SizingResult {
     const {
@@ -71,13 +95,14 @@ export class SizingEngine {
       policy,
     } = input;
 
-    // 1. Check minimum edge threshold (use min_edge_per_share if set, else min_edge_after_cost)
+    // 1. Check minimum edge threshold.
     const minEdgeThreshold = BigInt(
       Math.round(
         (policy.min_edge_per_share ?? policy.min_edge_after_cost) * 10_000,
       ),
     );
-    const evBps = price > 0n ? (ev * 10_000n) / price : 0n;
+    // EV per share in basis points (price is in base units; 1 unit = 1e6 base).
+    const evBps = price > 0n ? divScale(ev * 10_000n, price) : 0n;
 
     if (evBps <= minEdgeThreshold) {
       return {
@@ -89,50 +114,41 @@ export class SizingEngine {
       };
     }
 
-    // 2. Compute Kelly fraction
-    // edge = EV / price (for YES) or EV / (1 - price) for NO
-    const edgeNumerator = ev;
-    const edgeDenominator = side === "YES" ? price : 1_000_000n - price;
-    const edgeFraction =
-      edgeDenominator > 0n ? edgeNumerator / edgeDenominator : 0n;
+    // 2. Compute Kelly fraction using fixed-point to preserve precision.
+    // edge = EV / price for YES, EV / (1 - price) for NO.
+    const edgeDenominator = side === "YES" ? price : SCALE - price;
+    const edgeFractionScaled = edgeDenominator > 0n ? divScale(ev, edgeDenominator) : 0n;
 
-    // odds = (1 - price) / price for YES, price / (1 - price) for NO
-    const oddsNumerator = side === "YES" ? 1_000_000n - price : price;
-    const oddsDenominator = side === "YES" ? price : 1_000_000n - price;
-    const oddsFraction =
-      oddsDenominator > 0n ? oddsNumerator / oddsDenominator : 0n;
+    // odds = (1 - price) / price for YES, price / (1 - price) for NO.
+    const oddsNumerator = side === "YES" ? SCALE - price : price;
+    const oddsDenominator = side === "YES" ? price : SCALE - price;
+    // odds scaled by SCALE.
+    const oddsScaled = oddsDenominator > 0n ? divScale(oddsNumerator, oddsDenominator) : 0n;
 
-    // Kelly fraction = edge / odds (scaled by 1e6)
+    // Kelly fraction = edge / odds (both scaled).
     const kellyFraction =
-      oddsFraction > 0n ? (edgeFraction * 1_000_000n) / oddsFraction : 0n;
+      oddsScaled > 0n ? divScale(edgeFractionScaled, oddsScaled) : 0n;
 
-    // Apply fractional Kelly (default 25%)
-    const fraction = BigInt(
-      Math.round((policy.kelly_fraction ?? 0.25) * 10_000),
-    );
+    // Apply fractional Kelly (default 25%).
+    // kellyFraction is scaled by SCALE (1e6); fraction is in basis points (2500 = 25%).
+    const fraction = BigInt(Math.round((policy.kelly_fraction ?? 0.25) * 10_000));
     const fractionalKelly = (kellyFraction * fraction) / 10_000n;
 
-    // 3. Compute max position by each cap (in shares base units)
+    // 3. Compute max position by each cap (in base units).
     const maxOrderBps = BigInt(Math.round(policy.max_order_pct * 10_000));
     const maxMarketBps = BigInt(Math.round(policy.max_market_pct * 10_000));
-    const maxPortfolioBps = BigInt(
-      Math.round(policy.max_portfolio_pct * 10_000),
-    );
+    const maxPortfolioBps = BigInt(Math.round(policy.max_portfolio_pct * 10_000));
 
-    const maxOrderSize = (portfolioValue * maxOrderBps) / 10_000n;
-    const maxMarketSize = (portfolioValue * maxMarketBps) / 10_000n;
-    const remainingMarketCap =
-      maxMarketSize > marketExposure ? maxMarketSize - marketExposure : 0n;
-    const maxPortfolioSize = (portfolioValue * maxPortfolioBps) / 10_000n;
-    const remainingPortfolioCap =
-      maxPortfolioSize > portfolioExposure
-        ? maxPortfolioSize - portfolioExposure
-        : 0n;
+    const maxOrderSize = mulScale(portfolioValue, maxOrderBps);
+    const maxMarketSize = mulScale(portfolioValue, maxMarketBps);
+    const remainingMarketCap = maxMarketSize > marketExposure ? maxMarketSize - marketExposure : 0n;
+    const maxPortfolioSize = mulScale(portfolioValue, maxPortfolioBps);
+    const remainingPortfolioCap = maxPortfolioSize > portfolioExposure ? maxPortfolioSize - portfolioExposure : 0n;
 
-    // Kelly size = portfolio_value * fractional_kelly
-    const kellySize = (portfolioValue * fractionalKelly) / 1_000_000n;
+    // Kelly size = portfolio_value * fractional_kelly.
+    const kellySize = mulScale(portfolioValue, fractionalKelly);
 
-    // Take the minimum of all constraints
+    // Take the minimum of all constraints.
     let size = kellySize;
     let capped = false;
     let capReason: SizingResult["capReason"] = undefined;
