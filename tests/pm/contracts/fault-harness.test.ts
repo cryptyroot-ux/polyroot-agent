@@ -15,7 +15,11 @@ import {
   orderLifecycleNext,
   type OrderLifecycleState,
 } from "@polyroot/executor";
-import { MemPermitStore, MemRecoveryLedger, MemLeaseStore } from "@polyroot/venue";
+import {
+  MemPermitStore,
+  MemRecoveryLedger,
+  MemLeaseStore,
+} from "@polyroot/venue";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import { RecoveryLedger, RecoveryInFlightOrder } from "@polyroot/venue";
 import type {
@@ -104,9 +108,14 @@ class FakeAdapter implements VenueAdapter {
   });
   cancelOrderFn: (id: string) => Promise<SubmitOutcome> = async () => ({
     ok: true,
-    result: { success: true, submit_status: "ACKNOWLEDGED", timestamp: new Date() },
+    result: {
+      success: true,
+      submit_status: "ACKNOWLEDGED",
+      timestamp: new Date(),
+    },
   });
-  getOrderStatusFn: (id: string) => Promise<OrderResult | null> = async () => null;
+  getOrderStatusFn: (id: string) => Promise<OrderResult | null> = async () =>
+    null;
   setMode(m: VenueMode) {
     this.mode = m;
   }
@@ -124,7 +133,10 @@ class FakeAdapter implements VenueAdapter {
   }
 }
 
-function makeExecutor(adapter: FakeAdapter, now = new Date("2026-01-01T00:00:30Z")) {
+function makeExecutor(
+  adapter: FakeAdapter,
+  now = new Date("2026-01-01T00:00:30Z"),
+) {
   const seen = new Map<string, OrderLifecycleState>();
   const ex = new Executor({
     adapter,
@@ -178,7 +190,10 @@ const basePolicy: RiskPolicy = {
 /* ── FT-01: Concurrent spend ──────────────────────────────────────────── */
 
 class MemBalance implements BalanceStore {
-  private balances = new Map<string, { available: bigint; committed: bigint }>();
+  private balances = new Map<
+    string,
+    { available: bigint; committed: bigint }
+  >();
 
   constructor(initial?: Map<string, bigint>) {
     if (initial) {
@@ -208,7 +223,11 @@ class MemBalance implements BalanceStore {
     };
   }
 
-  async reserveFunds(account: string, asset: string, amount: bigint): Promise<void> {
+  async reserveFunds(
+    account: string,
+    asset: string,
+    amount: bigint,
+  ): Promise<void> {
     const entry = this.getEntry(account, asset);
     if (entry.available < amount) {
       throw new Error("INSUFFICIENT_AVAILABLE");
@@ -217,7 +236,11 @@ class MemBalance implements BalanceStore {
     entry.committed += amount;
   }
 
-  async releaseFunds(account: string, asset: string, amount: bigint): Promise<void> {
+  async releaseFunds(
+    account: string,
+    asset: string,
+    amount: bigint,
+  ): Promise<void> {
     const entry = this.getEntry(account, asset);
     if (entry.committed < amount) {
       throw new Error("INSUFFICIENT_COMMITTED");
@@ -226,14 +249,18 @@ class MemBalance implements BalanceStore {
     entry.available += amount;
   }
 
-  async consumeFunds(account: string, asset: string, amount: bigint): Promise<void> {
+  async consumeFunds(
+    account: string,
+    asset: string,
+    amount: bigint,
+  ): Promise<void> {
     const entry = this.getEntry(account, asset);
     if (entry.committed < amount) {
       throw new Error("INSUFFICIENT_COMMITTED");
     }
     entry.committed -= amount;
   }
-async getOpenCount(account: string, asset: string): Promise<number> {
+  async getOpenCount(account: string, asset: string): Promise<number> {
     const entry = this.getEntry(account, asset);
     return entry.committed > 0n ? 1 : 0;
   }
@@ -265,10 +292,18 @@ describe("FT-01 — Concurrent spend: at most one reservation commits", () => {
       leaseEpoch: 1,
       now: new Date("2026-01-01T00:00:00Z"),
     };
-    const r1 = await kernel.reserve({ ...base, decisionId: randomUUID(), intentId: randomUUID() });
+    const r1 = await kernel.reserve({
+      ...base,
+      decisionId: randomUUID(),
+      intentId: randomUUID(),
+    });
     assert.equal(r1.ok, true);
     // Second intent also needs 5 USDC but only 1 remains.
-    const r2 = await kernel.reserve({ ...base, decisionId: randomUUID(), intentId: randomUUID() });
+    const r2 = await kernel.reserve({
+      ...base,
+      decisionId: randomUUID(),
+      intentId: randomUUID(),
+    });
     assert.equal(r2.ok, false);
     if (!r2.ok) assert.equal(r2.code, "INSUFFICIENT_FUNDS");
   });
@@ -284,7 +319,11 @@ describe("FT-02 — Duplicate delivery: one intent hash, no extra order", () => 
       submits += 1;
       return {
         ok: true,
-        result: { success: true, submit_status: "ACKNOWLEDGED", timestamp: new Date() },
+        result: {
+          success: true,
+          submit_status: "ACKNOWLEDGED",
+          timestamp: new Date(),
+        },
       };
     };
     const { ex } = makeExecutor(adapter);
@@ -381,7 +420,11 @@ describe("FT-08 — Partial batch failure: per-order results", () => {
       o.order_id === "ok_1"
         ? {
             ok: true,
-            result: { success: true, submit_status: "ACKNOWLEDGED", timestamp: new Date() },
+            result: {
+              success: true,
+              submit_status: "ACKNOWLEDGED",
+              timestamp: new Date(),
+            },
           }
         : { ok: false, code: "DEFINITIVE_REJECT", reason: "offside" };
     const { ex } = makeExecutor(adapter);
@@ -456,7 +499,9 @@ describe("FT-14 — Signer compromise attempt: vault rejects mismatch", () => {
     const ok = await vault.sign(makeReq(decimalToBase(50)));
     assert.equal(ok.ok, true);
     // An attacker rewrites the amount past the reservation: the vault refuses.
-    const tampered = await vault.sign(makeReq(decimalToBase(5000), "sig_attacker"));
+    const tampered = await vault.sign(
+      makeReq(decimalToBase(5000), "sig_attacker"),
+    );
     assert.equal(tampered.ok, false);
     if (!tampered.ok) assert.equal(tampered.code, "AMOUNT_EXCEEDS_PERMIT");
   });
@@ -543,7 +588,10 @@ describe("FT-03 — Crash before send: recover same payload, no duplicate", () =
     const order = makeSignedOrder("pre_send_1");
     // The payload persisted pre-network; a replayed delivery is a duplicate.
     // (In a live supervisor the seen-map is the persisted idempotency log.)
-    assert.equal(orderLifecycleNext("SUBMITTING", "SUBMITTING").state, "SUBMITTING");
+    assert.equal(
+      orderLifecycleNext("SUBMITTING", "SUBMITTING").state,
+      "SUBMITTING",
+    );
     assert.equal(ex[Symbol.toStringTag] ?? "Executor", "Executor");
   });
 });

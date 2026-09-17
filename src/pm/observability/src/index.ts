@@ -46,7 +46,11 @@ export class Metrics {
     return sorted[idx];
   }
 
-  snapshot(): { counters: Record<string, number>; gauges: Record<string, number>; histograms: Record<string, number[]> } {
+  snapshot(): {
+    counters: Record<string, number>;
+    gauges: Record<string, number>;
+    histograms: Record<string, number[]>;
+  } {
     return {
       counters: Object.fromEntries(this.counters),
       gauges: Object.fromEntries(this.gauges),
@@ -59,7 +63,18 @@ export class Metrics {
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
-const REDACT_KEYS = new Set(["secret", "token", "key", "password", "credential", "private_key", "api_key", "signature", "mnemonic", "privatekey"]);
+const REDACT_KEYS = new Set([
+  "secret",
+  "token",
+  "key",
+  "password",
+  "credential",
+  "private_key",
+  "api_key",
+  "signature",
+  "mnemonic",
+  "privatekey",
+]);
 
 export interface LogEntry {
   level: LogLevel;
@@ -82,7 +97,11 @@ function redactValue(value: unknown): unknown {
 export class Logger {
   private logs: LogEntry[] = [];
 
-  private log(level: LogLevel, msg: string, meta: Record<string, unknown> = {}): void {
+  private log(
+    level: LogLevel,
+    msg: string,
+    meta: Record<string, unknown> = {},
+  ): void {
     const redacted: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(meta)) {
       redacted[k] = REDACT_KEYS.has(k.toLowerCase()) ? redactValue(v) : v;
@@ -90,10 +109,18 @@ export class Logger {
     this.logs.push({ level, msg, meta: redacted, at: Date.now() });
   }
 
-  debug(msg: string, meta?: Record<string, unknown>): void { this.log("debug", msg, meta); }
-  info(msg: string, meta?: Record<string, unknown>): void { this.log("info", msg, meta); }
-  warn(msg: string, meta?: Record<string, unknown>): void { this.log("warn", msg, meta); }
-  error(msg: string, meta?: Record<string, unknown>): void { this.log("error", msg, meta); }
+  debug(msg: string, meta?: Record<string, unknown>): void {
+    this.log("debug", msg, meta);
+  }
+  info(msg: string, meta?: Record<string, unknown>): void {
+    this.log("info", msg, meta);
+  }
+  warn(msg: string, meta?: Record<string, unknown>): void {
+    this.log("warn", msg, meta);
+  }
+  error(msg: string, meta?: Record<string, unknown>): void {
+    this.log("error", msg, meta);
+  }
 
   getLogs(level?: LogLevel): LogEntry[] {
     return level ? this.logs.filter((l) => l.level === level) : [...this.logs];
@@ -156,7 +183,9 @@ export class HealthCheck implements HealthCheckEngine {
 
   check(opts?: { metrics?: Metrics }): HealthResult {
     const ok = this.isHealthy(opts);
-    const details: Record<string, unknown> = { metrics: opts?.metrics?.snapshot() ?? {} };
+    const details: Record<string, unknown> = {
+      metrics: opts?.metrics?.snapshot() ?? {},
+    };
     return {
       status: ok ? "healthy" : "unhealthy",
       details,

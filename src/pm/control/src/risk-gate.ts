@@ -18,7 +18,11 @@ import type {
   VenueMode,
   WalletIdentity,
 } from "@polyroot/domain";
-import { RiskDecisionSchema, RiskPolicySchema, TradeIntentSchema } from "@polyroot/domain";
+import {
+  RiskDecisionSchema,
+  RiskPolicySchema,
+  TradeIntentSchema,
+} from "@polyroot/domain";
 import { MoneyKernel, cashNeededFor } from "@polyroot/risk";
 import { decimalToBase } from "@polyroot/signer";
 import { randomUUID } from "crypto";
@@ -69,8 +73,7 @@ export async function validateAndReserve(
   const intent = intentParsed.data;
 
   // 2. Capital basis: the commissioned cap, else an explicit override, else —.
-  const capitalUsd =
-    policy.capital_usd_cap ?? input.capitalBasisUsd ?? null;
+  const capitalUsd = policy.capital_usd_cap ?? input.capitalBasisUsd ?? null;
   if (capitalUsd === null) {
     return fail(
       "NO_CAPITAL_BASIS",
@@ -84,7 +87,10 @@ export async function validateAndReserve(
     return fail("PRICE_REQUIRED", "intent must carry a limit price");
   }
   const size =
-    intent.desired_qty ?? (intent.desired_notional !== undefined ? intent.desired_notional / price : undefined);
+    intent.desired_qty ??
+    (intent.desired_notional !== undefined
+      ? intent.desired_notional / price
+      : undefined);
   if (size === undefined) {
     return fail("SIZE_REQUIRED", "intent must carry a size or a notional");
   }
@@ -166,7 +172,18 @@ export async function validateAndReserve(
     return fail("DECISION_INVALID", "risk decision schema invalid");
   }
 
-  return { ok: true, decision: decisionParsed.data, permit, reservationId: reserved.reservationId };
+  return {
+    ok: true,
+    decision: decisionParsed.data,
+    permit,
+    reservationId: reserved.reservationId,
+  };
 }
 
-export type { ExecutionPermit, RiskDecision, RiskPolicy, TradeIntent, WalletIdentity };
+export type {
+  ExecutionPermit,
+  RiskDecision,
+  RiskPolicy,
+  TradeIntent,
+  WalletIdentity,
+};

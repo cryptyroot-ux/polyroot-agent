@@ -10,11 +10,7 @@
  */
 
 export type CompromiseClass =
-  | "L1_SIGNER"
-  | "L2_API"
-  | "RELAYER"
-  | "OWNER_SESSION"
-  | "UNKNOWN";
+  "L1_SIGNER" | "L2_API" | "RELAYER" | "OWNER_SESSION" | "UNKNOWN";
 
 export interface CompromiseIntent {
   class: CompromiseClass;
@@ -74,34 +70,64 @@ export function planCompromiseResponse(
 
   // 2. Freeze entries so no new risk is assumed under a suspect identity.
   if (intent.freezeEntries) {
-    appendOrder(plan, { action: "FREEZE_ENTRIES" }, "enter PAUSE_ENTRIES kill level");
+    appendOrder(
+      plan,
+      { action: "FREEZE_ENTRIES" },
+      "enter PAUSE_ENTRIES kill level",
+    );
   }
 
   // 3. Reconcile ledger vs venue (what is actually open / matched?).
-  appendOrder(plan, { action: "RECONCILE" }, "reconcile orders/trades/positions");
+  appendOrder(
+    plan,
+    { action: "RECONCILE" },
+    "reconcile orders/trades/positions",
+  );
 
   // 4. Cancel what can still be cancelled, only if still possible.
   if (intent.cancelPossible) {
-    appendOrder(plan, { action: "CANCEL_OPEN" }, "request cancel via kill switch CANCEL_OPEN");
+    appendOrder(
+      plan,
+      { action: "CANCEL_OPEN" },
+      "request cancel via kill switch CANCEL_OPEN",
+    );
   }
 
   // 5. Key-class specific revocation / rotation.
   switch (intent.class) {
     case "L1_SIGNER":
-      appendOrder(plan, { action: "ROTATE_L1" }, "rotate signer; quarantine old key");
-      plan.notes.push("L1 rotation is owner-approved and audited (mandate-service binding).");
+      appendOrder(
+        plan,
+        { action: "ROTATE_L1" },
+        "rotate signer; quarantine old key",
+      );
+      plan.notes.push(
+        "L1 rotation is owner-approved and audited (mandate-service binding).",
+      );
       break;
     case "L2_API":
     case "RELAYER":
-      appendOrder(plan, { action: "REVOKE_L2" }, "revoke L2/relayer credentials at provider");
+      appendOrder(
+        plan,
+        { action: "REVOKE_L2" },
+        "revoke L2/relayer credentials at provider",
+      );
       plan.notes.push("rotate L2 credentials before any LIVE re-enable.");
       break;
     case "OWNER_SESSION":
-      appendOrder(plan, { action: "REVOKE_OWNER_SESSION" }, "revoke owner sessions + re-auth");
-      plan.notes.push("owner re-authentication required; sessions are short-lived.");
+      appendOrder(
+        plan,
+        { action: "REVOKE_OWNER_SESSION" },
+        "revoke owner sessions + re-auth",
+      );
+      plan.notes.push(
+        "owner re-authentication required; sessions are short-lived.",
+      );
       break;
     case "UNKNOWN":
-      plan.notes.push("unknown class: treat as full exposure; owner review required before any unlock.");
+      plan.notes.push(
+        "unknown class: treat as full exposure; owner review required before any unlock.",
+      );
       break;
   }
 
@@ -109,8 +135,14 @@ export function planCompromiseResponse(
   plan.ownerOnly.push(
     "Asset rescue (withdraw/move funds) is executed ONLY by the owner workflow, never by the agent.",
   );
-  appendOrder(plan, { action: "OWNER_ASSET_RESCUE" }, "owner initiates rescue per runbook");
+  appendOrder(
+    plan,
+    { action: "OWNER_ASSET_RESCUE" },
+    "owner initiates rescue per runbook",
+  );
 
-  plan.notes.push("Every step is audit-logged with actor+action+resource (audit_log).");
+  plan.notes.push(
+    "Every step is audit-logged with actor+action+resource (audit_log).",
+  );
   return plan;
 }

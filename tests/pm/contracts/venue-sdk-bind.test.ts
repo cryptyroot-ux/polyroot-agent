@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { PolymarketVenueAdapter, type PolymarketClientLike } from "@polyroot/venue";
+import {
+  PolymarketVenueAdapter,
+  type PolymarketClientLike,
+} from "@polyroot/venue";
 
 function makeFakeClient(): PolymarketClientLike {
   return {
@@ -51,7 +54,17 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
     const adapter = new PolymarketVenueAdapter(makeFakeClient());
     adapter.setMode("CANCEL_ONLY");
     const res = await adapter.placeOrder({
-      order_id: "o1", market_id: "m1", side: "BUY", price: 0.5, size: 1, salt: "s", signature: "0x", signer: "0x1", funder: "0x2", expiration: 1, nonce: 1,
+      order_id: "o1",
+      market_id: "m1",
+      side: "BUY",
+      price: 0.5,
+      size: 1,
+      salt: "s",
+      signature: "0x",
+      signer: "0x1",
+      funder: "0x2",
+      expiration: 1,
+      nonce: 1,
     });
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, "MODE_FORBIDS");
@@ -64,7 +77,17 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
     };
     const adapter = new PolymarketVenueAdapter(client);
     const res = await adapter.placeOrder({
-      order_id: "o1", market_id: "m1", side: "BUY", price: 0.5, size: 1, salt: "s", signature: "0x", signer: "0x1", funder: "0x2", expiration: 1, nonce: 1,
+      order_id: "o1",
+      market_id: "m1",
+      side: "BUY",
+      price: 0.5,
+      size: 1,
+      salt: "s",
+      signature: "0x",
+      signer: "0x1",
+      funder: "0x2",
+      expiration: 1,
+      nonce: 1,
     });
     assert.equal(res.ok, true);
     if (res.ok) assert.equal(res.result.order_id, "venue_123");
@@ -108,17 +131,32 @@ describe("R09: Market snapshot must not fabricate execution data", () => {
     };
     const adapter = new PolymarketVenueAdapter(client);
     const snap = await adapter.getOrderBook("empty-market");
-    assert.equal(snap.yes_price, undefined, "yes_price must be undefined when no bids exist");
-    assert.equal(snap.no_price, undefined, "no_price must be undefined when no asks exist");
+    assert.equal(
+      snap.yes_price,
+      undefined,
+      "yes_price must be undefined when no bids exist",
+    );
+    assert.equal(
+      snap.no_price,
+      undefined,
+      "no_price must be undefined when no asks exist",
+    );
   });
 
   it("missing bids yields undefined yes_price only", async () => {
     const client: PolymarketClientLike = {
-      fetchOrderBook: async () => ({ bids: [], asks: [{ price: "0.7", size: "50" }] }),
+      fetchOrderBook: async () => ({
+        bids: [],
+        asks: [{ price: "0.7", size: "50" }],
+      }),
     };
     const adapter = new PolymarketVenueAdapter(client);
     const snap = await adapter.getOrderBook("partial-market");
-    assert.equal(snap.yes_price, undefined, "yes_price must be undefined when bids empty");
+    assert.equal(
+      snap.yes_price,
+      undefined,
+      "yes_price must be undefined when bids empty",
+    );
     assert.equal(snap.no_price, 0.7, "no_price must reflect actual ask");
   });
 });

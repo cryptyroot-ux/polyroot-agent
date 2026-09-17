@@ -60,7 +60,15 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
       [acct],
     );
 
-    const res = await auth.reserve(acct, "pUSD", 5_000_000n, decisionId, intentId, 1, new Date());
+    const res = await auth.reserve(
+      acct,
+      "pUSD",
+      5_000_000n,
+      decisionId,
+      intentId,
+      1,
+      new Date(),
+    );
     console.log("Test 1 Result:", JSON.stringify(res));
     assert.equal(res.ok, true);
     if (!res.ok) throw new Error(res.reason);
@@ -70,8 +78,16 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
        WHERE account = $1 AND asset = 'pUSD'`,
       [acct],
     );
-    assert.equal(bal.rows[0].available_base, "5000000", "available should drop by 5M");
-    assert.equal(bal.rows[0].committed_base, "5000000", "committed should rise by 5M");
+    assert.equal(
+      bal.rows[0].available_base,
+      "5000000",
+      "available should drop by 5M",
+    );
+    assert.equal(
+      bal.rows[0].committed_base,
+      "5000000",
+      "committed should rise by 5M",
+    );
 
     const resv = await pool.query(
       `SELECT COUNT(*)::int AS c FROM reservations WHERE id = $1 AND status = 'ACTIVE'`,
@@ -123,17 +139,33 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
       [acct],
     );
 
-    const res = await auth.reserve(acct, "pUSD", 5_000_000n, decisionId, intentId, 1, new Date());
+    const res = await auth.reserve(
+      acct,
+      "pUSD",
+      5_000_000n,
+      decisionId,
+      intentId,
+      1,
+      new Date(),
+    );
     console.log("Test 2 Result:", JSON.stringify(res));
     assert.equal(res.ok, false);
     if (res.ok) throw new Error("should have rejected");
 
     // Nothing durable
-    const resv = await pool.query(`SELECT COUNT(*)::int AS c FROM reservations WHERE decision_id = $1`, [decisionId]);
+    const resv = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM reservations WHERE decision_id = $1`,
+      [decisionId],
+    );
     assert.equal(resv.rows[0].c, 0, "no reservation on reject");
-    const perm = await pool.query(`SELECT COUNT(*)::int AS c FROM execution_permits WHERE decision_id = $1`, [decisionId]);
+    const perm = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM execution_permits WHERE decision_id = $1`,
+      [decisionId],
+    );
     assert.equal(perm.rows[0].c, 0, "no permit on reject");
-    const evt = (await pool.query(`SELECT COUNT(*)::int AS c FROM kernel_events`)).rows[0].c;
+    const evt = (
+      await pool.query(`SELECT COUNT(*)::int AS c FROM kernel_events`)
+    ).rows[0].c;
     assert.equal(evt, before, "no new events on reject");
 
     await pool.end();
@@ -166,19 +198,43 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
 
     // Two concurrent reserves of 5M each against 6M total → at most one succeeds.
     const [a, b] = await Promise.all([
-      auth.reserve(acct, "pUSD", 5_000_000n, decisionId, intentId, 1, new Date()),
-      auth.reserve(acct, "pUSD", 5_000_000n, decisionId, intentId, 1, new Date()),
+      auth.reserve(
+        acct,
+        "pUSD",
+        5_000_000n,
+        decisionId,
+        intentId,
+        1,
+        new Date(),
+      ),
+      auth.reserve(
+        acct,
+        "pUSD",
+        5_000_000n,
+        decisionId,
+        intentId,
+        1,
+        new Date(),
+      ),
     ]);
     console.log("Test 3 Result A:", JSON.stringify(a));
     console.log("Test 3 Result B:", JSON.stringify(b));
     const okCount = [a, b].filter((r) => r.ok).length;
-    assert.equal(okCount, 1, "exactly one of two concurrent 5M reserves should win against 6M balance");
+    assert.equal(
+      okCount,
+      1,
+      "exactly one of two concurrent 5M reserves should win against 6M balance",
+    );
 
     const bal = await pool.query(
       `SELECT available_base, committed_base FROM balance_entries WHERE account = $1 AND asset = 'pUSD'`,
       [acct],
     );
-    assert.equal(bal.rows[0].committed_base, "5000000", "committed must equal one successful 5M reserve");
+    assert.equal(
+      bal.rows[0].committed_base,
+      "5000000",
+      "committed must equal one successful 5M reserve",
+    );
 
     await pool.end();
   });

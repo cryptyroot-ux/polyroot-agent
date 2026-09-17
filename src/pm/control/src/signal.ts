@@ -29,7 +29,8 @@ export type EdgeResult = {
   /** Venue price of the winning side (reference price). */
   reference_price: number | null;
   reason: string;
-  code: "OK" | "NO_BOOK" | "NO_PROBABILITY" | "NEGATIVE_EDGE" | "MIN_EDGE_UNMET";
+  code:
+    "OK" | "NO_BOOK" | "NO_PROBABILITY" | "NEGATIVE_EDGE" | "MIN_EDGE_UNMET";
 };
 
 export interface SignalInput {
@@ -44,10 +45,7 @@ export interface SignalOpts {
   takerFeeBps?: number;
 }
 
-export function evaluateEdge(
-  input: SignalInput,
-  opts: SignalOpts,
-): EdgeResult {
+export function evaluateEdge(input: SignalInput, opts: SignalOpts): EdgeResult {
   const f = input.forecast;
   const b = input.book;
 

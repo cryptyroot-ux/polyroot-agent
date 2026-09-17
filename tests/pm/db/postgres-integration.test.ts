@@ -25,188 +25,211 @@ function dbAvailable(): boolean {
 
 const DB_OK = dbAvailable();
 
-describe("PostgreSQL persistence integration (points #1-#3)", { skip: !DB_OK }, () => {
-  it("BalanceStore + KernelEventSink round-trip through the real DB", async () => {
-    const { PgBalanceStore, PgKernelEventSink } = await import("@polyroot/risk");
-    const { Pool } = await import("pg");
-    const pool = new Pool({ connectionString: PG_URL });
+describe(
+  "PostgreSQL persistence integration (points #1-#3)",
+  { skip: !DB_OK },
+  () => {
+    it("BalanceStore + KernelEventSink round-trip through the real DB", async () => {
+      const { PgBalanceStore, PgKernelEventSink } =
+        await import("@polyroot/risk");
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: PG_URL });
 
-    const store = new PgBalanceStore(pool);
-    const sink = new PgKernelEventSink(pool);
+      const store = new PgBalanceStore(pool);
+      const sink = new PgKernelEventSink(pool);
 
-    await pool.query(
-      `INSERT INTO balance_entries (account, asset, available_base, committed_base)
+      await pool.query(
+        `INSERT INTO balance_entries (account, asset, available_base, committed_base)
        VALUES ('pg_it_wallet', 'pUSD', 5_000_000, 0)
        ON CONFLICT (account, asset) DO UPDATE SET available_base = 5_000_000, committed_base = 0`,
-    );
+      );
 
-    const before = await store.get("pg_it_wallet", "pUSD");
-    assert.equal(before.availableBase, 5_000_000n);
+      const before = await store.get("pg_it_wallet", "pUSD");
+      assert.equal(before.availableBase, 5_000_000n);
 
-    // Commit 2,000,000 (reserve) → available 3,000,000
-    await store.reserveFunds("pg_it_wallet", "pUSD", 2_000_000n);
-    const after = await store.get("pg_it_wallet", "pUSD");
-    assert.equal(after.availableBase, 3_000_000n);
-    assert.equal(after.committedBase, 2_000_000n);
+      // Commit 2,000,000 (reserve) → available 3,000,000
+      await store.reserveFunds("pg_it_wallet", "pUSD", 2_000_000n);
+      const after = await store.get("pg_it_wallet", "pUSD");
+      assert.equal(after.availableBase, 3_000_000n);
+      assert.equal(after.committedBase, 2_000_000n);
 
-    // Event sink write
-    const beforeCount = (
-      await pool.query("SELECT COUNT(*)::int AS c FROM kernel_events")
-    ).rows[0].c;
-    await sink.push("RESERVATION_CREATED", {
-      reservationId: "res_pg_it",
-      cashBase: "2000000",
+      // Event sink write
+      const beforeCount = (
+        await pool.query("SELECT COUNT(*)::int AS c FROM kernel_events")
+      ).rows[0].c;
+      await sink.push("RESERVATION_CREATED", {
+        reservationId: "res_pg_it",
+        cashBase: "2000000",
+      });
+      const afterCount = (
+        await pool.query("SELECT COUNT(*)::int AS c FROM kernel_events")
+      ).rows[0].c;
+      assert.equal(afterCount, beforeCount + 1);
+
+      await pool.end();
     });
-    const afterCount = (
-      await pool.query("SELECT COUNT(*)::int AS c FROM kernel_events")
-    ).rows[0].c;
-    assert.equal(afterCount, beforeCount + 1);
 
-    await pool.end();
-  });
+    it("PgPersistence get/set/listUnknown round-trip", async () => {
+      const { PgPersistence } = await import("@polyroot/control");
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: PG_URL });
 
-  it("PgPersistence get/set/listUnknown round-trip", async () => {
-    const { PgPersistence } = await import("@polyroot/control");
-    const { Pool } = await import("pg");
-    const pool = new Pool({ connectionString: PG_URL });
+      // Generate unique id for this run
+      const orderUuid = crypto.randomUUID();
 
-    // Generate unique id for this run
-    const orderUuid = crypto.randomUUID();
+      const persistence = new PgPersistence(pool);
 
-    const persistence = new PgPersistence(pool);
-
-    await pool.query(
-      `INSERT INTO trade_intents (dedupe_key, purpose, market_id, side, price, size, order_type, expiration_sec, strategy, status, created_at)
+      await pool.query(
+        `INSERT INTO trade_intents (dedupe_key, purpose, market_id, side, price, size, order_type, expiration_sec, strategy, status, created_at)
        VALUES ('pg_persist_${orderUuid}', 'ENTRY', 'mkt_pg_persist', 'YES', 0.5, 1, 'LIMIT', 60, 'test', 'PROPOSED', now())`,
-    );
-    const intentRow = (
-      await pool.query(`SELECT id FROM trade_intents WHERE dedupe_key = 'pg_persist_${orderUuid}' LIMIT 1`)
-    ).rows[0];
-    await pool.query(
-      `INSERT INTO orders (id, intent_id, market_id, side, price, size, fee_rate_bps, nonce, expiration)
+      );
+      const intentRow = (
+        await pool.query(
+          `SELECT id FROM trade_intents WHERE dedupe_key = 'pg_persist_${orderUuid}' LIMIT 1`,
+        )
+      ).rows[0];
+      await pool.query(
+        `INSERT INTO orders (id, intent_id, market_id, side, price, size, fee_rate_bps, nonce, expiration)
        VALUES ($1::uuid, $2::uuid, 'mkt_pg_persist', 'BUY', 0.5, 1, 0, 1, 1000)`,
-      [orderUuid, intentRow.id],
-    );
-    await persistence.set(orderUuid, "SUBMISSION_UNKNOWN");
+        [orderUuid, intentRow.id],
+      );
+      await persistence.set(orderUuid, "SUBMISSION_UNKNOWN");
 
-    const state = await persistence.get(orderUuid);
-    assert.equal(state, "SUBMISSION_UNKNOWN");
+      const state = await persistence.get(orderUuid);
+      assert.equal(state, "SUBMISSION_UNKNOWN");
 
-    const unknowns = await persistence.listUnknown();
-    assert.ok(unknowns.includes(orderUuid));
+      const unknowns = await persistence.listUnknown();
+      assert.ok(unknowns.includes(orderUuid));
 
-    await pool.end();
-  });
+      await pool.end();
+    });
 
-  it("Supervisor health counters are PostgreSQL-backed (survive instance restart)", async () => {
-    const { Pool } = await import("pg");
-    const pool = new Pool({ connectionString: PG_URL });
-    await pool.query(
-      `UPDATE supervisor_state SET total_order_count = 0, unknown_order_count = 0, unresolved_intent_count = 0
+    it("Supervisor health counters are PostgreSQL-backed (survive instance restart)", async () => {
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: PG_URL });
+      await pool.query(
+        `UPDATE supervisor_state SET total_order_count = 0, unknown_order_count = 0, unresolved_intent_count = 0
        WHERE id = '00000000-0000-0000-0000-000000000001'`,
-    );
+      );
 
-    // Simulate an instance recording counts
-    await pool.query(
-      `UPDATE supervisor_state SET total_order_count = 7, unknown_order_count = 2
+      // Simulate an instance recording counts
+      await pool.query(
+        `UPDATE supervisor_state SET total_order_count = 7, unknown_order_count = 2
        WHERE id = '00000000-0000-0000-0000-000000000001'`,
-    );
+      );
 
-    // New "instance" (new pool/connection) reads persisted counters
-    const pool2 = new Pool({ connectionString: PG_URL });
-    const row = (
-      await pool2.query(
-        `SELECT total_order_count, unknown_order_count FROM supervisor_state
+      // New "instance" (new pool/connection) reads persisted counters
+      const pool2 = new Pool({ connectionString: PG_URL });
+      const row = (
+        await pool2.query(
+          `SELECT total_order_count, unknown_order_count FROM supervisor_state
          WHERE id = '00000000-0000-0000-0000-000000000001'`,
-      )
-    ).rows[0];
-    assert.equal(Number(row.total_order_count), 7);
-    assert.equal(Number(row.unknown_order_count), 2);
+        )
+      ).rows[0];
+      assert.equal(Number(row.total_order_count), 7);
+      assert.equal(Number(row.unknown_order_count), 2);
 
-    await pool.end();
-    await pool2.end();
-  });
+      await pool.end();
+      await pool2.end();
+    });
 
-  it("PgReconciler attempts reconciliation on SUBMISSION_UNKNOWN orders", async () => {
-    const { PgReconciler } = await import("@polyroot/control");
-    const { Pool } = await import("pg");
-    const pool = new Pool({ connectionString: PG_URL });
+    it("PgReconciler attempts reconciliation on SUBMISSION_UNKNOWN orders", async () => {
+      const { PgReconciler } = await import("@polyroot/control");
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: PG_URL });
 
-    const orderUuid = crypto.randomUUID();
-    const intentKey = `pg_recon_${crypto.randomUUID().slice(0, 8)}`;
+      const orderUuid = crypto.randomUUID();
+      const intentKey = `pg_recon_${crypto.randomUUID().slice(0, 8)}`;
 
-    await pool.query(
-      `INSERT INTO trade_intents (dedupe_key, purpose, market_id, side, price, size, order_type, expiration_sec, strategy, status, created_at)
+      await pool.query(
+        `INSERT INTO trade_intents (dedupe_key, purpose, market_id, side, price, size, order_type, expiration_sec, strategy, status, created_at)
        VALUES ('${intentKey}', 'ENTRY', 'mkt_pg_recon', 'YES', 0.5, 1, 'LIMIT', 60, 'test', 'PROPOSED', now())`,
-    );
-    const intentRow = (
-      await pool.query(`SELECT id FROM trade_intents WHERE dedupe_key = '${intentKey}' LIMIT 1`)
-    ).rows[0];
-    await pool.query(
-      `INSERT INTO orders (id, intent_id, market_id, side, price, size, fee_rate_bps, nonce, expiration)
+      );
+      const intentRow = (
+        await pool.query(
+          `SELECT id FROM trade_intents WHERE dedupe_key = '${intentKey}' LIMIT 1`,
+        )
+      ).rows[0];
+      await pool.query(
+        `INSERT INTO orders (id, intent_id, market_id, side, price, size, fee_rate_bps, nonce, expiration)
        VALUES ($1::uuid, $2::uuid, 'mkt_pg_recon', 'BUY', 0.5, 1, 0, 1, 1000)`,
-      [orderUuid, intentRow.id],
-    );
-    await pool.query(
-      `INSERT INTO recovery_ledger (order_id, state, submitted_at)
+        [orderUuid, intentRow.id],
+      );
+      await pool.query(
+        `INSERT INTO recovery_ledger (order_id, state, submitted_at)
        VALUES ($1::uuid, 'SUBMISSION_UNKNOWN', now())`,
-      [orderUuid],
-    );
+        [orderUuid],
+      );
 
-    // Instance a PgReconciler over a fake executor that returns ACKNOWLEDGED
-    const fakeExecutor = {
-      reconcile: async (id: string) => {
-        return "ACKNOWLEDGED" as const;
-      },
-    };
-    const reconciler = new PgReconciler(fakeExecutor as any, pool);
+      // Instance a PgReconciler over a fake executor that returns ACKNOWLEDGED
+      const fakeExecutor = {
+        reconcile: async (id: string) => {
+          return "ACKNOWLEDGED" as const;
+        },
+      };
+      const reconciler = new PgReconciler(fakeExecutor as any, pool);
 
-    // Run reconciliation — it should call executor.reconcile for the unknown order
-    await reconciler.reconcileAll();
+      // Run reconciliation — it should call executor.reconcile for the unknown order
+      await reconciler.reconcileAll();
 
-    // After reconcile, order should be ACKNOWLEDGED (no longer unknown)
-    const row = (
-      await pool.query(`SELECT state, resolved FROM recovery_ledger WHERE order_id = $1`, [orderUuid])
-    ).rows[0];
-    assert.equal(row.state, "ACKNOWLEDGED");
-    assert.ok(row.resolved);
+      // After reconcile, order should be ACKNOWLEDGED (no longer unknown)
+      const row = (
+        await pool.query(
+          `SELECT state, resolved FROM recovery_ledger WHERE order_id = $1`,
+          [orderUuid],
+        )
+      ).rows[0];
+      assert.equal(row.state, "ACKNOWLEDGED");
+      assert.ok(row.resolved);
 
-    await pool.end();
-  });
+      await pool.end();
+    });
 
-  it("Supervisor.startPeriodicReconciliation schedules and can be stopped", async () => {
-    const { PgSupervisor } = await import("@polyroot/control");
-    const { Reconciler } = await import("@polyroot/control");
-    const { Pool } = await import("pg");
-    const pool = new Pool({ connectionString: PG_URL });
+    it("Supervisor.startPeriodicReconciliation schedules and can be stopped", async () => {
+      const { PgSupervisor } = await import("@polyroot/control");
+      const { Reconciler } = await import("@polyroot/control");
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: PG_URL });
 
-    // A Reconciler that counts invocations without needing DB rows.
-    let reconcileAllCount = 0;
-    class CountingReconciler extends Reconciler {
-      constructor() {
-        super({ reconcile: async () => "ACKNOWLEDGED" as const } as any, { listUnknown: async () => [], set: async () => {}, get: async () => undefined } as any);
+      // A Reconciler that counts invocations without needing DB rows.
+      let reconcileAllCount = 0;
+      class CountingReconciler extends Reconciler {
+        constructor() {
+          super(
+            { reconcile: async () => "ACKNOWLEDGED" as const } as any,
+            {
+              listUnknown: async () => [],
+              set: async () => {},
+              get: async () => undefined,
+            } as any,
+          );
+        }
+        override async reconcileAll(): Promise<void> {
+          reconcileAllCount++;
+        }
       }
-      override async reconcileAll(): Promise<void> {
-        reconcileAllCount++;
-      }
-    }
 
-    const reconciler = new CountingReconciler();
-    const policy = { reconcile_interval_s: 1 };
-    const pgSuper = new PgSupervisor(reconciler, pool, policy as any);
+      const reconciler = new CountingReconciler();
+      const policy = { reconcile_interval_s: 1 };
+      const pgSuper = new PgSupervisor(reconciler, pool, policy as any);
 
-    // Start periodic reconciliation with 80ms interval (fast for testing)
-    const stop = pgSuper.startPeriodicReconciliation(80);
-    await new Promise((r) => setTimeout(r, 220));
-    stop();
-    const countAfter = reconcileAllCount;
-    await new Promise((r) => setTimeout(r, 120));
-    assert.equal(reconcileAllCount, countAfter, "No more reconciliations after stop");
-    assert.ok(countAfter > 0, "At least one reconciliation ran");
+      // Start periodic reconciliation with 80ms interval (fast for testing)
+      const stop = pgSuper.startPeriodicReconciliation(80);
+      await new Promise((r) => setTimeout(r, 220));
+      stop();
+      const countAfter = reconcileAllCount;
+      await new Promise((r) => setTimeout(r, 120));
+      assert.equal(
+        reconcileAllCount,
+        countAfter,
+        "No more reconciliations after stop",
+      );
+      assert.ok(countAfter > 0, "At least one reconciliation ran");
 
-    await pool.end();
-  });
-});
+      await pool.end();
+    });
+  },
+);
 describe("EventStore idempotency and replay (P0-1)", { skip: !DB_OK }, () => {
   it("append persists domain event.id, duplicate append returns existing with created=false", async () => {
     const { PgEventStore } = await import("@polyroot/ledger");
@@ -228,20 +251,36 @@ describe("EventStore idempotency and replay (P0-1)", { skip: !DB_OK }, () => {
     // First append: created=true, eventId matches domain id exactly
     const r1 = await store.append(event);
     assert.equal(r1.created, true, "first append must be created=true");
-    assert.equal(r1.eventId, domainEventId, "persisted eventId must match domain id");
+    assert.equal(
+      r1.eventId,
+      domainEventId,
+      "persisted eventId must match domain id",
+    );
 
     // Second append: created=false, same eventId, same sequence
     const r2 = await store.append(event);
     assert.equal(r2.created, false, "duplicate append must be created=false");
-    assert.equal(r2.eventId, domainEventId, "duplicate eventId must match domain id");
-    assert.equal(r2.sequence, r1.sequence, "duplicate sequence must match first");
+    assert.equal(
+      r2.eventId,
+      domainEventId,
+      "duplicate eventId must match domain id",
+    );
+    assert.equal(
+      r2.sequence,
+      r1.sequence,
+      "duplicate sequence must match first",
+    );
 
     // Verify exactly one row in DB for this event id
     const countResult = await pool.query(
       `SELECT COUNT(*)::int AS c FROM kernel_events WHERE id = $1`,
       [domainEventId],
     );
-    assert.equal(countResult.rows[0].c, 1, "exactly one row for duplicate event");
+    assert.equal(
+      countResult.rows[0].c,
+      1,
+      "exactly one row for duplicate event",
+    );
 
     // Verify getEvent returns the persisted domain id
     const fetched = await store.getEvent(domainEventId);
@@ -275,13 +314,22 @@ describe("EventStore idempotency and replay (P0-1)", { skip: !DB_OK }, () => {
 
     // Replay from sequence 0 (all events)
     const all = await store.replay({ fromSequence: 0n });
-    assert.ok(all.length >= 3, `expected >=3 events in replay, got ${all.length}`);
+    assert.ok(
+      all.length >= 3,
+      `expected >=3 events in replay, got ${all.length}`,
+    );
 
     // The 3 events for this aggregate must appear in ascending sequence order
     const ours = all.filter((e) => e.aggregate_id === aggId);
     assert.equal(ours.length, 3);
-    assert.ok(ours[0].sequence < ours[1].sequence, "events must be ordered by sequence");
-    assert.ok(ours[1].sequence < ours[2].sequence, "events must be ordered by sequence");
+    assert.ok(
+      ours[0].sequence < ours[1].sequence,
+      "events must be ordered by sequence",
+    );
+    assert.ok(
+      ours[1].sequence < ours[2].sequence,
+      "events must be ordered by sequence",
+    );
 
     // Verify topic→type mapping works (not a SQL column error)
     for (const e of ours) {
@@ -289,7 +337,10 @@ describe("EventStore idempotency and replay (P0-1)", { skip: !DB_OK }, () => {
     }
 
     // Aggregate replay filter
-    const filtered = await store.replay({ fromSequence: 0n, aggregateId: aggId });
+    const filtered = await store.replay({
+      fromSequence: 0n,
+      aggregateId: aggId,
+    });
     assert.equal(filtered.length, 3);
     for (const e of filtered) {
       assert.equal(e.aggregate_id, aggId);
@@ -298,7 +349,10 @@ describe("EventStore idempotency and replay (P0-1)", { skip: !DB_OK }, () => {
     // lastSequence must be at least the highest sequence of our events
     const maxSeq = Math.max(...ours.map((e) => Number(e.sequence)));
     const last = await store.lastSequence();
-    assert.ok(Number(last) >= maxSeq, "lastSequence must be >= max event sequence");
+    assert.ok(
+      Number(last) >= maxSeq,
+      "lastSequence must be >= max event sequence",
+    );
 
     await pool.end();
   });
@@ -306,7 +360,8 @@ describe("EventStore idempotency and replay (P0-1)", { skip: !DB_OK }, () => {
 
 describe("G4-G6 runtime PostgreSQL integration", { skip: !DB_OK }, () => {
   it("G4: paper log + experiment registry round-trip through the real DB", async () => {
-    const { PgPaperLog, PgExperimentRegistry } = await import("@polyroot/runtime");
+    const { PgPaperLog, PgExperimentRegistry } =
+      await import("@polyroot/runtime");
     const { Pool } = await import("pg");
     const pool = new Pool({ connectionString: PG_URL });
 
@@ -332,7 +387,7 @@ describe("G4-G6 runtime PostgreSQL integration", { skip: !DB_OK }, () => {
       size: 100,
       fillStatus: "FILLED",
       filledSize: 100,
-      fillPrice: 0.60,
+      fillPrice: 0.6,
       makerFee: 0,
       takerFee: 120,
       uncertainty: 0.1,
@@ -362,7 +417,15 @@ describe("G4-G6 runtime PostgreSQL integration", { skip: !DB_OK }, () => {
 
     // Conclude the experiment with metrics
     await registry.conclude(exp.id, {
-      quality: { brier: 0.21, logLoss: 0.55, calibrationError: 0.08, sharpness: 0.3, coverage: 0.81, abstentionRate: 0.1, n: 2 },
+      quality: {
+        brier: 0.21,
+        logLoss: 0.55,
+        calibrationError: 0.08,
+        sharpness: 0.3,
+        coverage: 0.81,
+        abstentionRate: 0.1,
+        n: 2,
+      },
       netPnl: 5.2,
       maxDrawdownPct: 0.01,
     });
@@ -385,7 +448,10 @@ describe("G4-G6 runtime PostgreSQL integration", { skip: !DB_OK }, () => {
     assert.ok(before.observedDays < 30);
 
     // Freeze exact versions + preregistered stopping rule.
-    await shadow.freezeVersion("deadbeef", "evaluate after 100 clusters or 30 days, whichever last");
+    await shadow.freezeVersion(
+      "deadbeef",
+      "evaluate after 100 clusters or 30 days, whichever last",
+    );
 
     const rows = await pool.query(
       `UPDATE shadow_baseline

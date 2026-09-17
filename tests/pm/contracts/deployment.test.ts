@@ -26,7 +26,9 @@ const ACTIVE: DeploymentState = {
   activeMode: "PAPER",
 };
 
-function candidate(overrides: Partial<DeploymentCandidate> = {}): DeploymentCandidate {
+function candidate(
+  overrides: Partial<DeploymentCandidate> = {},
+): DeploymentCandidate {
   return {
     releaseId: "rel-002",
     imageDigest: "sha256:" + "a".repeat(64),
@@ -152,7 +154,10 @@ describe("PR-OPS-07 / T-PR-OPS-07: blue-green deployment", () => {
   });
 
   it("rejects a candidate targeting the wrong slot", () => {
-    const r = planBlueGreenDeployment(ACTIVE, { ...candidate(), targetSlot: "BLUE" });
+    const r = planBlueGreenDeployment(ACTIVE, {
+      ...candidate(),
+      targetSlot: "BLUE",
+    });
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.code, "TARGET_SLOT_MISMATCH");
   });
@@ -175,7 +180,10 @@ describe("PR-OPS-07 / T-PR-OPS-07: rollback", () => {
   });
 
   it("refuses rollback to the active slot", () => {
-    const r = rollbackDeployment(ACTIVE, { ...candidate(), targetSlot: "BLUE" });
+    const r = rollbackDeployment(ACTIVE, {
+      ...candidate(),
+      targetSlot: "BLUE",
+    });
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.code, "ROLLBACK_SLOT_INVALID");
   });

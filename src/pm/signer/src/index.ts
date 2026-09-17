@@ -135,7 +135,7 @@ export function computePayloadHash(request: SignRequest): string {
     // Defensive: callers that build a request without side/priceBase yet
     // (e.g. computing a placeholder hash) must not crash the hash function.
     request.side ?? "",
-    (request.priceBase !== undefined ? request.priceBase.toString() : ""),
+    request.priceBase !== undefined ? request.priceBase.toString() : "",
   ].join("|");
 
   return createHash("sha256").update(payload).digest("hex");
@@ -293,9 +293,11 @@ export class SignerVault {
     if (request.now.getTime() > request.permit.expires_at.getTime()) {
       return { ok: false, reason: "permit expired", code: "PERMIT_EXPIRED" };
     }
-    if (request.permit.single_use &&
-        request.permit.used_at !== null &&
-        request.permit.used_at !== undefined) {
+    if (
+      request.permit.single_use &&
+      request.permit.used_at !== null &&
+      request.permit.used_at !== undefined
+    ) {
       return {
         ok: false,
         reason: "permit already used",

@@ -181,7 +181,10 @@ describe("PR-VAL-06: probabilistic quality metrics", () => {
   });
 
   it("computeProbQuality aggregates all sub-metrics", () => {
-    const q = computeProbQuality({ probabilities: [0.8, 0.3, 0.7], outcomes: [1, 0, 1] });
+    const q = computeProbQuality({
+      probabilities: [0.8, 0.3, 0.7],
+      outcomes: [1, 0, 1],
+    });
     assert.equal(q.n, 3);
     assert.ok(q.brier >= 0 && q.brier <= 1);
     assert.ok(Number.isFinite(q.logLoss));
@@ -234,9 +237,27 @@ describe("PR-VAL-08: experiment registry", () => {
 
   it("concludes with a result and tracks counts without cherry-picking", () => {
     const registry = new ExperimentRegistry();
-    const s1 = registry.preregister({ name: "a", version: "1", description: "x", preregisteredRule: "r1" });
-    const s2 = registry.preregister({ name: "b", version: "1", description: "y", preregisteredRule: "r2" });
-    registry.conclude(s1.id, { brier: 0.2, logLoss: 0.6, calibrationError: 0.1, sharpness: 0.3, coverage: 0.8, abstentionRate: 0.1, n: 100 });
+    const s1 = registry.preregister({
+      name: "a",
+      version: "1",
+      description: "x",
+      preregisteredRule: "r1",
+    });
+    const s2 = registry.preregister({
+      name: "b",
+      version: "1",
+      description: "y",
+      preregisteredRule: "r2",
+    });
+    registry.conclude(s1.id, {
+      brier: 0.2,
+      logLoss: 0.6,
+      calibrationError: 0.1,
+      sharpness: 0.3,
+      coverage: 0.8,
+      abstentionRate: 0.1,
+      n: 100,
+    });
     registry.withdraw(s2.id);
     const counts = registry.countByStatus();
     assert.equal(counts.CONCLUDED, 1);
@@ -268,7 +289,7 @@ describe("G4: full autonomous paper loop", () => {
         cancelProbability: 0,
         partialFraction: 0.5,
         rng: () => 0.5,
-      }
+      },
     );
 
     assert.equal(result.decisions.length, 3);
@@ -303,7 +324,7 @@ describe("G4: full autonomous paper loop", () => {
         cancelProbability: 0.5,
         partialFraction: 0.5,
         rng: () => 0.9,
-      }
+      },
     );
     for (const d of result.decisions) {
       assert.equal(d.action, "NO_TRADE");

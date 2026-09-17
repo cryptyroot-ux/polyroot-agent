@@ -4,7 +4,12 @@
  * index.ts and the concrete adapter implementations.
  */
 
-import type { MarketSnapshot, OrderResult, SignedOrder, VenueMode } from "@polyroot/domain";
+import type {
+  MarketSnapshot,
+  OrderResult,
+  SignedOrder,
+  VenueMode,
+} from "@polyroot/domain";
 
 export type { MarketSnapshot, OrderResult, SignedOrder, VenueMode };
 

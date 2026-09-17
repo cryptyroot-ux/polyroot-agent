@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import { UniverseDecider, UniverseLog } from "@polyroot/data";
 
 describe("PR-DATA-07 / T-PR-DATA-07: full universe decision log", () => {
-  const mkMarket = (id: string, ticker: string, eligible: boolean, reason?: string) => ({
+  const mkMarket = (
+    id: string,
+    ticker: string,
+    eligible: boolean,
+    reason?: string,
+  ) => ({
     id,
     ticker,
     eligible,

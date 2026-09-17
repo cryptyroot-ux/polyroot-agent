@@ -132,7 +132,14 @@ describe("Control — signal edge evaluation (evaluateEdge)", () => {
 
   it("rejects a forecast with no probability fields", () => {
     const res = evaluateEdge(
-      { forecast: makeForecast({ p_calibrated: undefined, p_raw: undefined, probability_yes: undefined }), book: makeBook() },
+      {
+        forecast: makeForecast({
+          p_calibrated: undefined,
+          p_raw: undefined,
+          probability_yes: undefined,
+        }),
+        book: makeBook(),
+      },
       { minEdge: 0.05 },
     );
     assert.equal(res.action, "NO_TRADE");
@@ -141,7 +148,10 @@ describe("Control — signal edge evaluation (evaluateEdge)", () => {
 
   it("rejects a book with no YES or NO prices", () => {
     const res = evaluateEdge(
-      { forecast: makeForecast(), book: makeBook({ yes_price: undefined, no_price: undefined }) },
+      {
+        forecast: makeForecast(),
+        book: makeBook({ yes_price: undefined, no_price: undefined }),
+      },
       { minEdge: 0.05 },
     );
     assert.equal(res.action, "NO_TRADE");

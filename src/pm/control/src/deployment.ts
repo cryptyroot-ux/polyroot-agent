@@ -40,7 +40,8 @@ export interface DeploymentState {
 export type DeploymentDecision =
   | {
       ok: true;
-      code: "PAPER_CANARY_READY" | "LIVE_PROMOTION_AUTHORIZED" | "ROLLBACK_ALLOWED";
+      code:
+        "PAPER_CANARY_READY" | "LIVE_PROMOTION_AUTHORIZED" | "ROLLBACK_ALLOWED";
       reason: string;
       targetSlot: DeploymentSlot;
     }
@@ -86,13 +87,25 @@ export function validateDeploymentCandidate(
   current: DeploymentState,
 ): DeploymentDecision {
   if (!candidate.releaseId) {
-    return { ok: false, code: "RELEASE_ID_REQUIRED", reason: "releaseId is required" };
+    return {
+      ok: false,
+      code: "RELEASE_ID_REQUIRED",
+      reason: "releaseId is required",
+    };
   }
   if (!/^sha256:[a-f0-9]{64}$/i.test(candidate.imageDigest)) {
-    return { ok: false, code: "IMAGE_DIGEST_INVALID", reason: "imageDigest must be sha256:<64 hex>" };
+    return {
+      ok: false,
+      code: "IMAGE_DIGEST_INVALID",
+      reason: "imageDigest must be sha256:<64 hex>",
+    };
   }
   if (!candidate.migrationHash) {
-    return { ok: false, code: "MIGRATION_HASH_REQUIRED", reason: "migrationHash is required" };
+    return {
+      ok: false,
+      code: "MIGRATION_HASH_REQUIRED",
+      reason: "migrationHash is required",
+    };
   }
   if (candidate.targetSlot === current.activeSlot) {
     return {
@@ -102,9 +115,16 @@ export function validateDeploymentCandidate(
     };
   }
 
-  const schema = validateSchemaCompatibility(current.activeSchemaVersion, candidate.schemaVersion);
+  const schema = validateSchemaCompatibility(
+    current.activeSchemaVersion,
+    candidate.schemaVersion,
+  );
   if (!schema.ok) {
-    return { ok: false, code: schema.code ?? "INCOMPATIBLE_SCHEMA_ROLLBACK", reason: schema.reason ?? "incompatible schema" };
+    return {
+      ok: false,
+      code: schema.code ?? "INCOMPATIBLE_SCHEMA_ROLLBACK",
+      reason: schema.reason ?? "incompatible schema",
+    };
   }
 
   if (candidate.mode === "LIVE" && !candidate.ownerApproved) {
@@ -115,7 +135,11 @@ export function validateDeploymentCandidate(
     };
   }
   if (candidate.mode === "LIVE" && current.activeMode === "LIVE") {
-    return { ok: false, code: "ALREADY_LIVE", reason: "active deployment is already LIVE" };
+    return {
+      ok: false,
+      code: "ALREADY_LIVE",
+      reason: "active deployment is already LIVE",
+    };
   }
 
   if (candidate.mode === "PAPER") {

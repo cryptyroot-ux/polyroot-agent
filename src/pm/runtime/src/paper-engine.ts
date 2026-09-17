@@ -9,9 +9,30 @@
 /* ─── PR-VAL-04: Paper simulator (fill / queue / latency / fees) ─────────── */
 
 export type SimulatedFill =
-  | { status: "FILLED"; filledSize: number; fillPrice: number; makerFee: number; takerFee: number; latencyMs: number }
-  | { status: "PARTIAL"; filledSize: number; fillPrice: number; makerFee: number; takerFee: number; latencyMs: number }
-  | { status: "CANCELLED"; filledSize: 0; fillPrice: 0; makerFee: 0; takerFee: 0; latencyMs: number };
+  | {
+      status: "FILLED";
+      filledSize: number;
+      fillPrice: number;
+      makerFee: number;
+      takerFee: number;
+      latencyMs: number;
+    }
+  | {
+      status: "PARTIAL";
+      filledSize: number;
+      fillPrice: number;
+      makerFee: number;
+      takerFee: number;
+      latencyMs: number;
+    }
+  | {
+      status: "CANCELLED";
+      filledSize: 0;
+      fillPrice: 0;
+      makerFee: 0;
+      takerFee: 0;
+      latencyMs: number;
+    };
 
 export interface FillModelInput {
   /** Order size in shares. */
@@ -50,18 +71,39 @@ export function simulateFill(input: FillModelInput): SimulatedFill {
 
   // Cancel path (venue says no match / order lost).
   if (r() < input.cancelProbability) {
-    return { status: "CANCELLED", filledSize: 0, fillPrice: 0, makerFee: 0, takerFee: 0, latencyMs: input.latencyMs };
+    return {
+      status: "CANCELLED",
+      filledSize: 0,
+      fillPrice: 0,
+      makerFee: 0,
+      takerFee: 0,
+      latencyMs: input.latencyMs,
+    };
   }
 
   // Partial fill when the order exceeds touch depth.
-  const filled = input.size <= input.depth ? input.size : Math.floor(input.size * input.partialFraction);
+  const filled =
+    input.size <= input.depth
+      ? input.size
+      : Math.floor(input.size * input.partialFraction);
   if (filled <= 0) {
-    return { status: "CANCELLED", filledSize: 0, fillPrice: 0, makerFee: 0, takerFee: 0, latencyMs: input.latencyMs };
+    return {
+      status: "CANCELLED",
+      filledSize: 0,
+      fillPrice: 0,
+      makerFee: 0,
+      takerFee: 0,
+      latencyMs: input.latencyMs,
+    };
   }
 
   const notional = filled * fillPrice;
-  const makerFee = input.taker ? 0 : Math.round((notional * input.makerFeeBps) / 1e4);
-  const takerFee = input.taker ? Math.round((notional * input.takerFeeBps) / 1e4) : 0;
+  const makerFee = input.taker
+    ? 0
+    : Math.round((notional * input.makerFeeBps) / 1e4);
+  const takerFee = input.taker
+    ? Math.round((notional * input.takerFeeBps) / 1e4)
+    : 0;
 
   return {
     status: filled < input.size ? "PARTIAL" : "FILLED",
@@ -88,7 +130,10 @@ export function evaluateShadowCandidate(input: {
   criteria: ShadowCriteria;
 }): { passed: boolean; reason: string } {
   if (input.observedDays < input.criteria.minDays) {
-    return { passed: false, reason: `baseline ${input.observedDays}d < ${input.criteria.minDays}d` };
+    return {
+      passed: false,
+      reason: `baseline ${input.observedDays}d < ${input.criteria.minDays}d`,
+    };
   }
   if (input.resolvedClusters < input.criteria.minResolvedClusters) {
     return {
@@ -121,8 +166,12 @@ export interface ProbQuality {
 }
 
 /** Brier score: mean((p - y)^2), smaller is better. */
-export function brierScore(probabilities: number[], outcomes: number[]): number {
-  if (probabilities.length !== outcomes.length) throw new Error("length mismatch");
+export function brierScore(
+  probabilities: number[],
+  outcomes: number[],
+): number {
+  if (probabilities.length !== outcomes.length)
+    throw new Error("length mismatch");
   let s = 0;
   for (let i = 0; i < probabilities.length; i++) {
     const p = probabilities[i];
@@ -134,7 +183,8 @@ export function brierScore(probabilities: number[], outcomes: number[]): number 
 
 /** Log loss with clipping to avoid -Infinity. */
 export function logLoss(probabilities: number[], outcomes: number[]): number {
-  if (probabilities.length !== outcomes.length) throw new Error("length mismatch");
+  if (probabilities.length !== outcomes.length)
+    throw new Error("length mismatch");
   const eps = 1e-9;
   let s = 0;
   for (let i = 0; i < probabilities.length; i++) {
@@ -148,8 +198,13 @@ export function logLoss(probabilities: number[], outcomes: number[]): number {
 }
 
 /** Binned calibration error: E[| avg_fit_observed_freq - avg_predicted |] across B bins. */
-export function calibrationError(probabilities: number[], outcomes: number[], bins = 10): number {
-  if (probabilities.length !== outcomes.length) throw new Error("length mismatch");
+export function calibrationError(
+  probabilities: number[],
+  outcomes: number[],
+  bins = 10,
+): number {
+  if (probabilities.length !== outcomes.length)
+    throw new Error("length mismatch");
   let err = 0;
   let usedBins = 0;
   for (let b = 0; b < bins; b++) {
@@ -188,8 +243,13 @@ export function sharpness(probabilities: number[]): number {
 }
 
 /** Coverage: fraction of binary outcomes inside a prediction band (e.g. |p-y|<=0.25). */
-export function coverage(probabilities: number[], outcomes: number[], band = 0.25): number {
-  if (probabilities.length !== outcomes.length) throw new Error("length mismatch");
+export function coverage(
+  probabilities: number[],
+  outcomes: number[],
+  band = 0.25,
+): number {
+  if (probabilities.length !== outcomes.length)
+    throw new Error("length mismatch");
   const n = probabilities.length;
   if (n === 0) return NaN;
   let hits = 0;
@@ -202,7 +262,10 @@ export function coverage(probabilities: number[], outcomes: number[], band = 0.2
 }
 
 /** Abstention rate: fraction of near-0.5 (uncertain) forecasts. */
-export function abstentionRate(probabilities: number[], threshold = 0.02): number {
+export function abstentionRate(
+  probabilities: number[],
+  threshold = 0.02,
+): number {
   const n = probabilities.length;
   if (n === 0) return NaN;
   let a = 0;
@@ -288,9 +351,15 @@ export function computeEconomicMetrics(input: EconomicInput): EconomicMetrics {
   return {
     netPnl,
     maxDrawdownPct: maxDrawdown(input.equityCurve),
-    fillRatio: input.turnover > 0 ? Math.max(0, 1 - input.totalFees / Math.max(input.grossPnl, 1e-9)) : 0,
+    fillRatio:
+      input.turnover > 0
+        ? Math.max(0, 1 - input.totalFees / Math.max(input.grossPnl, 1e-9))
+        : 0,
     turnover: input.turnover,
-    capacityUtilizationPct: input.capacityUsd > 0 ? Math.min(100, (input.turnover / input.capacityUsd) * 100) : 0,
+    capacityUtilizationPct:
+      input.capacityUsd > 0
+        ? Math.min(100, (input.turnover / input.capacityUsd) * 100)
+        : 0,
     concentration: concentrationIndex(input.perMarketPnl),
   };
 }
@@ -313,7 +382,9 @@ export interface ExperimentSpec {
 export class ExperimentRegistry {
   private readonly specs: ExperimentSpec[] = [];
 
-  preregister(spec: Omit<ExperimentSpec, "id" | "status" | "preregisteredAt">): ExperimentSpec {
+  preregister(
+    spec: Omit<ExperimentSpec, "id" | "status" | "preregisteredAt">,
+  ): ExperimentSpec {
     const entry: ExperimentSpec = {
       ...spec,
       id: crypto.randomUUID(),
@@ -363,9 +434,16 @@ export class ExperimentRegistry {
 
 export interface PaperLoopDeps {
   /** Produce a forecast for a given market snapshot. Pure. */
-  forecast: (market: { market_id: string; bid: number; ask: number }) => number | null;
+  forecast: (market: {
+    market_id: string;
+    bid: number;
+    ask: number;
+  }) => number | null;
   /** Produce an intended size given the forecast and edge. Pure. */
-  sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number;
+  sizeIntent: (
+    market: { market_id: string; bid: number; ask: number },
+    p: number,
+  ) => number;
 }
 
 export type PaperDecision =
@@ -393,7 +471,11 @@ export interface PaperLoopResult {
  * with the paper decision treated as a 1 for a BUY (a proxy for calibration
  * checks only — real SHADOW uses resolved market outcomes).
  */
-export function runPaperLoop(deps: PaperLoopDeps, markets: Array<{ market_id: string; bid: number; ask: number }>, feeInput: Omit<FillModelInput, "size" | "bid" | "ask">): PaperLoopResult {
+export function runPaperLoop(
+  deps: PaperLoopDeps,
+  markets: Array<{ market_id: string; bid: number; ask: number }>,
+  feeInput: Omit<FillModelInput, "size" | "bid" | "ask">,
+): PaperLoopResult {
   const decisions: PaperDecision[] = [];
   const probabilities: number[] = [];
   const outcomes: number[] = [];
@@ -408,12 +490,19 @@ export function runPaperLoop(deps: PaperLoopDeps, markets: Array<{ market_id: st
   for (const m of markets) {
     const p = deps.forecast(m);
     if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02) {
-      decisions.push({ action: "NO_TRADE", market_id: m.market_id, reason: "forecast uncertain" });
+      decisions.push({
+        action: "NO_TRADE",
+        market_id: m.market_id,
+        reason: "forecast uncertain",
+      });
       continue;
     }
     const size = deps.sizeIntent(m, p);
     const fill = simulateFill({ ...feeInput, size, bid: m.bid, ask: m.ask });
-    const pnl = fill.status === "CANCELLED" ? 0 : (p - 0.5) * fill.filledSize - (fill.makerFee + fill.takerFee);
+    const pnl =
+      fill.status === "CANCELLED"
+        ? 0
+        : (p - 0.5) * fill.filledSize - (fill.makerFee + fill.takerFee);
 
     probabilities.push(p);
     outcomes.push(p > 0.5 ? 1 : 0);
@@ -466,14 +555,31 @@ export interface PaperFinancialDecision {
 export interface RunPaperLoopWithOrchestratorParams {
   markets: Array<{ market_id: string; bid: number; ask: number }>;
   feeInput: Omit<FillModelInput, "size" | "bid" | "ask">;
-  forecast: (m: { market_id: string; bid: number; ask: number }) => number | null;
-  sizeIntent: (m: { market_id: string; bid: number; ask: number }, p: number) => number;
+  forecast: (m: {
+    market_id: string;
+    bid: number;
+    ask: number;
+  }) => number | null;
+  sizeIntent: (
+    m: { market_id: string; bid: number; ask: number },
+    p: number,
+  ) => number;
   /** Financial gate (PRD P3.2): only ALLOW lets a new order reach the orchestrator. */
-  computeGate: (m: { market_id: string; bid: number; ask: number }) => "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED";
+  computeGate: (m: {
+    market_id: string;
+    bid: number;
+    ask: number;
+  }) => "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED";
   /** Side effect that runs before each entry attempt (permission/eligibility hook). */
   onEntry: (m: { market_id: string; bid: number; ask: number }) => void;
   /** The real money path: MoneyKernel -> Executor -> SignerVault (PR-EXE-01). */
-  orchestrate: (m: { market_id: string; bid: number; ask: number; p: number; size: number }) => Promise<unknown>;
+  orchestrate: (m: {
+    market_id: string;
+    bid: number;
+    ask: number;
+    p: number;
+    size: number;
+  }) => Promise<unknown>;
 }
 
 export interface RunPaperLoopWithOrchestratorResult {
@@ -499,7 +605,8 @@ export async function runPaperLoopWithOrchestrator(
 
   for (const m of params.markets) {
     const p = params.forecast(m);
-    if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02) continue;
+    if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02)
+      continue;
     const gate = params.computeGate(m);
     params.onEntry(m);
     if (gate !== "ALLOW") continue; // entry or financially blocked -> no new order
@@ -511,9 +618,24 @@ export async function runPaperLoopWithOrchestrator(
       continue;
     }
     // Simulated fill for accounting (still no financial I/O):
-    const fill = simulateFill({ ...params.feeInput, size, bid: m.bid, ask: m.ask });
-    const pnl = fill.status === "CANCELLED" ? 0 : (p - 0.5) * fill.filledSize - (fill.makerFee + fill.takerFee);
-    decisions.push({ market_id: m.market_id, action: p > 0.5 ? "BUY" : "SELL", p, size, fill, pnl });
+    const fill = simulateFill({
+      ...params.feeInput,
+      size,
+      bid: m.bid,
+      ask: m.ask,
+    });
+    const pnl =
+      fill.status === "CANCELLED"
+        ? 0
+        : (p - 0.5) * fill.filledSize - (fill.makerFee + fill.takerFee);
+    decisions.push({
+      market_id: m.market_id,
+      action: p > 0.5 ? "BUY" : "SELL",
+      p,
+      size,
+      fill,
+      pnl,
+    });
     perMarketPnl.push(pnl);
     grossPnl += pnl + (fill.makerFee + fill.takerFee);
     turnover += fill.filledSize * fill.fillPrice;

@@ -50,26 +50,26 @@ Key invariants:
 
 ## Specification & Status
 
-| Metric | Value |
-|--------|-------|
-| **Spec version** | v1.1 (Correction & Completion Release, 9 Sep 2026) |
-| **Requirements** | **96** traceable (86 P0 + 10 P1) — [PRD_v1.1.docx](PolyRoot_PRD_v1.1.docx) |
-| **Gates** | G0–G7 (G0–G3 verified, G4–G7 pending economic evidence) |
-| **Traceability** | 96/96 structural mapping (96 PR-* requirement IDs ↔ test IDs) |
-| **Tests** | 170 contract + 12 property = **183 passing** |
-| **Build** | 36/36 packages (monorepo, turbo) |
-| **Lint / Typecheck** | Clean |
+| Metric               | Value                                                                      |
+| -------------------- | -------------------------------------------------------------------------- |
+| **Spec version**     | v1.1 (Correction & Completion Release, 9 Sep 2026)                         |
+| **Requirements**     | **96** traceable (86 P0 + 10 P1) — [PRD_v1.1.docx](PolyRoot_PRD_v1.1.docx) |
+| **Gates**            | G0–G7 (G0–G3 verified, G4–G7 pending economic evidence)                    |
+| **Traceability**     | 96/96 structural mapping (96 PR-* requirement IDs ↔ test IDs)              |
+| **Tests**            | 170 contract + 12 property = **183 passing**                               |
+| **Build**            | 36/36 packages (monorepo, turbo)                                           |
+| **Lint / Typecheck** | Clean                                                                      |
 
-| Gate | Status | Evidence |
-|------|--------|----------|
-| G0 — Fresh install | ✅ PASS | Contract tests |
-| G1 — PAPER / Governance | ✅ PASS | Governance, wallet modes, venue modes |
-| G2 — Risk / Capital | ✅ PASS | Money kernel, kill-switch, loss-floor, key-compromise |
-| G3 — Execution / Venue | ✅ PASS | Lifecycle, venue modes, reconciler |
-| G4 — PAPER | 🟡 READY | Paper engine, simulator, metrics, registry (not yet run) |
-| G5 — SHADOW | ⏳ PENDING | Requires 30d baseline, 100+ resolved clusters |
-| G6 — micro-LIVE | ⏳ PENDING | Bounded capital, real wallet/fill/settlement |
-| G7 — autonomous-LIVE 24/7 | ⏳ PENDING | Sustained micro-LIVE + prospective edge |
+| Gate                      | Status     | Evidence                                                 |
+| ------------------------- | ---------- | -------------------------------------------------------- |
+| G0 — Fresh install        | ✅ PASS    | Contract tests                                           |
+| G1 — PAPER / Governance   | ✅ PASS    | Governance, wallet modes, venue modes                    |
+| G2 — Risk / Capital       | ✅ PASS    | Money kernel, kill-switch, loss-floor, key-compromise    |
+| G3 — Execution / Venue    | ✅ PASS    | Lifecycle, venue modes, reconciler                       |
+| G4 — PAPER                | 🟡 READY   | Paper engine, simulator, metrics, registry (not yet run) |
+| G5 — SHADOW               | ⏳ PENDING | Requires 30d baseline, 100+ resolved clusters            |
+| G6 — micro-LIVE           | ⏳ PENDING | Bounded capital, real wallet/fill/settlement             |
+| G7 — autonomous-LIVE 24/7 | ⏳ PENDING | Sustained micro-LIVE + prospective edge                  |
 
 ## Repository layout
 

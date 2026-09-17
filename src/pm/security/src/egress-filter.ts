@@ -54,7 +54,9 @@ export interface EgressFilterConfig extends EgressGuardConfig {
   /** Map of URL patterns to categories for classification. */
   categoryRules?: Array<{ pattern: RegExp; category: EgressCategory }>;
   /** Policy decisions per category (default ALLOW). */
-  categoryPolicy?: Partial<Record<EgressCategory, "ALLOW" | "BLOCK" | "QUARANTINE">>;
+  categoryPolicy?: Partial<
+    Record<EgressCategory, "ALLOW" | "BLOCK" | "QUARANTINE">
+  >;
   /** Enable audit logging (default true). */
   auditEnabled?: boolean;
   /** Secret canary for testing redaction (same as SecurityProxy). */
@@ -62,23 +64,32 @@ export interface EgressFilterConfig extends EgressGuardConfig {
   /** Callback to persist audit entries (in tests, we can spy). */
   onAuditEntry?: ((entry: EgressAuditEntry) => void) | undefined;
   /** Metrics callback (optional). */
-  onMetric?: ((name: string, value: number, labels?: Record<string, string>) => void) | undefined;
+  onMetric?:
+    | ((name: string, value: number, labels?: Record<string, string>) => void)
+    | undefined;
 }
 
 /** Internal audit logger. */
 class AuditLogger {
   private readonly enabled: boolean;
   private readonly secretCanary: string;
-  private readonly onAuditEntry: ((entry: EgressAuditEntry) => void) | undefined;
+  private readonly onAuditEntry:
+    ((entry: EgressAuditEntry) => void) | undefined;
 
   constructor(config: EgressFilterConfig) {
     this.enabled = config.auditEnabled ?? true;
-    this.secretCanary = config.secretCanary ?? "POLYROOT_SECRET_CANARY_NEVER_LOG_THIS";
+    this.secretCanary =
+      config.secretCanary ?? "POLYROOT_SECRET_CANARY_NEVER_LOG_THIS";
     this.onAuditEntry = config.onAuditEntry;
   }
 
   /** Log an egress attempt. */
-  log(entry: Omit<EgressAuditEntry, "auditId" | "timestamp"> & { auditId?: string; timestamp?: Date | undefined }): void {
+  log(
+    entry: Omit<EgressAuditEntry, "auditId" | "timestamp"> & {
+      auditId?: string;
+      timestamp?: Date | undefined;
+    },
+  ): void {
     if (!this.enabled) return;
     const auditId = entry.auditId ?? this.generateId();
     const timestamp = entry.timestamp ?? new Date();
@@ -98,19 +109,30 @@ class AuditLogger {
 
   /** Generate a simple unique ID (for audit). */
   private generateId(): string {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    return (
+      Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15)
+    );
   }
 
   /** Redact secret-like fields from an object (for audit payload). */
   redact(obj: Record<string, unknown>): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(obj)) {
-      if (/secret|token|key|password|credential|private_key|signature|mnemonic|api_key|bearer/i.test(k)) {
+      if (
+        /secret|token|key|password|credential|private_key|signature|mnemonic|api_key|bearer/i.test(
+          k,
+        )
+      ) {
         out[k] = "REDACTED";
       } else if (typeof v === "object" && v !== null && !Array.isArray(v)) {
         out[k] = this.redact(v as Record<string, unknown>);
       } else if (Array.isArray(v)) {
-        out[k] = v.map(item => typeof item === "object" && item !== null ? this.redact(item as Record<string, unknown>) : item);
+        out[k] = v.map((item) =>
+          typeof item === "object" && item !== null
+            ? this.redact(item as Record<string, unknown>)
+            : item,
+        );
       } else {
         out[k] = v;
       }
@@ -144,7 +166,8 @@ export class EgressFilter {
       categoryRules: config.categoryRules ?? DEFAULT_CATEGORY_RULES,
       categoryPolicy: config.categoryPolicy ?? DEFAULT_CATEGORY_POLICY,
       auditEnabled: config.auditEnabled ?? true,
-      secretCanary: config.secretCanary ?? "POLYROOT_SECRET_CANARY_NEVER_LOG_THIS",
+      secretCanary:
+        config.secretCanary ?? "POLYROOT_SECRET_CANARY_NEVER_LOG_THIS",
       onAuditEntry: config.onAuditEntry,
       onMetric: config.onMetric,
     };
@@ -164,18 +187,22 @@ export class EgressFilter {
     // Category policy is authoritative for explicitly blocked categories. It must
     // win over transport diagnostics such as DNS resolution failures.
     if (policyDecision === "BLOCK") {
-      return this.buildResult(
-        input,
-        category,
-        policyDecision,
-        { ok: false, code: "POLICY_BLOCK", reason: `Blocked by policy for category ${category}`, finalUrl: undefined, redirectChain: undefined },
-      );
+      return this.buildResult(input, category, policyDecision, {
+        ok: false,
+        code: "POLICY_BLOCK",
+        reason: `Blocked by policy for category ${category}`,
+        finalUrl: undefined,
+        redirectChain: undefined,
+      });
     }
 
     // Run base egress guard check (SSRF, DNS rebind, etc.) WITHOUT the domain allowlist
     // so that policy and size/timeout decisions take precedence; the domain allowlist
     // is applied as a final safety net below.
-    const guardResult = await this.guard.check({ ...input, skipDomainCheck: true });
+    const guardResult = await this.guard.check({
+      ...input,
+      skipDomainCheck: true,
+    });
 
     // Determine final decision:
     // 1. Guard blocks (SSRF/private IP/metadata/redirects) -> BLOCK (safety first)
@@ -197,11 +224,17 @@ export class EgressFilter {
       finalReason = `Quarantined by policy for category ${category}`;
     } else {
       // ALLOW - check response size and timeout limits
-      if (input.responseSize !== undefined && input.responseSize > this.config.maxBodySize) {
+      if (
+        input.responseSize !== undefined &&
+        input.responseSize > this.config.maxBodySize
+      ) {
         finalOk = false;
         finalCode = "BODY_TOO_LARGE";
         finalReason = `Response size ${input.responseSize} exceeds limit ${this.config.maxBodySize}`;
-      } else if (input.delayMs !== undefined && input.delayMs > this.config.timeoutMs) {
+      } else if (
+        input.delayMs !== undefined &&
+        input.delayMs > this.config.timeoutMs
+      ) {
         finalOk = false;
         finalCode = "TIMEOUT";
         finalReason = `Request delay ${input.delayMs}ms exceeds timeout ${this.config.timeoutMs}ms`;
@@ -231,7 +264,9 @@ export class EgressFilter {
       responseSize: input.responseSize,
       delayMs: input.delayMs,
     };
-    const redactedPayload = this.audit.redact(auditPayload as Record<string, unknown>);
+    const redactedPayload = this.audit.redact(
+      auditPayload as Record<string, unknown>,
+    );
 
     // Log audit entry
     this.audit.log({
@@ -244,11 +279,11 @@ export class EgressFilter {
     });
 
     // Emit metric (optional)
-    this.config.onMetric?.(
-      "egress_check_total",
-      1,
-      { category, decision: finalOk ? "allow" : "block", reason: finalCode ?? "unknown" },
-    );
+    this.config.onMetric?.("egress_check_total", 1, {
+      category,
+      decision: finalOk ? "allow" : "block",
+      reason: finalCode ?? "unknown",
+    });
 
     // Build result
     return this.buildResult(input, category, policyDecision, {
@@ -283,7 +318,9 @@ export class EgressFilter {
       responseSize: input.responseSize,
       delayMs: input.delayMs,
     };
-    const redactedPayload = this.audit.redact(auditPayload as Record<string, unknown>);
+    const redactedPayload = this.audit.redact(
+      auditPayload as Record<string, unknown>,
+    );
 
     // Log audit entry
     this.audit.log({
@@ -296,11 +333,11 @@ export class EgressFilter {
     });
 
     // Emit metric (optional)
-    this.config.onMetric?.(
-      "egress_check_total",
-      1,
-      { category, decision: decision.ok ? "allow" : "block", reason: decision.code ?? "unknown" },
-    );
+    this.config.onMetric?.("egress_check_total", 1, {
+      category,
+      decision: decision.ok ? "allow" : "block",
+      reason: decision.code ?? "unknown",
+    });
 
     const result: EgressFilterResult = {
       ok: decision.ok,
@@ -333,20 +370,34 @@ export class EgressFilter {
   }
 
   /** Check domain allowlist for a URL. */
-  private checkDomainAllowlist(url: string): { ok: boolean; code?: string; reason?: string } {
+  private checkDomainAllowlist(url: string): {
+    ok: boolean;
+    code?: string;
+    reason?: string;
+  } {
     try {
       const u = new URL(url);
       const hostname = u.hostname;
-      
+
       // Skip domain check for IP addresses (they're checked by guard for private ranges)
       const isIPv4 = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
-      const isIPv6 = hostname.includes(":") && (hostname.startsWith("[") || hostname.includes("::"));
+      const isIPv6 =
+        hostname.includes(":") &&
+        (hostname.startsWith("[") || hostname.includes("::"));
       if (isIPv4 || isIPv6) {
         return { ok: true };
       }
-      
-      if (!this.config.allowedDomains.some(d => hostname === d || hostname.endsWith("." + d))) {
-        return { ok: false, code: "DOMAIN_NOT_ALLOWED", reason: `Domain ${hostname} not in allowlist` };
+
+      if (
+        !this.config.allowedDomains.some(
+          (d) => hostname === d || hostname.endsWith("." + d),
+        )
+      ) {
+        return {
+          ok: false,
+          code: "DOMAIN_NOT_ALLOWED",
+          reason: `Domain ${hostname} not in allowlist`,
+        };
       }
     } catch {
       // Invalid URL - let guard handle it
@@ -363,7 +414,11 @@ export class EgressFilter {
 
       // Check each rule in order; first match wins.
       for (const rule of this.config.categoryRules) {
-        if (rule.pattern.test(host) || rule.pattern.test(path) || rule.pattern.test(url)) {
+        if (
+          rule.pattern.test(host) ||
+          rule.pattern.test(path) ||
+          rule.pattern.test(url)
+        ) {
           return rule.category;
         }
       }
@@ -374,7 +429,9 @@ export class EgressFilter {
   }
 
   /** Apply policy decision for a category (default ALLOW). */
-  private applyPolicy(category: EgressCategory): "ALLOW" | "BLOCK" | "QUARANTINE" {
+  private applyPolicy(
+    category: EgressCategory,
+  ): "ALLOW" | "BLOCK" | "QUARANTINE" {
     const policy = this.config.categoryPolicy[category];
     return policy ?? "ALLOW";
   }
@@ -385,24 +442,37 @@ export class EgressFilter {
   }
 
   /** Update category rules at runtime (for testing). */
-  updateCategoryRules(rules: Array<{ pattern: RegExp; category: EgressCategory }>): void {
+  updateCategoryRules(
+    rules: Array<{ pattern: RegExp; category: EgressCategory }>,
+  ): void {
     this.config.categoryRules = rules;
   }
 
   /** Update category policy at runtime (for testing). */
-  updateCategoryPolicy(policy: Partial<Record<EgressCategory, "ALLOW" | "BLOCK" | "QUARANTINE">>): void {
+  updateCategoryPolicy(
+    policy: Partial<Record<EgressCategory, "ALLOW" | "BLOCK" | "QUARANTINE">>,
+  ): void {
     this.config.categoryPolicy = { ...this.config.categoryPolicy, ...policy };
   }
 }
 
 /** Default category rules for EgressFilter. */
-export const DEFAULT_CATEGORY_RULES: Array<{ pattern: RegExp; category: EgressCategory }> = [
+export const DEFAULT_CATEGORY_RULES: Array<{
+  pattern: RegExp;
+  category: EgressCategory;
+}> = [
   // Research traffic
   { pattern: /news|blog|research|api\.news|api\.blog/i, category: "research" },
   { pattern: /\.gov|\.edu|arxiv|ssrn|repec/i, category: "research" },
   // Market data vendors
-  { pattern: /api\.polymarket|cdn\.polymarket|gamma\.api\.polymarket/i, category: "market_data" },
-  { pattern: /api\.coingecko|api\.coinmarketcap|api\.glassnode/i, category: "market_data" },
+  {
+    pattern: /api\.polymarket|cdn\.polymarket|gamma\.api\.polymarket/i,
+    category: "market_data",
+  },
+  {
+    pattern: /api\.coingecko|api\.coinmarketcap|api\.glassnode/i,
+    category: "market_data",
+  },
   // Executor/signer endpoints (internal)
   { pattern: /executor|signer|wallet|polyroot\.local/i, category: "executor" },
   // Strategy endpoints
@@ -410,13 +480,18 @@ export const DEFAULT_CATEGORY_RULES: Array<{ pattern: RegExp; category: EgressCa
   // Private DB (should never happen, but if it does)
   { pattern: /postgres|mysql|mongodb|redis/i, category: "private_db" },
   // External APIs (catch-all for known SaaS)
-  { pattern: /api\.(github|gitlab|slack|discord|twitter|linkedin)\.com/i, category: "external_api" },
+  {
+    pattern: /api\.(github|gitlab|slack|discord|twitter|linkedin)\.com/i,
+    category: "external_api",
+  },
   // Generic external API pattern (e.g., api.external.com, api.foo.bar)
   { pattern: /^api\.[^.]+\.(com|net|org|io)$/i, category: "external_api" },
 ];
 
 /** Default category policy (research may be quarantined in some environments). */
-export const DEFAULT_CATEGORY_POLICY: Partial<Record<EgressCategory, "ALLOW" | "BLOCK" | "QUARANTINE">> = {
+export const DEFAULT_CATEGORY_POLICY: Partial<
+  Record<EgressCategory, "ALLOW" | "BLOCK" | "QUARANTINE">
+> = {
   research: "QUARANTINE", // research traffic allowed but logged and monitored
   market_data: "ALLOW",
   executor: "ALLOW",

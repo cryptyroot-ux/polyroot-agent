@@ -96,7 +96,12 @@ export class PolymarketVenueAdapter {
     }
     try {
       const result = (await this.client.postOrder?.(order)) as
-        | { success?: boolean; orderID?: string; orderId?: string; errorMsg?: string }
+        | {
+            success?: boolean;
+            orderID?: string;
+            orderId?: string;
+            errorMsg?: string;
+          }
         | undefined;
       const id = result?.orderID ?? result?.orderId;
       const ok = Boolean(result?.success ?? id);
@@ -106,7 +111,13 @@ export class PolymarketVenueAdapter {
         error: result?.errorMsg,
         timestamp: new Date(),
       };
-      return ok ? { ok: true, result: orderResult } : { ok: false, code: "VENUE_REJECTED", reason: result?.errorMsg ?? "venue rejected order" };
+      return ok
+        ? { ok: true, result: orderResult }
+        : {
+            ok: false,
+            code: "VENUE_REJECTED",
+            reason: result?.errorMsg ?? "venue rejected order",
+          };
     } catch (err) {
       return {
         ok: false,
@@ -128,8 +139,15 @@ export class PolymarketVenueAdapter {
         | undefined;
       const ok = Boolean(result?.success ?? result?.cancelled);
       return ok
-        ? { ok: true, result: { success: true, order_id: orderId, timestamp: new Date() } }
-        : { ok: false, code: "VENUE_REJECTED", reason: result?.errorMsg ?? "venue rejected cancel" };
+        ? {
+            ok: true,
+            result: { success: true, order_id: orderId, timestamp: new Date() },
+          }
+        : {
+            ok: false,
+            code: "VENUE_REJECTED",
+            reason: result?.errorMsg ?? "venue rejected cancel",
+          };
     } catch (err) {
       return {
         ok: false,

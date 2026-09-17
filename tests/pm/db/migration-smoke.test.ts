@@ -31,21 +31,27 @@ describe("Migration smoke test (fresh DB)", { skip: !DB_OK }, () => {
 
     // Create database
     try {
-      execFileSync("psql", [BASE_PG_URL, "-c", `CREATE DATABASE "${dbName}"`], { stdio: "pipe" });
+      execFileSync("psql", [BASE_PG_URL, "-c", `CREATE DATABASE "${dbName}"`], {
+        stdio: "pipe",
+      });
     } catch (err) {
       throw new Error(`Failed to create test database: ${err}`);
     }
 
     try {
       // Run migrations
-      const migrateResult = spawnSync("npx", ["tsx", "scripts/migrate.ts", "latest"], {
-        env: { ...process.env, DATABASE_URL: dbUrl },
-        stdio: "pipe",
-      });
+      const migrateResult = spawnSync(
+        "npx",
+        ["tsx", "scripts/migrate.ts", "latest"],
+        {
+          env: { ...process.env, DATABASE_URL: dbUrl },
+          stdio: "pipe",
+        },
+      );
 
       if (migrateResult.status !== 0) {
         throw new Error(
-          `Migration failed: ${migrateResult.stderr.toString()}\nStdout: ${migrateResult.stdout.toString()}`
+          `Migration failed: ${migrateResult.stderr.toString()}\nStdout: ${migrateResult.stdout.toString()}`,
         );
       }
 
@@ -53,7 +59,7 @@ describe("Migration smoke test (fresh DB)", { skip: !DB_OK }, () => {
       const countResult = execFileSync(
         "psql",
         [dbUrl, "-t", "-c", "SELECT COUNT(*) FROM schema_migrations"],
-        { stdio: "pipe" }
+        { stdio: "pipe" },
       );
       const count = parseInt(countResult.toString().trim(), 10);
       // We expect 9 migrations (0001 through 0009)
@@ -62,8 +68,13 @@ describe("Migration smoke test (fresh DB)", { skip: !DB_OK }, () => {
       // Optionally, check that a few core tables exist
       const tablesResult = execFileSync(
         "psql",
-        [dbUrl, "-t", "-c", "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'"],
-        { stdio: "pipe" }
+        [
+          dbUrl,
+          "-t",
+          "-c",
+          "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'",
+        ],
+        { stdio: "pipe" },
       );
       const tableCount = parseInt(tablesResult.toString().trim(), 10);
       assert.ok(tableCount > 0, "Expected at least one table in public schema");
@@ -76,13 +87,18 @@ describe("Migration smoke test (fresh DB)", { skip: !DB_OK }, () => {
         "executor_leases",
         "recovery_ledger",
         "supervisor_state",
-        "schema_migrations"
+        "schema_migrations",
       ];
       for (const table of requiredTables) {
         const existsResult = execFileSync(
           "psql",
-          [dbUrl, "-t", "-c", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '${table}')`],
-          { stdio: "pipe" }
+          [
+            dbUrl,
+            "-t",
+            "-c",
+            `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '${table}')`,
+          ],
+          { stdio: "pipe" },
         );
         const exists = existsResult.toString().trim() === "t";
         assert.ok(exists, `Expected table ${table} to exist`);
@@ -90,7 +106,9 @@ describe("Migration smoke test (fresh DB)", { skip: !DB_OK }, () => {
     } finally {
       // Clean up: drop the test database
       try {
-        execFileSync("psql", [BASE_PG_URL, "-c", `DROP DATABASE "${dbName}"`], { stdio: "pipe" });
+        execFileSync("psql", [BASE_PG_URL, "-c", `DROP DATABASE "${dbName}"`], {
+          stdio: "pipe",
+        });
       } catch (err) {
         console.warn(`Failed to drop test database ${dbName}: ${err}`);
       }

@@ -5,7 +5,7 @@
  * Each PR-* requirement carries a primary acceptance scenario T-PR-*
  * with the same priority. Exit 0 when the mapping is one-to-one and
  * priorities match; exit 1 with a diff report otherwise.
- * 
+ *
  * Legacy 124 PM-* pack is HISTORICAL_ONLY and no longer authoritative.
  */
 import { readFileSync } from "fs";
@@ -63,8 +63,10 @@ const fail = (msg) => {
 };
 
 const EXPECTED_COUNT = 96;
-if (reqMap.size !== EXPECTED_COUNT) fail(`expected ${EXPECTED_COUNT} PR-* requirements, found ${reqMap.size}`);
-if (tests.size !== EXPECTED_COUNT) fail(`expected ${EXPECTED_COUNT} T-PR-* scenarios, found ${tests.size}`);
+if (reqMap.size !== EXPECTED_COUNT)
+  fail(`expected ${EXPECTED_COUNT} PR-* requirements, found ${reqMap.size}`);
+if (tests.size !== EXPECTED_COUNT)
+  fail(`expected ${EXPECTED_COUNT} T-PR-* scenarios, found ${tests.size}`);
 
 const missingTests = [];
 const missingReqs = [];

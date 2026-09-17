@@ -736,7 +736,14 @@ export const DEFAULT_RISK_POLICY: RiskPolicy = {
 export const AssetIdentitySchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
   asset_id: z.string().min(1),
-  asset_class: z.enum(["CTF_TOKEN", "POLY_V2_POSITION", "PUSD", "USDC", "USDC_E", "UNKNOWN"]),
+  asset_class: z.enum([
+    "CTF_TOKEN",
+    "POLY_V2_POSITION",
+    "PUSD",
+    "USDC",
+    "USDC_E",
+    "UNKNOWN",
+  ]),
   settlement_protocol: z.string().min(1),
   exchange_domain_version: z.string().min(1),
   chain_id: z.number().int().positive(),
@@ -904,7 +911,9 @@ export const ModelLineageSchema = z.object({
   seed: z.string().optional(),
   config_hash: z.string().optional(),
   response_hash: z.string().min(1),
-  generation_source: z.enum(["HOSTED", "SAVED_RESPONSE_REPLAY"]).default("HOSTED"),
+  generation_source: z
+    .enum(["HOSTED", "SAVED_RESPONSE_REPLAY"])
+    .default("HOSTED"),
   generated_at: z.date(),
 });
 export type ModelLineage = z.infer<typeof ModelLineageSchema>;

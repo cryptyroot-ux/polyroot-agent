@@ -1,6 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Metrics, Logger, AlertManager, HealthCheck } from "@polyroot/observability";
+import {
+  Metrics,
+  Logger,
+  AlertManager,
+  HealthCheck,
+} from "@polyroot/observability";
 
 describe("PR-OPS-05: real observability (no placeholder)", () => {
   it("Metrics: counter/histogram/gauge track values in-memory", () => {
@@ -18,11 +23,17 @@ describe("PR-OPS-05: real observability (no placeholder)", () => {
 
   it("Logger: records messages with level; redacts secret-like fields", () => {
     const logger = new Logger();
-    logger.info("order submitted", { orderId: "0xABC123", secret: "sk_live_1234567890123456" }); // gitleaks:allow
+    logger.info("order submitted", {
+      orderId: "0xABC123",
+      secret: "sk_live_1234567890123456",
+    }); // gitleaks:allow
     const logs = logger.getLogs("info");
     assert.ok(logs.length === 1);
     const entry = logs[0];
-    assert.ok(!entry.meta.secret.includes("12345678"), "secret must be redacted");
+    assert.ok(
+      !entry.meta.secret.includes("12345678"),
+      "secret must be redacted",
+    );
     assert.ok(entry.meta.secret.includes("****"));
   });
 
@@ -37,7 +48,9 @@ describe("PR-OPS-05: real observability (no placeholder)", () => {
   it("AlertManager: fires alert when threshold exceeded; reset clears", () => {
     const alerts = new AlertManager();
     let fired = false;
-    alerts.on("order_errors", () => { fired = true; });
+    alerts.on("order_errors", () => {
+      fired = true;
+    });
     alerts.check({ metric: "order_errors", value: 5, threshold: 3 });
     assert.equal(fired, true);
     fired = false;

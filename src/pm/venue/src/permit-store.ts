@@ -31,7 +31,12 @@ export class PgPermitStore implements PermitStore {
   private readonly pool: Pool;
 
   constructor(config: PoolConfig | string | Pool) {
-    this.pool = config instanceof Pool ? config : new Pool(typeof config === "string" ? { connectionString: config } : config);
+    this.pool =
+      config instanceof Pool
+        ? config
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
   }
 
   private computePermitHash(permit: ExecutionPermit): string {
@@ -50,10 +55,18 @@ export class PgPermitStore implements PermitStore {
       String(permit.max_cash),
       permit.allowed_order_style.join(","),
       permit.venue_mode,
-      permit.issued_at instanceof Date ? permit.issued_at.toISOString() : permit.issued_at,
-      permit.expires_at instanceof Date ? permit.expires_at.toISOString() : permit.expires_at,
+      permit.issued_at instanceof Date
+        ? permit.issued_at.toISOString()
+        : permit.issued_at,
+      permit.expires_at instanceof Date
+        ? permit.expires_at.toISOString()
+        : permit.expires_at,
       String(permit.single_use),
-      permit.used_at ? (permit.used_at instanceof Date ? permit.used_at.toISOString() : permit.used_at) : "null",
+      permit.used_at
+        ? permit.used_at instanceof Date
+          ? permit.used_at.toISOString()
+          : permit.used_at
+        : "null",
     ].join("|");
 
     return createHash("sha256").update(payload).digest("hex");
@@ -125,7 +138,7 @@ export class PgPermitStore implements PermitStore {
     // Create a shadow object to compute hash (match logic in domain)
     const permitAfterClaim: ExecutionPermit = {
       ...row,
-      used_at: now
+      used_at: now,
     };
     const payloadHash = this.computePermitHash(permitAfterClaim);
 
@@ -187,16 +200,27 @@ export class PgPermitStore implements PermitStore {
 
 /** In-memory implementation for testing (uses atomic operations via Map). */
 export class MemPermitStore implements PermitStore {
-  private readonly permits = new Map<string, ExecutionPermit & { claimed: boolean }>();
+  private readonly permits = new Map<
+    string,
+    ExecutionPermit & { claimed: boolean }
+  >();
   private readonly clock: () => Date;
 
   constructor(opts?: { clock?: () => Date }) {
-    this.clock = opts && opts.clock ? opts.clock : function () { return new Date(); };
+    this.clock =
+      opts && opts.clock
+        ? opts.clock
+        : function () {
+            return new Date();
+          };
   }
 
   async save(permit: ExecutionPermit): Promise<void> {
     const existing = this.permits.get(permit.permit_id);
-    this.permits.set(permit.permit_id, { ...permit, claimed: existing?.claimed ?? false });
+    this.permits.set(permit.permit_id, {
+      ...permit,
+      claimed: existing?.claimed ?? false,
+    });
   }
 
   async claim(permitId: string, orderId: string): Promise<boolean> {

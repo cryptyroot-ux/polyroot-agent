@@ -17,7 +17,10 @@ export type Resource =
   | "strategy";
 
 /** Resources a compromised research worker is allowed to touch. */
-const RESEARCH_ALLOWED: ReadonlySet<string> = new Set(["market_data", "evidence_store"]);
+const RESEARCH_ALLOWED: ReadonlySet<string> = new Set([
+  "market_data",
+  "evidence_store",
+]);
 
 /**
  * Fail-closed boundary: the research process may only access its two allowed
@@ -68,18 +71,27 @@ export function normalizeEvidence(input: RawEvidenceInput): NormalizedEvidence {
 }
 
 /** Redact candidate secrets from any payload keyed with secret-like names. */
-export function redactSecrets(payload: Record<string, unknown>): Record<string, unknown> {
+export function redactSecrets(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(payload)) {
-    out[k] = /secret|token|key|password|credential|private_key|signature|mnemonic/i.test(k)
-      ? "REDACTED"
-      : v;
+    out[k] =
+      /secret|token|key|password|credential|private_key|signature|mnemonic/i.test(
+        k,
+      )
+        ? "REDACTED"
+        : v;
   }
   return out;
 }
 
 // Egress Guard + Egress Filter (PR-SEC-03, T-PR-SEC-03P0)
-export { EgressGuard, type EgressGuardConfig, type EgressCheckResult } from "./egress-guard.js";
+export {
+  EgressGuard,
+  type EgressGuardConfig,
+  type EgressCheckResult,
+} from "./egress-guard.js";
 export {
   EgressFilter,
   DEFAULT_CATEGORY_POLICY,

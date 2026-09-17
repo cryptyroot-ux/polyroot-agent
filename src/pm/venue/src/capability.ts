@@ -20,7 +20,8 @@ export const VENUE_CAPABILITIES: ReadonlySet<string> = new Set([
   "venue_mode",
 ]);
 
-export type CapabilityName = (typeof VENUE_CAPABILITIES extends ReadonlySet<infer T> ? T : never);
+export type CapabilityName =
+  typeof VENUE_CAPABILITIES extends ReadonlySet<infer T> ? T : never;
 
 export function isRegisteredCapability(name: string): boolean {
   return VENUE_CAPABILITIES.has(name);
@@ -38,43 +39,70 @@ export interface CapabilityGateInput {
 }
 
 export type CapabilityGateResult =
-  | { ok: true; reason: string }
-  | { ok: false; code: string; reason: string };
+  { ok: true; reason: string } | { ok: false; code: string; reason: string };
 
 /**
  * Fail-closed live-routing gate. An unregistered capability or one that is not
  * supported is refused. If `requiresVenueGate` is set and the adapter does not
  * expose a venue_gate capability, routing is refused for that venue.
  */
-export function capabilityAllows(action: string, input: CapabilityGateInput): CapabilityGateResult {
+export function capabilityAllows(
+  action: string,
+  input: CapabilityGateInput,
+): CapabilityGateResult {
   const cap = action.toLowerCase();
 
   if (!isRegisteredCapability(cap)) {
-    return { ok: false, code: "UNREGISTERED_CAPABILITY", reason: `${action} is not a registered venue capability` };
+    return {
+      ok: false,
+      code: "UNREGISTERED_CAPABILITY",
+      reason: `${action} is not a registered venue capability`,
+    };
   }
 
   if (input.requiresVenueGate && !input.supports.get("venue_gate")) {
-    return { ok: false, code: "VENUE_GATE_MISSING", reason: `venue ${input.venues.join(",")} lacks an approved venue gate (PR-GOV-02)` };
+    return {
+      ok: false,
+      code: "VENUE_GATE_MISSING",
+      reason: `venue ${input.venues.join(",")} lacks an approved venue gate (PR-GOV-02)`,
+    };
   }
 
   for (const req of input.requires) {
     if (!isRegisteredCapability(req)) {
-      return { ok: false, code: "UNREGISTERED_CAPABILITY", reason: `required capability ${req} is not registered` };
+      return {
+        ok: false,
+        code: "UNREGISTERED_CAPABILITY",
+        reason: `required capability ${req} is not registered`,
+      };
     }
     if (!input.supports.get(req)) {
-      return { ok: false, code: "UNSUPPORTED_CAPABILITY", reason: `capability ${req} is unsupported for ${input.venues.join(",")}` };
+      return {
+        ok: false,
+        code: "UNSUPPORTED_CAPABILITY",
+        reason: `capability ${req} is unsupported for ${input.venues.join(",")}`,
+      };
     }
   }
 
   if (!input.supports.get(cap)) {
-    return { ok: false, code: "UNSUPPORTED_CAPABILITY", reason: `${action} is unsupported for ${input.venues.join(",")}` };
+    return {
+      ok: false,
+      code: "UNSUPPORTED_CAPABILITY",
+      reason: `${action} is unsupported for ${input.venues.join(",")}`,
+    };
   }
 
-  return { ok: true, reason: `${action} supported for ${input.venues.join(",")}` };
+  return {
+    ok: true,
+    reason: `${action} supported for ${input.venues.join(",")}`,
+  };
 }
 
 /** True when every registered capability is present and supported (G1 gate). */
-export function isFullyCompliant(supports: ReadonlyMap<string, boolean>): boolean {
+export function isFullyCompliant(
+  supports: ReadonlyMap<string, boolean>,
+): boolean {
   for (const cap of VENUE_CAPABILITIES) {
     if (!supports.get(cap)) return false;
   }

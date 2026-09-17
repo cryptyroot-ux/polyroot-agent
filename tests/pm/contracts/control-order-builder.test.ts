@@ -101,7 +101,10 @@ describe("Control — order builder (buildSignedOrder)", () => {
     const vault = signer();
     const permit = makePermit({ max_qty: 100, max_cash: 5000 });
     const res = await buildSignedOrder(
-      buildInput({ permit, intent: makeIntent({ desired_qty: 200, limit_price: 0.1 }) }),
+      buildInput({
+        permit,
+        intent: makeIntent({ desired_qty: 200, limit_price: 0.1 }),
+      }),
       vault,
     );
     assert.equal(res.ok, true);
@@ -112,7 +115,10 @@ describe("Control — order builder (buildSignedOrder)", () => {
     const vault = signer();
     const permit = makePermit({ max_qty: 100, max_cash: 50 });
     const res = await buildSignedOrder(
-      buildInput({ permit, intent: makeIntent({ desired_qty: 100, limit_price: 1.0 }) }),
+      buildInput({
+        permit,
+        intent: makeIntent({ desired_qty: 100, limit_price: 1.0 }),
+      }),
       vault,
     );
     assert.equal(res.ok, true);
@@ -154,7 +160,9 @@ describe("Control — order builder (buildSignedOrder)", () => {
   it("refuses without a price in the intent", async () => {
     const vault = signer();
     const res = await buildSignedOrder(
-      buildInput({ intent: makeIntent({ limit_price: undefined, price: undefined }) }),
+      buildInput({
+        intent: makeIntent({ limit_price: undefined, price: undefined }),
+      }),
       vault,
     );
     assert.equal(res.ok, false);
@@ -165,7 +173,10 @@ describe("Control — order builder (buildSignedOrder)", () => {
     const vault = signer();
     const res = await buildSignedOrder(
       buildInput({
-        intent: makeIntent({ desired_qty: undefined, desired_notional: undefined }),
+        intent: makeIntent({
+          desired_qty: undefined,
+          desired_notional: undefined,
+        }),
       }),
       vault,
     );

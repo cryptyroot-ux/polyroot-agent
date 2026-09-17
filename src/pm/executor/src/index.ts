@@ -277,7 +277,10 @@ export class Executor {
     // Placed AFTER every harmless-rejectable check so a rejected order never
     // strands money authority.
     if (permit.single_use) {
-      const claimed = await this.deps.permitStore.claim(permit.permit_id, order.order_id);
+      const claimed = await this.deps.permitStore.claim(
+        permit.permit_id,
+        order.order_id,
+      );
       if (!claimed) {
         // Release lease since claim failed
         await this.deps.leaseStore.releaseExecutorLease(
@@ -322,7 +325,10 @@ export class Executor {
         // must reflect the same state so reconcile() does not read a stale
         // SUBMITTING and skip the venue query.
         this.deps.seen.add(order.order_id, "SUBMISSION_UNKNOWN");
-        await this.deps.recoveryLedger.updateState(order.order_id, "SUBMISSION_UNKNOWN");
+        await this.deps.recoveryLedger.updateState(
+          order.order_id,
+          "SUBMISSION_UNKNOWN",
+        );
         // Release lease since we're going to UNKNOWN state
         await this.deps.leaseStore.releaseExecutorLease(
           this.deps.walletId,
@@ -349,7 +355,11 @@ export class Executor {
       "SUBMITTING",
       res.result.submit_status ?? "SUBMITTING",
     ).state;
-    await this.deps.recoveryLedger.updateState(order.order_id, st, res.result.order_id);
+    await this.deps.recoveryLedger.updateState(
+      order.order_id,
+      st,
+      res.result.order_id,
+    );
     this.deps.seen.add(order.order_id, st);
 
     // Release lease since we have a definitive outcome
@@ -433,7 +443,8 @@ export class Executor {
     }
 
     // Check if recovery ledger thinks this needs reconciliation
-    const needsReconcile = await this.deps.recoveryLedger.needsReconcile(orderId);
+    const needsReconcile =
+      await this.deps.recoveryLedger.needsReconcile(orderId);
     if (!needsReconcile) {
       // No longer needs reconciliation
       // Release lease if we acquired it

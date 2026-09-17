@@ -16,18 +16,24 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
-import { type EventStore, type OutboxJob, type OutboxProcessor, type OutboxResult } from "./index.js";
+import {
+  type EventStore,
+  type OutboxJob,
+  type OutboxProcessor,
+  type OutboxResult,
+} from "./index.js";
 
 export class PgOutboxProcessor implements OutboxProcessor {
   private readonly pool: Pool;
   private readonly eventStore: EventStore;
 
   constructor(config: PoolConfig | string | Pool, eventStore: EventStore) {
-    this.pool = config instanceof Pool
-      ? config
-      : new Pool(typeof config === "string"
-          ? { connectionString: config }
-          : config);
+    this.pool =
+      config instanceof Pool
+        ? config
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
     this.eventStore = eventStore;
   }
 
@@ -47,7 +53,9 @@ export class PgOutboxProcessor implements OutboxProcessor {
     );
   }
 
-  async drain(handler: (job: OutboxJob) => Promise<void>): Promise<OutboxResult> {
+  async drain(
+    handler: (job: OutboxJob) => Promise<void>,
+  ): Promise<OutboxResult> {
     // Read the checkpointed sequence (last processed event id). The event store
     // assigns a monotonically increasing sequence to every event.
     const lastJobId = await this.getCheckpoint("ledger-outbox");
@@ -59,9 +67,7 @@ export class PgOutboxProcessor implements OutboxProcessor {
     // because events are append-only and the checkpoint is the last fully
     // dispatched event id.
     const events = cursor;
-    const start = lastJobId
-      ? events.findIndex((e) => e.id === lastJobId)
-      : -1;
+    const start = lastJobId ? events.findIndex((e) => e.id === lastJobId) : -1;
     const batch = start >= 0 ? events.slice(start + 1) : events;
 
     let processed = 0;

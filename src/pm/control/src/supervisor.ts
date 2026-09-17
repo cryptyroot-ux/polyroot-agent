@@ -57,9 +57,11 @@ export class Supervisor {
         await this.runReconciliation();
       } catch (err) {
         // Surface the error but never let the loop die silently.
-        const msg =
-          err instanceof Error ? err.message : String(err);
-        this.deps.persistence.set(`supervisor:error:${Date.now()}`, "DEFINITIVE_REJECT");
+        const msg = err instanceof Error ? err.message : String(err);
+        this.deps.persistence.set(
+          `supervisor:error:${Date.now()}`,
+          "DEFINITIVE_REJECT",
+        );
         console.error(`[supervisor] periodic reconciliation failed: ${msg}`);
       } finally {
         running = false;
@@ -81,7 +83,10 @@ export class Supervisor {
     return {
       timestamp: this.deps.now(),
       unknownOrderCount: unknownIds.length,
-      totalOrderCount: Array.from(this.counters.values()).reduce((a, b) => a + b, 0),
+      totalOrderCount: Array.from(this.counters.values()).reduce(
+        (a, b) => a + b,
+        0,
+      ),
       unresolvedIntents: unknownIds.length, // Same as unknown orders for now
     };
   }

@@ -17,7 +17,7 @@ export interface LeaseStore {
     walletId: string,
     holder: string,
     leaseEpoch: number,
-    ttlSeconds: number
+    ttlSeconds: number,
   ): Promise<boolean>;
 
   /**
@@ -35,31 +35,34 @@ export class PgLeaseStore implements LeaseStore {
   private readonly pool: Pool;
 
   constructor(config: PoolConfig | string | Pool) {
-    this.pool = config instanceof Pool
-      ? config
-      : new Pool(typeof config === "string" ? { connectionString: config } : config);
+    this.pool =
+      config instanceof Pool
+        ? config
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
   }
 
   async acquireExecutorLease(
     walletId: string,
     holder: string,
     leaseEpoch: number,
-    ttlSeconds: number
+    ttlSeconds: number,
   ): Promise<boolean> {
     const result = await this.pool.query(
       `SELECT acquire_executor_lease($1, $2, $3, $4)`,
-      [walletId, holder, leaseEpoch, ttlSeconds]
+      [walletId, holder, leaseEpoch, ttlSeconds],
     );
     return result.rows[0]?.acquire_executor_lease ?? false;
   }
 
   async releaseExecutorLease(
     walletId: string,
-    holder: string
+    holder: string,
   ): Promise<boolean> {
     const result = await this.pool.query(
       `SELECT release_executor_lease($1, $2)`,
-      [walletId, holder]
+      [walletId, holder],
     );
     return result.rows[0]?.release_executor_lease ?? false;
   }
@@ -71,7 +74,10 @@ export class PgLeaseStore implements LeaseStore {
 
 /** In-memory implementation for testing. */
 export class MemLeaseStore implements LeaseStore {
-  private readonly leases: Map<string, { leaseEpoch: number; holder: string; expiresAt: Date }>;
+  private readonly leases: Map<
+    string,
+    { leaseEpoch: number; holder: string; expiresAt: Date }
+  >;
   private readonly clock: () => Date;
 
   constructor(opts?: { clock?: () => Date }) {
@@ -83,14 +89,13 @@ export class MemLeaseStore implements LeaseStore {
     walletId: string,
     holder: string,
     leaseEpoch: number,
-    ttlSeconds: number
+    ttlSeconds: number,
   ): Promise<boolean> {
     const now = this.clock();
     const existing = this.leases.get(walletId);
     // Check if we should acquire the lease (higher epoch or expired)
-    const shouldAcquire = !existing ||
-      leaseEpoch > existing.leaseEpoch ||
-      existing.expiresAt < now;
+    const shouldAcquire =
+      !existing || leaseEpoch > existing.leaseEpoch || existing.expiresAt < now;
     if (shouldAcquire) {
       this.leases.set(walletId, {
         leaseEpoch,
@@ -104,7 +109,7 @@ export class MemLeaseStore implements LeaseStore {
 
   async releaseExecutorLease(
     walletId: string,
-    holder: string
+    holder: string,
   ): Promise<boolean> {
     const lease = this.leases.get(walletId);
     if (lease && lease.holder === holder) {

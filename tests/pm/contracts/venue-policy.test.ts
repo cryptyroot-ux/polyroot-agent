@@ -84,7 +84,10 @@ describe("Capability intersection (PM-VENUE-02)", () => {
       [{ ...base, riskOpen: false }, "RISK_CLOSED"],
     ] as const;
     for (const [input, code] of blocked) {
-      const r = capabilityIntersection("ORDER_SUBMIT", input as IntersectionInput);
+      const r = capabilityIntersection(
+        "ORDER_SUBMIT",
+        input as IntersectionInput,
+      );
       assert.equal(r.allowed, false);
       assert.equal((r as { code: string }).code, code);
     }
@@ -112,20 +115,26 @@ describe("Capability intersection (PM-VENUE-02)", () => {
 
 describe("Error taxonomy (PM-VENUE-04)", () => {
   it("unknown 5xx after POST is RECONCILE_REQUIRED, never auto-retry", () => {
-    const n = normalizeVenueError({ status: 502, code: "UPSTREAM_FAILED" }, {
-      arrivedPendingStore: false,
-      orderType: "LIMIT",
-    });
+    const n = normalizeVenueError(
+      { status: 502, code: "UPSTREAM_FAILED" },
+      {
+        arrivedPendingStore: false,
+        orderType: "LIMIT",
+      },
+    );
     assert.equal(n.kind, "RECONCILE_REQUIRED");
     assert.equal(n.reconcileFirst, true);
     assert.equal(n.retryable, false);
   });
 
   it("FAK/IOC no-match is a terminal zero-fill, not retryable", () => {
-    const n = normalizeVenueError({ status: 200, code: "NO_MATCH" }, {
-      arrivedPendingStore: false,
-      orderType: "FOK",
-    });
+    const n = normalizeVenueError(
+      { status: 200, code: "NO_MATCH" },
+      {
+        arrivedPendingStore: false,
+        orderType: "FOK",
+      },
+    );
     assert.equal(n.kind, "PERMANENT_REJECT");
     assert.equal(n.retryable, false);
   });
@@ -136,19 +145,28 @@ describe("Error taxonomy (PM-VENUE-04)", () => {
       "RETRYABLE",
     );
     assert.equal(
-      normalizeVenueError({ status: 200, queuedDelayMs: 1500 }, { arrivedPendingStore: false }).kind,
+      normalizeVenueError(
+        { status: 200, queuedDelayMs: 1500 },
+        { arrivedPendingStore: false },
+      ).kind,
       "RETRYABLE",
     );
     assert.equal(
-      normalizeVenueError({ status: 401, code: "INVALID_KEY" }, { arrivedPendingStore: false }).kind,
+      normalizeVenueError(
+        { status: 401, code: "INVALID_KEY" },
+        { arrivedPendingStore: false },
+      ).kind,
       "AUTH_FAILURE",
     );
   });
 
   it("already-pending uncertainty is never submit-retryable", () => {
-    const n = normalizeVenueError({ status: 429 }, {
-      arrivedPendingStore: true,
-    });
+    const n = normalizeVenueError(
+      { status: 429 },
+      {
+        arrivedPendingStore: true,
+      },
+    );
     assert.equal(n.kind, "RECONCILE_REQUIRED");
   });
 });

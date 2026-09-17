@@ -4,10 +4,7 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
-import type {
-  SimulatedFill,
-  ProbQuality,
-} from "./paper-engine.js";
+import type { SimulatedFill, ProbQuality } from "./paper-engine.js";
 
 export interface PaperLogRow {
   market_id: string;
@@ -49,7 +46,9 @@ export class PgPaperLog {
     this.pool =
       config instanceof Pool
         ? config
-        : new Pool(typeof config === "string" ? { connectionString: config } : config);
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
   }
 
   async insert(row: PaperLogRow): Promise<void> {
@@ -100,7 +99,9 @@ export class PgExperimentRegistry {
     this.pool =
       config instanceof Pool
         ? config
-        : new Pool(typeof config === "string" ? { connectionString: config } : config);
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
   }
 
   /** Preregister an experiment BEFORE it runs (no cherry-picking). */
@@ -114,7 +115,13 @@ export class PgExperimentRegistry {
     const r = await this.pool.query(
       `INSERT INTO experiments (name, version, description, preregistered_rule, mode, status)
        VALUES ($1,$2,$3,$4,$5,'PREREGISTERED') RETURNING *`,
-      [input.name, input.version, input.description ?? null, input.preregisteredRule, input.mode],
+      [
+        input.name,
+        input.version,
+        input.description ?? null,
+        input.preregisteredRule,
+        input.mode,
+      ],
     );
     return this.mapRow(r.rows[0]);
   }
@@ -148,12 +155,16 @@ export class PgExperimentRegistry {
   }
 
   async get(id: string): Promise<ExperimentRow | undefined> {
-    const r = await this.pool.query(`SELECT * FROM experiments WHERE id=$1`, [id]);
+    const r = await this.pool.query(`SELECT * FROM experiments WHERE id=$1`, [
+      id,
+    ]);
     return r.rows[0] ? this.mapRow(r.rows[0]) : undefined;
   }
 
   async all(): Promise<ExperimentRow[]> {
-    const r = await this.pool.query(`SELECT * FROM experiments ORDER BY created_at`);
+    const r = await this.pool.query(
+      `SELECT * FROM experiments ORDER BY created_at`,
+    );
     return r.rows.map((row) => this.mapRow(row));
   }
 
@@ -167,7 +178,9 @@ export class PgExperimentRegistry {
       status: row["status"] as ExperimentRow["status"],
       mode: row["mode"] as ExperimentMode,
       createdAt: new Date(row["created_at"] as string),
-      concludedAt: row["concluded_at"] ? new Date(row["concluded_at"] as string) : null,
+      concludedAt: row["concluded_at"]
+        ? new Date(row["concluded_at"] as string)
+        : null,
     };
   }
 }
@@ -192,7 +205,9 @@ export class PgShadowBaseline {
     this.pool =
       config instanceof Pool
         ? config
-        : new Pool(typeof config === "string" ? { connectionString: config } : config);
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
   }
 
   async recordDay(_account = "default"): Promise<void> {
@@ -222,7 +237,11 @@ export class PgShadowBaseline {
     };
   }
 
-  async freezeVersion(sha: string, prerule: string, _account = "default"): Promise<void> {
+  async freezeVersion(
+    sha: string,
+    prerule: string,
+    _account = "default",
+  ): Promise<void> {
     await this.pool.query(
       `UPDATE shadow_baseline
        SET versions_frozen_sha=$1, pr_stopping_rule=$2, preregistered=TRUE, updated_at=now()
@@ -232,15 +251,15 @@ export class PgShadowBaseline {
   }
 }
 
-export function createPgRuntimeStores(
-  config: PoolConfig | string,
-): {
+export function createPgRuntimeStores(config: PoolConfig | string): {
   paperLog: PgPaperLog;
   experiments: PgExperimentRegistry;
   shadow: PgShadowBaseline;
   pool: Pool;
 } {
-  const pool = new Pool(typeof config === "string" ? { connectionString: config } : config);
+  const pool = new Pool(
+    typeof config === "string" ? { connectionString: config } : config,
+  );
   return {
     paperLog: new PgPaperLog(pool),
     experiments: new PgExperimentRegistry(pool),

@@ -63,21 +63,31 @@ describe("Money Kernel — exact cash arithmetic (PM-LED-02)", () => {
     // DESIGN — that value is exactly what the kernel guard (PRICE_RANGE) must
     // refuse before any commitment. This property pins the math; the guard
     // is pinned by the contract tests in money-kernel.test.ts.
-    const shareCounts = [
-      0n, 1_000_000n, 7_777_777n, 1_000_000_000n,
-    ];
+    const shareCounts = [0n, 1_000_000n, 7_777_777n, 1_000_000_000n];
     const prices = [
-      -1_000_000n, -1n, 0n, 1n, 500_000n, 1_000_000n, 1_000_001n, 9_000_000n,
+      -1_000_000n,
+      -1n,
+      0n,
+      1n,
+      500_000n,
+      1_000_000n,
+      1_000_001n,
+      9_000_000n,
     ];
     for (const shares of shareCounts) {
       for (const price of prices) {
         const got = cashNeededFor(shares, price);
-        assert.equal(got, (shares * price) / 1_000_000n,
-          `identity shares=${shares} price=${price}`);
+        assert.equal(
+          got,
+          (shares * price) / 1_000_000n,
+          `identity shares=${shares} price=${price}`,
+        );
         if (price >= 0n) {
           assert.ok(got >= 0n, `non-negative for valid price ${price}`);
-          assert.ok(got * 1_000_000n <= shares * price,
-            `never above product for price ${price}`);
+          assert.ok(
+            got * 1_000_000n <= shares * price,
+            `never above product for price ${price}`,
+          );
         }
       }
     }

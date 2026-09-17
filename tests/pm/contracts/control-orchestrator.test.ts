@@ -2,9 +2,17 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { orchestrate, type OrchestratorDeps } from "@polyroot/control";
 import { Executor, type OrderLifecycleState } from "@polyroot/executor";
-import { MoneyKernel, type BalanceStore, type KernelEventSink } from "@polyroot/risk";
+import {
+  MoneyKernel,
+  type BalanceStore,
+  type KernelEventSink,
+} from "@polyroot/risk";
 import { SignerVault } from "@polyroot/signer";
-import { MemPermitStore, MemRecoveryLedger, MemLeaseStore } from "@polyroot/venue";
+import {
+  MemPermitStore,
+  MemRecoveryLedger,
+  MemLeaseStore,
+} from "@polyroot/venue";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import {
   DEFAULT_RISK_POLICY,
@@ -85,8 +93,10 @@ class FakeAdapter implements VenueAdapter {
       timestamp: new Date(),
     },
   });
-  getOrderStatusFn: (id: string) => Promise<import("@polyroot/domain").OrderResult | null> =
-    async () => null;
+  getOrderStatusFn: (
+    id: string,
+  ) => Promise<import("@polyroot/domain").OrderResult | null> = async () =>
+    null;
   setMode(m: VenueMode) {
     this.mode = m;
   }
@@ -185,7 +195,10 @@ function makePolicy(over: Partial<RiskPolicy> = {}): RiskPolicy {
 
 const NOW = new Date("2026-01-01T00:00:30Z");
 
-function makeDeps(adapter: FakeAdapter, over: Partial<OrchestratorDeps> = {}): {
+function makeDeps(
+  adapter: FakeAdapter,
+  over: Partial<OrchestratorDeps> = {},
+): {
   deps: OrchestratorDeps;
   used: Set<string>;
   balance: FakeBalanceStore;

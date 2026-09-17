@@ -43,8 +43,7 @@ COPY turbo.json ./
 COPY tsconfig.base.json ./
 COPY tsconfig/ ./tsconfig/
 
-# Copy built artifacts from builder
-COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+# Copy built artifacts from builder (package-local dist + workspace layout)
 COPY --from=builder --chown=nodejs:nodejs /app/src ./src
 COPY --from=builder --chown=nodejs:nodejs /app/migrations ./migrations
 
@@ -62,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 ENTRYPOINT ["tini", "--"]
 
 # Default command runs the executor (gateway runs separately in compose)
-CMD ["node", "dist/pm/executor/index.js"]
+CMD ["node", "src/pm/executor/dist/index.js"]

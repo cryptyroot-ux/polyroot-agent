@@ -29,11 +29,19 @@ export interface InFlightOrder {
 /** Interface for durable recovery ledger (abstract contract). */
 export interface IRecoveryLedger {
   /** Record a new order as SUBMITTING before venue call. */
-  addSubmittedUnknown(orderId: string, venueOrderId?: string, permitId?: string): Promise<void>;
+  addSubmittedUnknown(
+    orderId: string,
+    venueOrderId?: string,
+    permitId?: string,
+  ): Promise<void>;
   /** Record that a cancel was requested (state = CANCEL_UNKNOWN). */
   recordCancelRequested(orderId: string): Promise<void>;
   /** Resolve an order with definitive venue-sourced result. */
-  resolve(orderId: string, fromVenue: boolean, result?: OrderResult): Promise<void>;
+  resolve(
+    orderId: string,
+    fromVenue: boolean,
+    result?: OrderResult,
+  ): Promise<void>;
   /** Check if an order needs reconciliation on restart. */
   needsReconcile(orderId: string): boolean | Promise<boolean>;
   /** Get all orders needing reconciliation. */
@@ -41,7 +49,11 @@ export interface IRecoveryLedger {
   /** Get order state for reconciliation. */
   get(orderId: string): Promise<InFlightOrder | null>;
   /** Update order state during reconciliation. */
-  updateState(orderId: string, state: OrderLifecycleState, venueOrderId?: string): Promise<void>;
+  updateState(
+    orderId: string,
+    state: OrderLifecycleState,
+    venueOrderId?: string,
+  ): Promise<void>;
   /** Map current confirmed-cancelled set (only definitively resolved cancels). */
   certainCancels(): string[] | Promise<string[]>;
 }
@@ -51,10 +63,19 @@ export class PgRecoveryLedger implements IRecoveryLedger {
   private readonly pool: Pool;
 
   constructor(config: PoolConfig | string | Pool) {
-    this.pool = config instanceof Pool ? config : new Pool(typeof config === "string" ? { connectionString: config } : config);
+    this.pool =
+      config instanceof Pool
+        ? config
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
   }
 
-  async addSubmittedUnknown(orderId: string, venueOrderId?: string, permitId?: string): Promise<void> {
+  async addSubmittedUnknown(
+    orderId: string,
+    venueOrderId?: string,
+    permitId?: string,
+  ): Promise<void> {
     await this.pool.query(
       `INSERT INTO recovery_ledger (order_id, venue_order_id, permit_id, state, submitted_at, resolved, created_at, updated_at)
        VALUES ($1, $2, $3, 'SUBMITTING', now(), false, now(), now())
@@ -76,17 +97,22 @@ export class PgRecoveryLedger implements IRecoveryLedger {
     );
   }
 
-  async resolve(orderId: string, fromVenue: boolean, result?: OrderResult): Promise<void> {
+  async resolve(
+    orderId: string,
+    fromVenue: boolean,
+    result?: OrderResult,
+  ): Promise<void> {
     if (!fromVenue) return;
     // No default to CANCEL_CERTAIN: timeout/error without venue result is definitively unknown,
     // treated as DEFINITIVE_REJECT. CANCEL_CERTAIN is reserved only for explicit cancel confirmations.
-    let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" = "DEFINITIVE_REJECT";
+    let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" =
+      "DEFINITIVE_REJECT";
     if (result) {
       if (
         result.order_status === "LIVE" ||
         result.order_status === "PARTIAL" ||
         result.order_status === "MATCHED" ||
-        (result.submit_status === "ACKNOWLEDGED")
+        result.submit_status === "ACKNOWLEDGED"
       ) {
         resolvedState = "ACKNOWLEDGED";
       } else if (
@@ -110,7 +136,11 @@ export class PgRecoveryLedger implements IRecoveryLedger {
       `SELECT resolved FROM recovery_ledger WHERE order_id = $1`,
       [orderId],
     );
-    return result.rowCount !== null && result.rowCount > 0 && !result.rows[0].resolved;
+    return (
+      result.rowCount !== null &&
+      result.rowCount > 0 &&
+      !result.rows[0].resolved
+    );
   }
 
   async getUnresolved(): Promise<InFlightOrder[]> {
@@ -129,7 +159,11 @@ export class PgRecoveryLedger implements IRecoveryLedger {
     return this.mapRow(result.rows[0]);
   }
 
-  async updateState(orderId: string, state: OrderLifecycleState, venueOrderId?: string): Promise<void> {
+  async updateState(
+    orderId: string,
+    state: OrderLifecycleState,
+    venueOrderId?: string,
+  ): Promise<void> {
     await this.pool.query(
       `UPDATE recovery_ledger SET state = $1, venue_order_id = COALESCE($2, venue_order_id), updated_at = now()
        WHERE order_id = $3`,
@@ -195,12 +229,18 @@ export class MemRecoveryLedger implements IRecoveryLedger {
     };
   }
 
-
-  async addSubmittedUnknown(orderId: string, _venueOrderId?: string, _permitId?: string): Promise<void> {
-    this.orders.set(orderId, this.createOrder(orderId, "SUBMITTING", {
-      reconcileCount: 0,
-      resolved: false,
-    }));
+  async addSubmittedUnknown(
+    orderId: string,
+    _venueOrderId?: string,
+    _permitId?: string,
+  ): Promise<void> {
+    this.orders.set(
+      orderId,
+      this.createOrder(orderId, "SUBMITTING", {
+        reconcileCount: 0,
+        resolved: false,
+      }),
+    );
   }
 
   async recordCancelRequested(orderId: string): Promise<void> {
@@ -211,18 +251,23 @@ export class MemRecoveryLedger implements IRecoveryLedger {
     }
   }
 
-  async resolve(orderId: string, fromVenue: boolean, result?: OrderResult): Promise<void> {
+  async resolve(
+    orderId: string,
+    fromVenue: boolean,
+    result?: OrderResult,
+  ): Promise<void> {
     const o = this.orders.get(orderId);
     if (o && fromVenue) {
       // No default to CANCEL_CERTAIN: timeout/error without venue result is
       // treated as DEFINITIVE_REJECT. CANCEL_CERTAIN only with explicit venue cancel.
-      let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" = "DEFINITIVE_REJECT";
+      let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" =
+        "DEFINITIVE_REJECT";
       if (result) {
         if (
           result.order_status === "LIVE" ||
           result.order_status === "PARTIAL" ||
           result.order_status === "MATCHED" ||
-          (result.submit_status === "ACKNOWLEDGED")
+          result.submit_status === "ACKNOWLEDGED"
         ) {
           resolvedState = "ACKNOWLEDGED";
         } else if (
@@ -264,7 +309,11 @@ export class MemRecoveryLedger implements IRecoveryLedger {
     return o ? { ...o } : null;
   }
 
-  async updateState(orderId: string, state: OrderLifecycleState, venueOrderId?: string): Promise<void> {
+  async updateState(
+    orderId: string,
+    state: OrderLifecycleState,
+    venueOrderId?: string,
+  ): Promise<void> {
     const o = this.orders.get(orderId);
     if (o) {
       o.state = state;

@@ -33,11 +33,11 @@ export class SourceRegistry {
     this.byUrl.set(record.url, record);
     const syndParent = record.syndication_parent;
     const key =
-      (syndParent ??
-        record.url
-          .replace(/^\w+:\/\//, "")
-          .replace(/^www\./, "")
-          .split("?")[0]) ??
+      syndParent ??
+      record.url
+        .replace(/^\w+:\/\//, "")
+        .replace(/^www\./, "")
+        .split("?")[0] ??
       record.url;
     let family: string | undefined = this.familyOf.get(key);
     if (!family) {
@@ -87,15 +87,38 @@ export function weightEvidence(input: {
   contradicted: boolean;
   lateAfterPublished: number;
 }): number {
-  const { item, source, now, independentFamilyCount, contradicted, lateAfterPublished } = input;
+  const {
+    item,
+    source,
+    now,
+    independentFamilyCount,
+    contradicted,
+    lateAfterPublished,
+  } = input;
   const primary =
-    source.epistemic_class === "PRIMARY" ? 1 : source.epistemic_class === "SECONDARY" ? 0.6 : 0.4;
-  const recency = item.published_at ? temporalRecencyWeight(item.published_at, now) : 0.5;
-  const latePenalty = lateAfterPublished > 0 ? Math.max(0.5, 1 - lateAfterPublished / 3600) : 1;
-  const independence = independentFamilyCount >= 1 ? Math.min(1, independentFamilyCount / 2) : 0.2;
+    source.epistemic_class === "PRIMARY"
+      ? 1
+      : source.epistemic_class === "SECONDARY"
+        ? 0.6
+        : 0.4;
+  const recency = item.published_at
+    ? temporalRecencyWeight(item.published_at, now)
+    : 0.5;
+  const latePenalty =
+    lateAfterPublished > 0 ? Math.max(0.5, 1 - lateAfterPublished / 3600) : 1;
+  const independence =
+    independentFamilyCount >= 1 ? Math.min(1, independentFamilyCount / 2) : 0.2;
   const contradictionPenalty = contradicted ? 0.3 : 1;
   const trust = (item.relevance ?? 0.5) * source.reliability.score;
-  return Math.min(1, primary * recency * independence * contradictionPenalty * latePenalty * (0.5 + 0.5 * trust));
+  return Math.min(
+    1,
+    primary *
+      recency *
+      independence *
+      contradictionPenalty *
+      latePenalty *
+      (0.5 + 0.5 * trust),
+  );
 }
 
 /* ─── PM-INTEL-04: feature frames ────────────────────────────────────── */
@@ -150,7 +173,9 @@ export class CatalystBus {
       return [];
     }
     // Subsequent replays: only events after the watermark.
-    const after = this.outbox.findIndex((e) => e.event_id === this.watermark.get(consumer));
+    const after = this.outbox.findIndex(
+      (e) => e.event_id === this.watermark.get(consumer),
+    );
     if (after >= 0) return this.outbox.slice(after + 1);
     return [];
   }
@@ -184,7 +209,8 @@ export function ensembleForecast(input: {
   version: string;
 }): EnsembleOutcome {
   const { components, eventClass, weightBooks, version } = input;
-  if (components.length === 0) return { ok: false, code: "NO_VALID_COMPONENT", version };
+  if (components.length === 0)
+    return { ok: false, code: "NO_VALID_COMPONENT", version };
   const pinned = weightBooks.get(eventClass);
   let num = 0;
   let den = 0;
@@ -196,7 +222,12 @@ export function ensembleForecast(input: {
     den += w;
   }
   if (den <= 0) return { ok: false, code: "NO_VALID_COMPONENT", version };
-  return { ok: true, p_yes: num / den, version, effectiveFamilyCount: families.size };
+  return {
+    ok: true,
+    p_yes: num / den,
+    version,
+    effectiveFamilyCount: families.size,
+  };
 }
 
 /* ─── PM-INTEL-10: model lineage ─────────────────────────────────────── */
@@ -230,12 +261,18 @@ export function gateForecast(f: Forecast): ForecastGateResult {
     if (Math.abs(sum - 1) > 1e-6) problems.push("distribution_not_normalized");
   }
   const hasP =
-    f.p_raw !== undefined || f.p_calibrated !== undefined || f.p_conservative !== undefined;
+    f.p_raw !== undefined ||
+    f.p_calibrated !== undefined ||
+    f.p_conservative !== undefined;
   if (!hasP && !probs) problems.push("no_probability_shape");
   if (!f.valid_until) problems.push("missing_valid_until");
   if (!f.valid_until || f.valid_until.getTime() <= f.created_at.getTime())
     problems.push("valid_until_not_after_created");
-  if (!f.abstain_reason && (f.evidence_ids.length === 0 && f.counterevidence_ids.length === 0))
+  if (
+    !f.abstain_reason &&
+    f.evidence_ids.length === 0 &&
+    f.counterevidence_ids.length === 0
+  )
     problems.push("no_evidence_trace");
   if (problems.length) return { ok: false, code: "INVALID_FORECAST", problems };
   return { ok: true, forecast: f };
@@ -251,11 +288,15 @@ export function gateForecast(f: Forecast): ForecastGateResult {
 export function joinApiPath(baseUrl: string, path: string): string {
   const base = baseUrl.replace(/\/+$/, "");
   const p = path.replace(/^\/+/, "");
-  if (base.endsWith("/v1") && p.startsWith("v1/")) return `${base}/${p.slice(3)}`;
+  if (base.endsWith("/v1") && p.startsWith("v1/"))
+    return `${base}/${p.slice(3)}`;
   return `${base}/${p}`;
 }
 
-export function normalizeOpenAICompatible(baseUrl?: string, fallback = "https://api.openai.com/v1"): string {
+export function normalizeOpenAICompatible(
+  baseUrl?: string,
+  fallback = "https://api.openai.com/v1",
+): string {
   if (!baseUrl || baseUrl.length === 0) return fallback;
   return baseUrl.replace(/\/+$/, "");
 }
@@ -267,7 +308,10 @@ export function normalizeOpenAICompatible(baseUrl?: string, fallback = "https://
  * from an LLM is never a position-sizing measure; the conservative value is
  * driven toward 0.5 (uncertainty) when calibration is missing.
  */
-export function conservativeOf(raw: number, calibrated: number | undefined): number {
+export function conservativeOf(
+  raw: number,
+  calibrated: number | undefined,
+): number {
   const base = calibrated ?? raw;
   if (calibrated === undefined) return 0.5 + (base - 0.5) * 0.5;
   return base;
@@ -275,22 +319,35 @@ export function conservativeOf(raw: number, calibrated: number | undefined): num
 
 /* ─── PM-AI-04: untrusted content boundary ───────────────────────────── */
 
-export type PrivilegedAction = "SIGN" | "SHELL" | "SECRET_READ" | "POLICY_WRITE" | "MANDATE_WRITE";
+export type PrivilegedAction =
+  "SIGN" | "SHELL" | "SECRET_READ" | "POLICY_WRITE" | "MANDATE_WRITE";
 
 /**
  * Untrusted content boundary (PM-AI-04): web content is DATA. It can never
  * trigger privileged actions or mutate policy/mandate. LLM synthesis output is
  * always data-bearing; only the explicit pipeline may act.
  */
-export function allowedForEvidence(e: Pick<EvidenceItem, "untrusted">, _action: PrivilegedAction): boolean {
+export function allowedForEvidence(
+  e: Pick<EvidenceItem, "untrusted">,
+  _action: PrivilegedAction,
+): boolean {
   return !e.untrusted;
 }
 
-const PRIVILEGED: PrivilegedAction[] = ["SIGN", "SHELL", "SECRET_READ", "POLICY_WRITE", "MANDATE_WRITE"];
+const PRIVILEGED: PrivilegedAction[] = [
+  "SIGN",
+  "SHELL",
+  "SECRET_READ",
+  "POLICY_WRITE",
+  "MANDATE_WRITE",
+];
 
 /** A guard object usable by the control plane to broker every privileged call. */
 export const UNTRUSTED_CONTENT_BOUNDARY = {
-  canPerform(e: Pick<EvidenceItem, "untrusted">, action: PrivilegedAction): boolean {
+  canPerform(
+    e: Pick<EvidenceItem, "untrusted">,
+    action: PrivilegedAction,
+  ): boolean {
     return PRIVILEGED.includes(action) ? allowedForEvidence(e, action) : true;
   },
 };
@@ -320,8 +377,15 @@ export class ResearchBudget {
 
   check(tokensNeeded: number): QuotaCheck {
     const quotaText = this.quota.max_tokens.toString(10);
-    if (this.tokensUsed + BigInt(Math.round(tokensNeeded)) > BigInt(quotaText)) {
-      return { ok: false, code: "BUDGET_EXHAUSTED", reason: "token_quota_exceeded" };
+    if (
+      this.tokensUsed + BigInt(Math.round(tokensNeeded)) >
+      BigInt(quotaText)
+    ) {
+      return {
+        ok: false,
+        code: "BUDGET_EXHAUSTED",
+        reason: "token_quota_exceeded",
+      };
     }
     return { ok: true, remainingTokens: BigInt(quotaText) - this.tokensUsed };
   }
@@ -329,4 +393,11 @@ export class ResearchBudget {
 
 /* ─── minor re-exports ───────────────────────────────────────────────── */
 
-export type { DataQualityFlags, FeatureFrame, Forecast, ForecastComponent, SourceRecord, z };
+export type {
+  DataQualityFlags,
+  FeatureFrame,
+  Forecast,
+  ForecastComponent,
+  SourceRecord,
+  z,
+};

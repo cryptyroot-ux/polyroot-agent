@@ -16,8 +16,19 @@ import {
 /* ─── PM-DATA-01: typed asset identity ───────────────────────────────── */
 
 export type ParsedAsset =
-  | { kind: "CTF"; asset_class: "CTF_TOKEN"; token_id: string; chain_id: number; address: string }
-  | { kind: "POLY_V2"; asset_class: "POLY_V2_POSITION"; position_id: string; chain_id: number }
+  | {
+      kind: "CTF";
+      asset_class: "CTF_TOKEN";
+      token_id: string;
+      chain_id: number;
+      address: string;
+    }
+  | {
+      kind: "POLY_V2";
+      asset_class: "POLY_V2_POSITION";
+      position_id: string;
+      chain_id: number;
+    }
   | { kind: "UNKNOWN"; asset_class: "UNKNOWN"; raw: string };
 
 /**
@@ -36,8 +47,16 @@ export function parseAssetIdentity(raw: string, chainId: number): ParsedAsset {
       address: raw,
     };
   }
-  if (/^[0-9a-fA-F]{64}$/.test(raw) || /^position:[0-9a-fA-FxX:]+$/i.test(raw)) {
-    return { kind: "POLY_V2", asset_class: "POLY_V2_POSITION", position_id: raw, chain_id: chainId };
+  if (
+    /^[0-9a-fA-F]{64}$/.test(raw) ||
+    /^position:[0-9a-fA-FxX:]+$/i.test(raw)
+  ) {
+    return {
+      kind: "POLY_V2",
+      asset_class: "POLY_V2_POSITION",
+      position_id: raw,
+      chain_id: chainId,
+    };
   }
   return { kind: "UNKNOWN", asset_class: "UNKNOWN", raw };
 }
@@ -54,7 +73,9 @@ export class ProtocolProfileRegistry {
   requireKnown(profileId: string): AssetIdentity {
     const hit = this.known.get(profileId);
     if (!hit) {
-      const e = new Error(`UNKNOWN_PROTOCOL_PROFILE: ${profileId}`) as Error & { code: string };
+      const e = new Error(`UNKNOWN_PROTOCOL_PROFILE: ${profileId}`) as Error & {
+        code: string;
+      };
       e.code = "UNKNOWN_PROTOCOL_PROFILE";
       throw e;
     }
@@ -66,7 +87,12 @@ export class ProtocolProfileRegistry {
 
 export type RulesGateResult =
   | { ok: true; rule: SettlementRule }
-  | { ok: false; code: "RULES_CHANGED"; expectedVersion: string; currentVersion: string };
+  | {
+      ok: false;
+      code: "RULES_CHANGED";
+      expectedVersion: string;
+      currentVersion: string;
+    };
 
 /** Versioned settlement-rules registry. A rules change invalidates existing
  * forecasts/intents: callers must re-research (PM-DATA-02). */
@@ -84,9 +110,20 @@ export class SettlementRulesRegistry {
   /** Check an order/forescast pinned to a specific rule version. */
   check(marketId: string, pinnedRulesVersion: string): RulesGateResult {
     const cur = this.perMarket.get(marketId);
-    if (!cur) return { ok: false, code: "RULES_CHANGED", expectedVersion: pinnedRulesVersion, currentVersion: "UNKNOWN" };
+    if (!cur)
+      return {
+        ok: false,
+        code: "RULES_CHANGED",
+        expectedVersion: pinnedRulesVersion,
+        currentVersion: "UNKNOWN",
+      };
     if (cur.rule_version !== pinnedRulesVersion) {
-      return { ok: false, code: "RULES_CHANGED", expectedVersion: pinnedRulesVersion, currentVersion: cur.rule_version };
+      return {
+        ok: false,
+        code: "RULES_CHANGED",
+        expectedVersion: pinnedRulesVersion,
+        currentVersion: cur.rule_version,
+      };
     }
     return { ok: true, rule: cur };
   }
@@ -167,8 +204,10 @@ export class FeeGate {
   requireCurrent(marketId: string, modeHint?: string): FeeGateResult {
     const s = this.perMarket.get(marketId);
     if (!s) return { ok: false, code: "FEE_UNKNOWN" };
-    if (modeHint !== undefined && s.trade_mode === "UNKNOWN") return { ok: false, code: "FEE_UNKNOWN" };
-    if (s.fee_taker_bps > 0 && s.fee_currency === "") return { ok: false, code: "FEE_UNKNOWN" };
+    if (modeHint !== undefined && s.trade_mode === "UNKNOWN")
+      return { ok: false, code: "FEE_UNKNOWN" };
+    if (s.fee_taker_bps > 0 && s.fee_currency === "")
+      return { ok: false, code: "FEE_UNKNOWN" };
     return { ok: true, settings: s };
   }
 }
@@ -179,7 +218,10 @@ export class FeeGate {
  * Provenance check (PM-DATA-05): evidence fetched after a decision cutoff must
  * not participate in that decision's replay.
  */
-export function provenByCutoff(evidence: EvidenceItem, cutoffUtc: Date): boolean {
+export function provenByCutoff(
+  evidence: EvidenceItem,
+  cutoffUtc: Date,
+): boolean {
   const at = evidence.available_at ?? evidence.fetched_at;
   return at.getTime() <= cutoffUtc.getTime();
 }
@@ -199,7 +241,10 @@ export function assessQuality(input: {
   contradiction?: boolean;
   url?: string;
 }): DataQualityFlags {
-  const familyKey = (input.canonicalUrl ?? input.url ?? "").replace(/^https?:\/\//, "").replace(/^www\./, "").split("?")[0];
+  const familyKey = (input.canonicalUrl ?? input.url ?? "")
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("?")[0];
   let family: string | undefined;
   let duplicateOf: string | undefined;
   if (familyKey) {
@@ -216,7 +261,9 @@ export function assessQuality(input: {
   const missing = input.price === null;
   return {
     schema_version: "1.0.0",
-    is_stale: input.now.getTime() - input.observed_at.getTime() > STALE_AFTER_MS && input.price !== null,
+    is_stale:
+      input.now.getTime() - input.observed_at.getTime() > STALE_AFTER_MS &&
+      input.price !== null,
     has_contradiction: input.contradiction ?? false,
     syndication_family: family,
     is_duplicate_of: duplicateOf,
@@ -261,13 +308,31 @@ export class UniverseDecider {
   decide(id: string, input: DecideInput): MarketDecision {
     const now = new Date();
     if (!input.metadataOk) {
-      return { id, ticker: id, eligible: false, reason: "metadata_missing", decidedAt: now };
+      return {
+        id,
+        ticker: id,
+        eligible: false,
+        reason: "metadata_missing",
+        decidedAt: now,
+      };
     }
     if (!input.rulesOk) {
-      return { id, ticker: id, eligible: false, reason: "rules_unclear", decidedAt: now };
+      return {
+        id,
+        ticker: id,
+        eligible: false,
+        reason: "rules_unclear",
+        decidedAt: now,
+      };
     }
     if (!input.liquidityOk) {
-      return { id, ticker: id, eligible: false, reason: "no_depth", decidedAt: now };
+      return {
+        id,
+        ticker: id,
+        eligible: false,
+        reason: "no_depth",
+        decidedAt: now,
+      };
     }
     return { id, ticker: id, eligible: true, decidedAt: now };
   }
@@ -304,7 +369,11 @@ export class UniverseLog {
     const d = day.getUTCDate();
     return this.decisions.filter((x) => {
       const xd = x.decidedAt;
-      return xd.getUTCFullYear() === y && xd.getUTCMonth() === m && xd.getUTCDate() === d;
+      return (
+        xd.getUTCFullYear() === y &&
+        xd.getUTCMonth() === m &&
+        xd.getUTCDate() === d
+      );
     });
   }
 }

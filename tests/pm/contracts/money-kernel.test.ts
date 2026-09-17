@@ -49,7 +49,7 @@ class FakeBalanceStore implements BalanceStore {
     }
     this.committed -= amount;
   }
- async getOpenCount(_a: string, _s: string): Promise<number> {
+  async getOpenCount(_a: string, _s: string): Promise<number> {
     return this.committed > 0n ? 1 : 0;
   }
 }
@@ -173,7 +173,11 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
       const res = await kernel.reserve(req({ perSharePriceBase: badPrice }));
       assert.equal(res.ok, false, `price ${badPrice} must be refused`);
       if (!res.ok) assert.equal(res.code, "PRICE_RANGE");
-      assert.equal(balance.committed, 0n, "no funds may be committed on refusal");
+      assert.equal(
+        balance.committed,
+        0n,
+        "no funds may be committed on refusal",
+      );
       assert.ok(!sink.events.some((e) => e.topic === "RESERVATION_CREATED"));
     }
   });
@@ -223,23 +227,31 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
       sink,
       chainId: 137,
     });
-    const res = await kernel.reserve(req({
-      amountSharesBase: 10_000_000n,  // 10 shares
-      perSharePriceBase: 500_000n,     // 0.5 pUSD/share → 5 pUSD committed
-    }));
+    const res = await kernel.reserve(
+      req({
+        amountSharesBase: 10_000_000n, // 10 shares
+        perSharePriceBase: 500_000n, // 0.5 pUSD/share → 5 pUSD committed
+      }),
+    );
     assert.equal(res.ok, true);
-    assert.equal(balance.available, 95_000_000n);  // 100 - 5 = 95
+    assert.equal(balance.available, 95_000_000n); // 100 - 5 = 95
     assert.equal(balance.committed, 5_000_000n);
 
     // Consume the committed funds (simulating an order fill)
     await kernel.consume("0xACCOUNT", "pUSD", 5_000_000n);
 
     // CRITICAL: available must NOT increase; committed must go to 0
-    assert.equal(balance.available, 95_000_000n, "available must stay at 95 pUSD after consume");
+    assert.equal(
+      balance.available,
+      95_000_000n,
+      "available must stay at 95 pUSD after consume",
+    );
     assert.equal(balance.committed, 0n, "committed must be 0 after consume");
 
     // Verify consume emitted correct event
-    const consumed = sink.events.filter(e => e.topic === "RESERVATION_CONSUMED");
+    const consumed = sink.events.filter(
+      (e) => e.topic === "RESERVATION_CONSUMED",
+    );
     assert.equal(consumed.length, 1);
   });
 
@@ -251,9 +263,11 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
       chainId: 137,
     });
     // Reserve 5 pUSD
-    const res = await kernel.reserve(req({
-      perSharePriceBase: 500_000n,
-    }));
+    const res = await kernel.reserve(
+      req({
+        perSharePriceBase: 500_000n,
+      }),
+    );
     assert.equal(res.ok, true);
     assert.equal(balance.committed, 5_000_000n);
 

@@ -88,7 +88,10 @@ describe("PM-DATA-01 — typed asset identity", () => {
     const reg = new ProtocolProfileRegistry();
     reg.register(baseAsset);
     assert.ok(reg.has("prof_ctf_a"));
-    assert.throws(() => reg.requireKnown("prof_unknown"), /UNKNOWN_PROTOCOL_PROFILE/);
+    assert.throws(
+      () => reg.requireKnown("prof_unknown"),
+      /UNKNOWN_PROTOCOL_PROFILE/,
+    );
   });
 });
 
@@ -164,7 +167,11 @@ describe("PM-DATA-04 — fee gate", () => {
     assert.equal(gate.requireCurrent("mkt_2").ok, false);
     gate.observe(settings);
     assert.equal(gate.requireCurrent("mkt_1").ok, true);
-    gate.observe({ ...settings, trade_mode: "UNKNOWN", fee_settings_hash: "fh2" });
+    gate.observe({
+      ...settings,
+      trade_mode: "UNKNOWN",
+      fee_settings_hash: "fh2",
+    });
     const res = gate.requireCurrent("mkt_1", "BINARY");
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, "FEE_UNKNOWN");
@@ -184,7 +191,11 @@ describe("PM-DATA-05 — evidence provenance", () => {
     };
     const cutoff = new Date("2026-09-09T09:00:00Z");
     assert.equal(provenByCutoff(item, cutoff), false);
-    const early: EvidenceItem = { ...item, fetched_at: new Date("2026-09-09T08:00:00Z"), available_at: new Date("2026-09-09T08:00:00Z") };
+    const early: EvidenceItem = {
+      ...item,
+      fetched_at: new Date("2026-09-09T08:00:00Z"),
+      available_at: new Date("2026-09-09T08:00:00Z"),
+    };
     assert.equal(provenByCutoff(early, cutoff), true);
   });
 });
@@ -205,9 +216,30 @@ describe("PM-DATA-06 — data quality & limits", () => {
 
   it("one article copied to three sites is still a single syndication family", () => {
     const seen = new Map<string, string>();
-    const f1 = assessQuality({ price: 0.5, observed_at: t0, now: t0, url: "https://a.com/x?utm=1", seenFamilies: seen, requestBudgetOk: true });
-    const f2 = assessQuality({ price: 0.5, observed_at: t0, now: t0, url: "https://a.com/x?utm=2", seenFamilies: seen, requestBudgetOk: true });
-    const f3 = assessQuality({ price: 0.5, observed_at: t0, now: t0, url: "https://a.com/x?utm=3", seenFamilies: seen, requestBudgetOk: true });
+    const f1 = assessQuality({
+      price: 0.5,
+      observed_at: t0,
+      now: t0,
+      url: "https://a.com/x?utm=1",
+      seenFamilies: seen,
+      requestBudgetOk: true,
+    });
+    const f2 = assessQuality({
+      price: 0.5,
+      observed_at: t0,
+      now: t0,
+      url: "https://a.com/x?utm=2",
+      seenFamilies: seen,
+      requestBudgetOk: true,
+    });
+    const f3 = assessQuality({
+      price: 0.5,
+      observed_at: t0,
+      now: t0,
+      url: "https://a.com/x?utm=3",
+      seenFamilies: seen,
+      requestBudgetOk: true,
+    });
     assert.equal(f2.syndication_family, f1.syndication_family);
     assert.equal(f3.syndication_family, f1.syndication_family);
     assert.ok(f2.is_duplicate_of !== undefined);
@@ -256,7 +288,13 @@ describe("PM-INTEL-02 — source registry & syndication", () => {
     const reg = new SourceRegistry();
     reg.register(wire("https://news.example/a/1"));
     reg.register(wire("https://wire.example/b/2"));
-    assert.equal(reg.independentFamilies(["https://news.example/a/1", "https://wire.example/b/2"]).size, 2);
+    assert.equal(
+      reg.independentFamilies([
+        "https://news.example/a/1",
+        "https://wire.example/b/2",
+      ]).size,
+      2,
+    );
   });
 });
 
@@ -283,9 +321,34 @@ describe("PM-INTEL-03 — evidence weighting", () => {
   };
 
   it("primary, fresh, independent evidence scores higher than syndicated/late", () => {
-    const good = weightEvidence({ item, source, now: t0, independentFamilyCount: 2, contradicted: false, lateAfterPublished: 0 });
-    const late = weightEvidence({ item, source, now: t0, independentFamilyCount: 2, contradicted: false, lateAfterPublished: 7200 });
-    const syndicated = weightEvidence({ item, source: { ...source, epistemic_class: "AGGREGATOR", reliability: { score: 0.5, sample_count: 3, window: "30d" } }, now: t0, independentFamilyCount: 1, contradicted: false, lateAfterPublished: 0 });
+    const good = weightEvidence({
+      item,
+      source,
+      now: t0,
+      independentFamilyCount: 2,
+      contradicted: false,
+      lateAfterPublished: 0,
+    });
+    const late = weightEvidence({
+      item,
+      source,
+      now: t0,
+      independentFamilyCount: 2,
+      contradicted: false,
+      lateAfterPublished: 7200,
+    });
+    const syndicated = weightEvidence({
+      item,
+      source: {
+        ...source,
+        epistemic_class: "AGGREGATOR",
+        reliability: { score: 0.5, sample_count: 3, window: "30d" },
+      },
+      now: t0,
+      independentFamilyCount: 1,
+      contradicted: false,
+      lateAfterPublished: 0,
+    });
     assert.ok(good > late, "fresh beats late");
     assert.ok(good > syndicated, "primary beats aggregator");
   });
@@ -400,8 +463,17 @@ describe("PM-INTEL-10 — model lineage", () => {
     assert.match(lineageSummary(line), /fp:UNKNOWN/);
   });
   it("saved-response replay is distinguished from hosted regeneration", () => {
-    assert.equal(isSavedResponseReplay({ ...line, generation_source: "HOSTED" }), false);
-    assert.equal(isSavedResponseReplay({ ...line, generation_source: "SAVED_RESPONSE_REPLAY" }), true);
+    assert.equal(
+      isSavedResponseReplay({ ...line, generation_source: "HOSTED" }),
+      false,
+    );
+    assert.equal(
+      isSavedResponseReplay({
+        ...line,
+        generation_source: "SAVED_RESPONSE_REPLAY",
+      }),
+      true,
+    );
   });
 });
 
@@ -430,13 +502,21 @@ describe("PM-AI-01 — forecast gate", () => {
     assert.equal(gateForecast(multi).ok, true);
   });
   it("unnormalized distribution is rejected", () => {
-    const bad = { ...good, distribution: [0.5, 0.5, 0.5] } as unknown as Forecast;
+    const bad = {
+      ...good,
+      distribution: [0.5, 0.5, 0.5],
+    } as unknown as Forecast;
     const res = gateForecast(bad);
     assert.equal(res.ok, false);
-    if (!res.ok) assert.ok(res.problems.includes("distribution_not_normalized"));
+    if (!res.ok)
+      assert.ok(res.problems.includes("distribution_not_normalized"));
   });
   it("missing evidence trace is rejected", () => {
-    const res = gateForecast({ ...good, evidence_ids: [], counterevidence_ids: [] });
+    const res = gateForecast({
+      ...good,
+      evidence_ids: [],
+      counterevidence_ids: [],
+    });
     assert.equal(res.ok, false);
     if (!res.ok) assert.ok(res.problems.includes("no_evidence_trace"));
   });
@@ -445,12 +525,21 @@ describe("PM-AI-01 — forecast gate", () => {
 /* ── PM-AI-02 ── */
 describe("PM-AI-02 — provider portability", () => {
   it("base URL ending in /v1 does not produce /v1/v1", () => {
-    assert.equal(joinApiPath("https://api.example.com/v1", "v1/chat/completions"), "https://api.example.com/v1/chat/completions");
-    assert.equal(joinApiPath("https://api.example.com", "/chat/completions"), "https://api.example.com/chat/completions");
+    assert.equal(
+      joinApiPath("https://api.example.com/v1", "v1/chat/completions"),
+      "https://api.example.com/v1/chat/completions",
+    );
+    assert.equal(
+      joinApiPath("https://api.example.com", "/chat/completions"),
+      "https://api.example.com/chat/completions",
+    );
   });
   it("empty base falls back to default OpenAI-compatible endpoint", () => {
     assert.equal(normalizeOpenAICompatible(), "https://api.openai.com/v1");
-    assert.equal(normalizeOpenAICompatible("https://gw.example.com/v1/"), "https://gw.example.com/v1");
+    assert.equal(
+      normalizeOpenAICompatible("https://gw.example.com/v1/"),
+      "https://gw.example.com/v1",
+    );
   });
 });
 
@@ -468,12 +557,24 @@ describe("PM-AI-04 — untrusted content boundary", () => {
     const data = { untrusted: true };
     assert.equal(UNTRUSTED_CONTENT_BOUNDARY.canPerform(data, "SIGN"), false);
     assert.equal(UNTRUSTED_CONTENT_BOUNDARY.canPerform(data, "SHELL"), false);
-    assert.equal(UNTRUSTED_CONTENT_BOUNDARY.canPerform(data, "SECRET_READ"), false);
-    assert.equal(UNTRUSTED_CONTENT_BOUNDARY.canPerform(data, "POLICY_WRITE"), false);
-    assert.equal(UNTRUSTED_CONTENT_BOUNDARY.canPerform(data, "MANDATE_WRITE"), false);
+    assert.equal(
+      UNTRUSTED_CONTENT_BOUNDARY.canPerform(data, "SECRET_READ"),
+      false,
+    );
+    assert.equal(
+      UNTRUSTED_CONTENT_BOUNDARY.canPerform(data, "POLICY_WRITE"),
+      false,
+    );
+    assert.equal(
+      UNTRUSTED_CONTENT_BOUNDARY.canPerform(data, "MANDATE_WRITE"),
+      false,
+    );
   });
   it("trusted pipeline evidence may act", () => {
-    assert.equal(UNTRUSTED_CONTENT_BOUNDARY.canPerform({ untrusted: false }, "SIGN"), true);
+    assert.equal(
+      UNTRUSTED_CONTENT_BOUNDARY.canPerform({ untrusted: false }, "SIGN"),
+      true,
+    );
   });
 });
 

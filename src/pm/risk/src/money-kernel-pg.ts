@@ -13,7 +13,11 @@
 import { Pool, type PoolConfig, type PoolClient } from "pg";
 import { randomUUID } from "crypto";
 import { createHash } from "crypto";
-import type { BalanceStore, KernelEventSink, BalanceEntry } from "./money-kernel.js";
+import type {
+  BalanceStore,
+  KernelEventSink,
+  BalanceEntry,
+} from "./money-kernel.js";
 import type { MoneyAuthority } from "./money-kernel.js";
 
 export interface PgBalanceStoreConfig extends PoolConfig {
@@ -25,10 +29,17 @@ export class PgBalanceStore implements BalanceStore {
   constructor(config: PoolConfig | string | Pool | PgBalanceStoreConfig) {
     if (config instanceof Pool) {
       this.pool = config;
-    } else if (config && typeof config === "object" && "pool" in config && config.pool) {
+    } else if (
+      config &&
+      typeof config === "object" &&
+      "pool" in config &&
+      config.pool
+    ) {
       this.pool = config.pool;
     } else {
-      this.pool = new Pool(typeof config === "string" ? { connectionString: config } : config);
+      this.pool = new Pool(
+        typeof config === "string" ? { connectionString: config } : config,
+      );
     }
   }
 
@@ -45,39 +56,62 @@ export class PgBalanceStore implements BalanceStore {
       return { account, asset, availableBase: 0n, committedBase: 0n };
     }
     const row = result.rows[0];
-    return { account, asset, availableBase: BigInt(row.available_base), committedBase: BigInt(row.committed_base) };
+    return {
+      account,
+      asset,
+      availableBase: BigInt(row.available_base),
+      committedBase: BigInt(row.committed_base),
+    };
   }
 
-  async reserveFunds(account: string, asset: string, amount: bigint): Promise<void> {
+  async reserveFunds(
+    account: string,
+    asset: string,
+    amount: bigint,
+  ): Promise<void> {
     const result = await this.pool.query(
       `UPDATE balance_entries SET available_base = available_base - $3, committed_base = committed_base + $3, updated_at = now()
        WHERE account = $1 AND asset = $2 AND available_base >= $3 RETURNING account`,
       [account, asset, amount.toString()],
     );
     if (result.rowCount === 0) {
-      throw new Error(`INSUFFICIENT_AVAILABLE: account=${account} asset=${asset} needed=${amount}`);
+      throw new Error(
+        `INSUFFICIENT_AVAILABLE: account=${account} asset=${asset} needed=${amount}`,
+      );
     }
   }
 
-  async releaseFunds(account: string, asset: string, amount: bigint): Promise<void> {
+  async releaseFunds(
+    account: string,
+    asset: string,
+    amount: bigint,
+  ): Promise<void> {
     const result = await this.pool.query(
       `UPDATE balance_entries SET available_base = available_base + $3, committed_base = committed_base - $3, updated_at = now()
        WHERE account = $1 AND asset = $2 AND committed_base >= $3 RETURNING account`,
       [account, asset, amount.toString()],
     );
     if (result.rowCount === 0) {
-      throw new Error(`INSUFFICIENT_COMMITTED: account=${account} asset=${asset} committed=... needed=${amount}`);
+      throw new Error(
+        `INSUFFICIENT_COMMITTED: account=${account} asset=${asset} committed=... needed=${amount}`,
+      );
     }
   }
 
-  async consumeFunds(account: string, asset: string, amount: bigint): Promise<void> {
+  async consumeFunds(
+    account: string,
+    asset: string,
+    amount: bigint,
+  ): Promise<void> {
     const result = await this.pool.query(
       `UPDATE balance_entries SET committed_base = committed_base - $3, updated_at = now()
        WHERE account = $1 AND asset = $2 AND committed_base >= $3 RETURNING account`,
       [account, asset, amount.toString()],
     );
     if (result.rowCount === 0) {
-      throw new Error(`INSUFFICIENT_COMMITTED_FOR_CONSUME: account=${account} asset=${asset} needed=${amount}`);
+      throw new Error(
+        `INSUFFICIENT_COMMITTED_FOR_CONSUME: account=${account} asset=${asset} needed=${amount}`,
+      );
     }
   }
 
@@ -99,16 +133,25 @@ export class PgKernelEventSink implements KernelEventSink {
   constructor(config: PoolConfig | string | Pool | PgBalanceStoreConfig) {
     if (config instanceof Pool) {
       this.pool = config;
-    } else if (config && typeof config === "object" && "pool" in config && config.pool) {
+    } else if (
+      config &&
+      typeof config === "object" &&
+      "pool" in config &&
+      config.pool
+    ) {
       this.pool = config.pool;
     } else {
-      this.pool = new Pool(typeof config === "string" ? { connectionString: config } : config);
+      this.pool = new Pool(
+        typeof config === "string" ? { connectionString: config } : config,
+      );
     }
   }
 
   async push(topic: string, payload: unknown): Promise<void> {
     const payloadStr = JSON.stringify(payload);
-    const metadata = JSON.stringify({ payloadHash: createHash("sha256").update(payloadStr).digest("hex") });
+    const metadata = JSON.stringify({
+      payloadHash: createHash("sha256").update(payloadStr).digest("hex"),
+    });
     await this.pool.query(
       `INSERT INTO kernel_events (topic, aggregate_type, aggregate_id, payload, metadata, created_at)
        VALUES ($1, 'system', '00000000-0000-0000-0000-000000000000'::uuid, $2::jsonb, $3::jsonb, now())`,
@@ -135,10 +178,17 @@ export class PgMoneyAuthority implements MoneyAuthority {
   constructor(config: PoolConfig | string | Pool | PgBalanceStoreConfig) {
     if (config instanceof Pool) {
       this.pool = config;
-    } else if (config && typeof config === "object" && "pool" in config && config.pool) {
+    } else if (
+      config &&
+      typeof config === "object" &&
+      "pool" in config &&
+      config.pool
+    ) {
       this.pool = config.pool;
     } else {
-      this.pool = new Pool(typeof config === "string" ? { connectionString: config } : config);
+      this.pool = new Pool(
+        typeof config === "string" ? { connectionString: config } : config,
+      );
     }
     this.maxOpenReservations = 16;
   }
@@ -166,9 +216,16 @@ export class PgMoneyAuthority implements MoneyAuthority {
         `SELECT available_base FROM balance_entries WHERE account = $1 AND asset = $2 FOR UPDATE`,
         [account, asset],
       );
-      if (bal.rowCount === 0 || BigInt(bal.rows[0].available_base) < cashNeededBase) {
+      if (
+        bal.rowCount === 0 ||
+        BigInt(bal.rows[0].available_base) < cashNeededBase
+      ) {
         await client.query("ROLLBACK");
-        return { ok: false, reason: "INSUFFICIENT_AVAILABLE_BALANCE", code: "INSUFFICIENT_AVAILABLE_BALANCE" };
+        return {
+          ok: false,
+          reason: "INSUFFICIENT_AVAILABLE_BALANCE",
+          code: "INSUFFICIENT_AVAILABLE_BALANCE",
+        };
       }
 
       // 2. Check open-reservation limit
@@ -178,7 +235,11 @@ export class PgMoneyAuthority implements MoneyAuthority {
       );
       if ((openCount.rows[0]?.cnt ?? 0) >= this.maxOpenReservations) {
         await client.query("ROLLBACK");
-        return { ok: false, reason: "RESERVATION_LIMIT_EXCEEDED", code: "RESERVATION_LIMIT_EXCEEDED" };
+        return {
+          ok: false,
+          reason: "RESERVATION_LIMIT_EXCEEDED",
+          code: "RESERVATION_LIMIT_EXCEEDED",
+        };
       }
 
       // 3. Reserve funds
@@ -192,7 +253,16 @@ export class PgMoneyAuthority implements MoneyAuthority {
       await client.query(
         `INSERT INTO reservations (id, risk_decision_id, intent_id, account, asset, amount, currency, status, created_at, expires_at, consumed_at, permit_id, payload_hash, decision_id)
          VALUES ($1, $2, $3, $4, $5, $6, 'pUSD', 'ACTIVE', now(), $7, NULL, NULL, NULL, $8)`,
-        [reservationId, decisionId, intentId, account, asset, cashNeededBase.toString(), expiresAt.toISOString(), decisionId],
+        [
+          reservationId,
+          decisionId,
+          intentId,
+          account,
+          asset,
+          cashNeededBase.toString(),
+          expiresAt.toISOString(),
+          decisionId,
+        ],
       );
 
       // 5. Fetch risk_decision for required execution_permits fields
@@ -203,7 +273,11 @@ export class PgMoneyAuthority implements MoneyAuthority {
       );
       if (rd.rowCount === 0) {
         await client.query("ROLLBACK");
-        return { ok: false, reason: "RISK_DECISION_NOT_FOUND", code: "RISK_DECISION_NOT_FOUND" };
+        return {
+          ok: false,
+          reason: "RISK_DECISION_NOT_FOUND",
+          code: "RISK_DECISION_NOT_FOUND",
+        };
       }
       const riskDecision = rd.rows[0];
 
@@ -232,18 +306,25 @@ export class PgMoneyAuthority implements MoneyAuthority {
 
       // 6. Insert kernel event (audit trail) — schema has NO payload_hash col,
       //    store hash inside metadata JSONB instead.
-      const eventPayload = JSON.stringify({ reservationId, permitId, intentId, account, asset, cashBase: cashNeededBase.toString(), leaseEpoch });
-      const payloadHash = createHash("sha256").update(eventPayload).digest("hex");
-      await client.query(
-        `SELECT kernel_event_append($1, $2, $3, $4, $5)`,
-        [
-          "RESERVATION_CREATED",
-          "execution_permits",
-          permitId,
-          eventPayload,
-          JSON.stringify({ payloadHash, leaseEpoch }),
-        ],
-      );
+      const eventPayload = JSON.stringify({
+        reservationId,
+        permitId,
+        intentId,
+        account,
+        asset,
+        cashBase: cashNeededBase.toString(),
+        leaseEpoch,
+      });
+      const payloadHash = createHash("sha256")
+        .update(eventPayload)
+        .digest("hex");
+      await client.query(`SELECT kernel_event_append($1, $2, $3, $4, $5)`, [
+        "RESERVATION_CREATED",
+        "execution_permits",
+        permitId,
+        eventPayload,
+        JSON.stringify({ payloadHash, leaseEpoch }),
+      ]);
 
       // 7. Commit — all-or-nothing
       await client.query("COMMIT");
@@ -261,7 +342,9 @@ export class PgMoneyAuthority implements MoneyAuthority {
   }
 }
 
-export function createPgMoneyAuthority(config: PgBalanceStoreConfig): PgMoneyAuthority {
+export function createPgMoneyAuthority(
+  config: PgBalanceStoreConfig,
+): PgMoneyAuthority {
   return new PgMoneyAuthority(config);
 }
 
@@ -269,7 +352,9 @@ export function createPgMoneyAuthority(config: PgBalanceStoreConfig): PgMoneyAut
  * Create all PostgreSQL-backed store ports from a single connection string/pool.
  * Compatibility factory kept for existing wiring (orchestrator-pg.ts).
  */
-export function createPgStores(config: PoolConfig | string | PgBalanceStoreConfig): {
+export function createPgStores(
+  config: PoolConfig | string | PgBalanceStoreConfig,
+): {
   balanceStore: PgBalanceStore;
   eventSink: PgKernelEventSink;
   pool: Pool;
@@ -277,7 +362,9 @@ export function createPgStores(config: PoolConfig | string | PgBalanceStoreConfi
   const pool =
     config && typeof config === "object" && "pool" in config && config.pool
       ? config.pool
-      : new Pool(typeof config === "string" ? { connectionString: config } : config);
+      : new Pool(
+          typeof config === "string" ? { connectionString: config } : config,
+        );
   return {
     balanceStore: new PgBalanceStore(pool),
     eventSink: new PgKernelEventSink(pool),

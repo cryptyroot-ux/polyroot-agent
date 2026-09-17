@@ -18,12 +18,13 @@ import {
 export function generateIntent(
   forecast: Forecast,
   asset: AssetIdentity,
-  sizingFactor = 1.0
+  sizingFactor = 1.0,
 ): TradeIntent {
-  const p = forecast.p_conservative ?? forecast.p_calibrated ?? forecast.p_raw ?? 0.5;
+  const p =
+    forecast.p_conservative ?? forecast.p_calibrated ?? forecast.p_raw ?? 0.5;
   const side = p > 0.5 ? "BUY" : "SELL";
   const rawSize = Math.abs(p - 0.5) * 2 * sizingFactor;
-  
+
   return {
     schema_version: "1.0.0",
     intent_id: `int_${forecast.forecast_id}`,
@@ -53,11 +54,11 @@ export function generateIntent(
 export function adjustQuote(
   intent: TradeIntent,
   book: { bids?: [number, number][]; asks?: [number, number][] },
-  minEdge: number
+  minEdge: number,
 ): TradeIntent {
   const bestBid = book.bids?.[0]?.[0] ?? 0;
   const bestAsk = book.asks?.[0]?.[0] ?? 1;
-  
+
   let targetPrice = intent.price;
   if (intent.side === "BUY") {
     if ((intent.price ?? 0) - bestAsk < minEdge) {
@@ -79,5 +80,8 @@ export function adjustQuote(
  * portfolio-level constraints (TVL, volatility).
  */
 export function scaleIntent(intent: TradeIntent, scale: number): TradeIntent {
-  return { ...intent, size: (intent.size ?? 0) * Math.max(0, Math.min(1, scale)) };
+  return {
+    ...intent,
+    size: (intent.size ?? 0) * Math.max(0, Math.min(1, scale)),
+  };
 }

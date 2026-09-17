@@ -45,7 +45,10 @@ const ENTRY_BLOCK_HEALTH: ReadonlySet<RuntimeHealth> = new Set([
   "PROTECTIVE_PAUSE",
 ]);
 
-const FINANCIAL_BLOCK_VENUE: ReadonlySet<VenueMode> = new Set(["UNAVAILABLE", "UNKNOWN"]);
+const FINANCIAL_BLOCK_VENUE: ReadonlySet<VenueMode> = new Set([
+  "UNAVAILABLE",
+  "UNKNOWN",
+]);
 
 const ENTRY_BLOCK_VENUE: ReadonlySet<VenueMode> = new Set([
   "POST_ONLY",
@@ -66,7 +69,10 @@ export function computeGate(
   venueMode: VenueMode,
 ): FinancialGate {
   if (mode !== "LIVE") return "FINANCIAL_BLOCKED";
-  if (FINANCIAL_BLOCK_HEALTH.has(health) || FINANCIAL_BLOCK_VENUE.has(venueMode)) {
+  if (
+    FINANCIAL_BLOCK_HEALTH.has(health) ||
+    FINANCIAL_BLOCK_VENUE.has(venueMode)
+  ) {
     return "FINANCIAL_BLOCKED";
   }
   if (ENTRY_BLOCK_HEALTH.has(health) || ENTRY_BLOCK_VENUE.has(venueMode)) {

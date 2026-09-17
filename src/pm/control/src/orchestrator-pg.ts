@@ -14,10 +14,7 @@
 
 import type { PoolConfig } from "pg";
 import type { ExecutionPermit } from "@polyroot/domain";
-import {
-  createPgStores,
-  MoneyKernel,
-} from "@polyroot/risk";
+import { createPgStores, MoneyKernel } from "@polyroot/risk";
 import {
   createPgControlStores,
   PgReconciler,
@@ -65,7 +62,12 @@ export type OrchestrateOutcome =
       order: any;
       permit: ExecutionPermit;
     }
-  | { ok: false; stage: "EDGE" | "RISK" | "BUILD" | "SUBMIT"; code: string; reason: string };
+  | {
+      ok: false;
+      stage: "EDGE" | "RISK" | "BUILD" | "SUBMIT";
+      code: string;
+      reason: string;
+    };
 
 export interface WiredOrchestrator {
   orchestrate: (input: OrchestrateInput) => Promise<OrchestrateOutcome>;
@@ -76,7 +78,9 @@ export interface WiredOrchestrator {
   shutdown: () => Promise<void>;
 }
 
-export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<WiredOrchestrator> {
+export async function createOrchestratorPg(
+  deps: OrchestratorPgDeps,
+): Promise<WiredOrchestrator> {
   // ── PostgreSQL-backed Money Kernel ports ──────────────────────────────────
   const {
     balanceStore,
@@ -99,14 +103,23 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
   const persistence = stores.persistence;
 
   // ── PostgreSQL-backed Permit Store & Recovery Ledger ──────────────────────
-  const permitStore = new (await import("@polyroot/venue")).PgPermitStore(deps.pgConfig);
-  const recoveryLedger = new (await import("@polyroot/venue")).PgRecoveryLedger(deps.pgConfig);
+  const permitStore = new (await import("@polyroot/venue")).PgPermitStore(
+    deps.pgConfig,
+  );
+  const recoveryLedger = new (await import("@polyroot/venue")).PgRecoveryLedger(
+    deps.pgConfig,
+  );
 
   // ── PostgreSQL-backed Executor Lease Store (epoch fencing, PR-OPS-02) ─────
-  const leaseStore = new (await import("@polyroot/venue")).PgLeaseStore(deps.pgConfig);
+  const leaseStore = new (await import("@polyroot/venue")).PgLeaseStore(
+    deps.pgConfig,
+  );
 
   // ── Executor with in-memory seen cache (DB-backed recovery ledger for crash safety) ──
-  const seenCache = new Map<string, import("@polyroot/executor").OrderLifecycleState>();
+  const seenCache = new Map<
+    string,
+    import("@polyroot/executor").OrderLifecycleState
+  >();
 
   // Hydrate cache from DB once at startup (survives restarts).
   const unknownIds = await recoveryLedger.getUnresolved();
@@ -117,7 +130,10 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
     now: deps.now,
     seen: {
       has: (orderId: string) => seenCache.has(orderId),
-      add: (orderId: string, state: import("@polyroot/executor").OrderLifecycleState) => {
+      add: (
+        orderId: string,
+        state: import("@polyroot/executor").OrderLifecycleState,
+      ) => {
         seenCache.set(orderId, state);
       },
       get: (orderId: string) => seenCache.get(orderId),
@@ -135,7 +151,9 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
   const supervisor = new PgSupervisor(reconciler, deps.pgConfig, deps.policy);
 
   // ── Orchestration pipeline ────────────────────────────────────────────────
-  async function orchestrate(input: OrchestrateInput): Promise<OrchestrateOutcome> {
+  async function orchestrate(
+    input: OrchestrateInput,
+  ): Promise<OrchestrateOutcome> {
     const now = deps.now();
     const venueMode = deps.venueMode();
 
@@ -145,7 +163,12 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
       { minEdge: deps.policy.min_edge_after_cost },
     );
     if (edge.action !== "TRADE") {
-      return { ok: false, stage: "EDGE", code: "MIN_EDGE_UNMET", reason: `edge ${Math.round(edge.edge * 10000)} bps < ${deps.policy.min_edge_after_cost * 10000} bps` };
+      return {
+        ok: false,
+        stage: "EDGE",
+        code: "MIN_EDGE_UNMET",
+        reason: `edge ${Math.round(edge.edge * 10000)} bps < ${deps.policy.min_edge_after_cost * 10000} bps`,
+      };
     }
 
     // Stage RISK: validate & reserve
@@ -166,7 +189,12 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
     };
     const riskRes = await validateAndReserve(riskInput, kernel);
     if (!riskRes.ok) {
-      return { ok: false, stage: "RISK", code: riskRes.code, reason: riskRes.reason };
+      return {
+        ok: false,
+        stage: "RISK",
+        code: riskRes.code,
+        reason: riskRes.reason,
+      };
     }
 
     // Stage BUILD: sign order
@@ -181,27 +209,53 @@ export async function createOrchestratorPg(deps: OrchestratorPgDeps): Promise<Wi
       deps.signer,
     );
     if (!buildRes.ok) {
-      return { ok: false, stage: "BUILD", code: buildRes.code, reason: buildRes.reason };
+      return {
+        ok: false,
+        stage: "BUILD",
+        code: buildRes.code,
+        reason: buildRes.reason,
+      };
     }
     const { order, permit } = buildRes;
 
     // Stage SUBMIT: execute via executor
     const submitRes = await executor.submit(order, permit);
     if (submitRes.outcome === "SUBMITTED") {
-      return { ok: true, outcome: "SUBMITTED", state: submitRes.state, order: submitRes.result, permit };
+      return {
+        ok: true,
+        outcome: "SUBMITTED",
+        state: submitRes.state,
+        order: submitRes.result,
+        permit,
+      };
     }
     if (submitRes.outcome === "NEEDS_RECONCILIATION") {
-      return { ok: true, outcome: "NEEDS_RECONCILIATION", state: "SUBMISSION_UNKNOWN", order: { order_id: submitRes.orderId }, permit };
+      return {
+        ok: true,
+        outcome: "NEEDS_RECONCILIATION",
+        state: "SUBMISSION_UNKNOWN",
+        order: { order_id: submitRes.orderId },
+        permit,
+      };
     }
-    return { ok: false, stage: "SUBMIT", code: submitRes.code, reason: submitRes.reason };
+    return {
+      ok: false,
+      stage: "SUBMIT",
+      code: submitRes.code,
+      reason: submitRes.reason,
+    };
   }
 
   // ── Shutdown ──────────────────────────────────────────────────────────────
   async function shutdown(): Promise<void> {
     await Promise.all([
       riskPool.end(),
-      (await import("@polyroot/venue")).PgPermitStore.prototype.close?.call(permitStore),
-      (await import("@polyroot/venue")).PgRecoveryLedger.prototype.close?.call(recoveryLedger),
+      (await import("@polyroot/venue")).PgPermitStore.prototype.close?.call(
+        permitStore,
+      ),
+      (await import("@polyroot/venue")).PgRecoveryLedger.prototype.close?.call(
+        recoveryLedger,
+      ),
       leaseStore.close(),
     ]);
   }

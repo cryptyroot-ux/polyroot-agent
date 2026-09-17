@@ -44,9 +44,16 @@ export interface CharterRequestCtx {
   marketClass?: string;
 }
 
-export type CharterResult = { ok: true } | { ok: false; code: string; reason: string };
+export type CharterResult =
+  { ok: true } | { ok: false; code: string; reason: string };
 
-const ROUTINE_ACTIONS: ReadonlySet<CharterAction> = new Set(["SUBMIT", "CANCEL", "REDUCE", "EXIT", "REDEEM"]);
+const ROUTINE_ACTIONS: ReadonlySet<CharterAction> = new Set([
+  "SUBMIT",
+  "CANCEL",
+  "REDUCE",
+  "EXIT",
+  "REDEEM",
+]);
 const GOVERNANCE_ACTIONS: ReadonlySet<CharterAction> = new Set([
   "PROMOTE_STRATEGY",
   "INCREASE_CAPITAL",
@@ -80,24 +87,51 @@ export function commissionCharter(input: CharterInput): Charter {
  * Routine autonomy runs without human approval; governance mutations fail.
  * Strategy/class/exposure constraints are hard-binding and non-self-weakening.
  */
-export function charterAllows(c: Charter, req: CharterRequestCtx): CharterResult {
+export function charterAllows(
+  c: Charter,
+  req: CharterRequestCtx,
+): CharterResult {
   if (new Date() > c.expires_at) {
-    return { ok: false, code: "CHARTER_EXPIRED", reason: "autonomy charter expired" };
+    return {
+      ok: false,
+      code: "CHARTER_EXPIRED",
+      reason: "autonomy charter expired",
+    };
   }
   if (GOVERNANCE_ACTIONS.has(req.action)) {
-    return { ok: false, code: "GOVERNANCE_ONLY", reason: `${req.action} is owner governance; routine autonomy cannot perform it` };
+    return {
+      ok: false,
+      code: "GOVERNANCE_ONLY",
+      reason: `${req.action} is owner governance; routine autonomy cannot perform it`,
+    };
   }
   if (!ROUTINE_ACTIONS.has(req.action)) {
-    return { ok: false, code: "UNKNOWN_ACTION", reason: `unknown charter action ${req.action}` };
+    return {
+      ok: false,
+      code: "UNKNOWN_ACTION",
+      reason: `unknown charter action ${req.action}`,
+    };
   }
   if (req.strategyId && !c.qualified_strategy_ids.includes(req.strategyId)) {
-    return { ok: false, code: "STRATEGY_NOT_QUALIFIED", reason: `${req.strategyId} is not charter-qualified` };
+    return {
+      ok: false,
+      code: "STRATEGY_NOT_QUALIFIED",
+      reason: `${req.strategyId} is not charter-qualified`,
+    };
   }
   if (req.marketClass && !c.market_class_allowlist.includes(req.marketClass)) {
-    return { ok: false, code: "MARKET_CLASS_FORBIDDEN", reason: `${req.marketClass} not in charter allowlist` };
+    return {
+      ok: false,
+      code: "MARKET_CLASS_FORBIDDEN",
+      reason: `${req.marketClass} not in charter allowlist`,
+    };
   }
   if (req.exposureUsd !== undefined && req.exposureUsd > c.capital_usd_cap) {
-    return { ok: false, code: "CAPITAL_CAP_EXCEEDED", reason: `exposure ${req.exposureUsd} > cap ${c.capital_usd_cap}` };
+    return {
+      ok: false,
+      code: "CAPITAL_CAP_EXCEEDED",
+      reason: `exposure ${req.exposureUsd} > cap ${c.capital_usd_cap}`,
+    };
   }
   return { ok: true };
 }

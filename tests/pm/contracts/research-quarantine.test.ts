@@ -50,6 +50,9 @@ describe("PR-SEC-02 / T-PR-SEC-02: research quarantine boundary", () => {
     });
     assert.equal(ev.untrusted, true);
     assert.match(ev.contentHash, /^sha256:/);
-    assert.equal((ev as NormalizedEvidence).sourceUrl, "https://news.example/a?utm=1");
+    assert.equal(
+      (ev as NormalizedEvidence).sourceUrl,
+      "https://news.example/a?utm=1",
+    );
   });
 });

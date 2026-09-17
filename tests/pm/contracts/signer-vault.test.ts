@@ -92,19 +92,25 @@ describe("Signer Vault — TABLE 8 pre-sign invariants (PM-WALLET-07)", () => {
   });
 
   it("refuses an expired permit", async () => {
-    const res = await vault().sign(makeReq({ now: new Date("2026-01-01T00:02:00Z") }));
+    const res = await vault().sign(
+      makeReq({ now: new Date("2026-01-01T00:02:00Z") }),
+    );
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, "PERMIT_EXPIRED");
   });
 
   it("refuses a single-use permit already marked used", async () => {
-    const res = await vault().sign(makeReq({ permit: makePermit({ used_at: new Date() }) }));
+    const res = await vault().sign(
+      makeReq({ permit: makePermit({ used_at: new Date() }) }),
+    );
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, "PERMIT_REUSED");
   });
 
   it("refuses when signer and funder are the same identity", async () => {
-    const res = await vault().sign(makeReq({ wallet: makeWallet({ funder: "0xSIGNER" }) }));
+    const res = await vault().sign(
+      makeReq({ wallet: makeWallet({ funder: "0xSIGNER" }) }),
+    );
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, "IDENTITY_CONFLICT");
   });
@@ -122,24 +128,36 @@ describe("Signer Vault — TABLE 8 pre-sign invariants (PM-WALLET-07)", () => {
   });
 
   it("refuses when amount exceeds the share quota (dimension check)", async () => {
-    const res = await vault().sign(makeReq({
-      permit: makePermit({ max_qty: 100, max_cash: 1000 }),
-      amountBase: 150_000_000n,
-    }));
+    const res = await vault().sign(
+      makeReq({
+        permit: makePermit({ max_qty: 100, max_cash: 1000 }),
+        amountBase: 150_000_000n,
+      }),
+    );
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, "AMOUNT_EXCEEDS_PERMIT");
   });
 
   it("treats the crypto-signer error as a typed refusal", async () => {
-    const v = new SignerVault({ cryptoSigner: async () => { throw new Error("kms unreachable"); } });
+    const v = new SignerVault({
+      cryptoSigner: async () => {
+        throw new Error("kms unreachable");
+      },
+    });
     const res = await v.sign(makeReq());
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, "SIGN_ENGINE_ERROR");
   });
 
   it("allowlist contains exactly the four lifecycle operations", () => {
-    assert.deepEqual([...SIGNER_ALLOWED_ACTIONS].sort(), [
-      "ORDER_CANCEL", "ORDER_SUBMIT", "POSITION_MERGE", "POSITION_REDEEM",
-    ].sort());
+    assert.deepEqual(
+      [...SIGNER_ALLOWED_ACTIONS].sort(),
+      [
+        "ORDER_CANCEL",
+        "ORDER_SUBMIT",
+        "POSITION_MERGE",
+        "POSITION_REDEEM",
+      ].sort(),
+    );
   });
 });

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { validateAndReserve, type RiskGateInput } from "@polyroot/control";
 import {
-  validateAndReserve,
-  type RiskGateInput,
-} from "@polyroot/control";
-import { MoneyKernel, type BalanceStore, type KernelEventSink } from "@polyroot/risk";
+  MoneyKernel,
+  type BalanceStore,
+  type KernelEventSink,
+} from "@polyroot/risk";
 import {
   DEFAULT_RISK_POLICY,
   type RiskPolicy,
@@ -200,7 +201,10 @@ describe("Control — risk gate (validateAndReserve)", () => {
     const { kernel } = makeKernel();
     const res = await validateAndReserve(
       gateInput({
-        intent: makeIntent({ desired_qty: undefined, desired_notional: undefined }),
+        intent: makeIntent({
+          desired_qty: undefined,
+          desired_notional: undefined,
+        }),
       }),
       kernel,
     );
@@ -224,7 +228,11 @@ describe("Control — risk gate (validateAndReserve)", () => {
     const { balance, kernel } = makeKernel();
     const res = await validateAndReserve(
       gateInput({
-        intent: makeIntent({ desired_qty: undefined, desired_notional: 25, limit_price: 0.5 }),
+        intent: makeIntent({
+          desired_qty: undefined,
+          desired_notional: 25,
+          limit_price: 0.5,
+        }),
       }),
       kernel,
     );

@@ -15,7 +15,7 @@ console.log("=== Canary Deployment Script (Phase 13) ===\n");
 // Step 1: Verify security/egress components are operational
 console.log("Step 1: Verifying Security + Egress components...");
 try {
-  execSync('node -e "require(\'@polyroot/security\')"', { stdio: "pipe" });
+  execSync("node -e \"require('@polyroot/security')\"", { stdio: "pipe" });
   console.log("  ✅ Security proxy and egress filter loaded successfully\n");
 } catch (e) {
   console.error("  ❌ Failed to load security components:", e.message);

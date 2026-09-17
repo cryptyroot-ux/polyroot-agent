@@ -34,7 +34,8 @@ class FakeAdapter implements VenueAdapter {
       timestamp: new Date(),
     },
   });
-  getOrderStatusFn: (id: string) => Promise<OrderResult | null> = async () => null;
+  getOrderStatusFn: (id: string) => Promise<OrderResult | null> = async () =>
+    null;
   setMode(m: VenueMode) {
     this.mode = m;
   }
@@ -92,7 +93,11 @@ function makeSignedOrder(id = "ord_1", permitId?: string): SignedOrder {
   };
 }
 
-import { MemPermitStore, MemRecoveryLedger, MemLeaseStore } from "@polyroot/venue";
+import {
+  MemPermitStore,
+  MemRecoveryLedger,
+  MemLeaseStore,
+} from "@polyroot/venue";
 
 function makeDeps(
   adapter: FakeAdapter,

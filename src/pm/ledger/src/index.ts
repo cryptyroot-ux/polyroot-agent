@@ -8,10 +8,7 @@
  */
 
 import { randomUUID } from "crypto";
-import {
-  type LedgerEvent,
-  type TradeIntent,
-} from "@polyroot/domain";
+import { type LedgerEvent, type TradeIntent } from "@polyroot/domain";
 
 /* ─── PM-LEDGER-01: atomic entry generation ──────────────────────────── */
 
@@ -44,8 +41,18 @@ export function generateEntriesForIntent(
   const amount = BigInt(Math.round(size * 1e6)); // base units
 
   return [
-    { account: `available:${walletAddress}`, side: "CREDIT", amount, asset: assetId },
-    { account: `reserved:${walletAddress}:${orderId}`, side: "DEBIT", amount, asset: assetId },
+    {
+      account: `available:${walletAddress}`,
+      side: "CREDIT",
+      amount,
+      asset: assetId,
+    },
+    {
+      account: `reserved:${walletAddress}:${orderId}`,
+      side: "DEBIT",
+      amount,
+      asset: assetId,
+    },
   ];
 }
 
@@ -60,7 +67,10 @@ export function projectBalance(entries: LedgerEntry[]): Map<string, bigint> {
   for (const e of entries) {
     const key = `${e.account}:${e.asset}`;
     const current = balances.get(key) ?? 0n;
-    balances.set(key, e.side === "CREDIT" ? current + e.amount : current - e.amount);
+    balances.set(
+      key,
+      e.side === "CREDIT" ? current + e.amount : current - e.amount,
+    );
   }
   return balances;
 }
@@ -85,7 +95,10 @@ export function mapEntriesToEvent(
     type: "INTENT_PROPOSED",
     aggregate_id: intent.intent_id,
     aggregate_type: "Intent",
-    payload: { intent, entries: entries.map((e) => ({ ...e, amount: e.amount.toString() })) },
+    payload: {
+      intent,
+      entries: entries.map((e) => ({ ...e, amount: e.amount.toString() })),
+    },
     metadata: { created_at: now.toISOString() },
     timestamp: now,
   };
@@ -145,7 +158,9 @@ export interface EventStore {
   appendMany(events: LedgerEvent[]): Promise<AppendResult[]>;
   getEvent(id: string): Promise<LedgerEvent | undefined>;
   /** Replay events for an aggregate, or all events, from a cursor. */
-  replay(cursor: EventCursor & { aggregateId?: string }): Promise<LedgerEvent[]>;
+  replay(
+    cursor: EventCursor & { aggregateId?: string },
+  ): Promise<LedgerEvent[]>;
   /** Highest sequence currently stored (0n if empty). */
   lastSequence(): Promise<bigint>;
   /** Total number of events stored. */
@@ -180,7 +195,9 @@ export interface ProjectionOptions {
  */
 export interface ProjectionEngine {
   /** Rebuild the projection from scratch (full replay). */
-  rebuild(options: Omit<ProjectionOptions, "fromSequence">): Promise<ProjectionResult[]>;
+  rebuild(
+    options: Omit<ProjectionOptions, "fromSequence">,
+  ): Promise<ProjectionResult[]>;
   /** Incrementally process events since the last checkpoint. */
   process(options: ProjectionOptions): Promise<ProjectionResult[]>;
   /** Get the current checkpoint for a projection. */

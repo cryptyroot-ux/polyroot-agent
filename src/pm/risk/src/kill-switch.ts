@@ -21,11 +21,7 @@
  * native reduce-only order type exists at the venue.
  */
 
-export type KillLevel =
-  | "NONE"
-  | "PAUSE_ENTRIES"
-  | "CANCEL_OPEN"
-  | "FLATTEN";
+export type KillLevel = "NONE" | "PAUSE_ENTRIES" | "CANCEL_OPEN" | "FLATTEN";
 
 export const KILL_LEVELS: readonly KillLevel[] = [
   "NONE",
@@ -177,7 +173,10 @@ export function planFlatten(
   for (const p of positions) {
     if (p.qtyBase <= 0n) continue;
     if (priceCapBase <= 0n || priceCapBase > 1_000_000n) {
-      skipped.push({ marketId: p.marketId, reason: "invalid flatten price cap" });
+      skipped.push({
+        marketId: p.marketId,
+        reason: "invalid flatten price cap",
+      });
       continue;
     }
     if (p.avgPriceBase > priceCapBase) {
@@ -230,7 +229,11 @@ export function checkReduceAllowed(args: {
   pendingCancelQtyBase: bigint;
 }): ReduceCheckResult {
   if (args.requestQtyBase <= 0n) {
-    return { ok: false, code: "REDUCE_SIZE", reason: "reduce qty must be positive" };
+    return {
+      ok: false,
+      code: "REDUCE_SIZE",
+      reason: "reduce qty must be positive",
+    };
   }
   const free = sellableShares(
     args.verifiedQtyDeltaBase,
@@ -241,7 +244,8 @@ export function checkReduceAllowed(args: {
     return {
       ok: false,
       code: "REDUCE_OVERDRAWN",
-      reason: `sell ${args.requestQtyBase} exceeds verified+released ${free}; ` +
+      reason:
+        `sell ${args.requestQtyBase} exceeds verified+released ${free}; ` +
         `uncertain cancel of ${args.pendingCancelQtyBase} does not free shares`,
     };
   }

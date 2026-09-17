@@ -3,7 +3,10 @@ import type { Persistence } from "./persistence.js";
 
 /** Reconciler – resolves orders left in SUBMISSION_UNKNOWN state. */
 export class Reconciler {
-  constructor(protected readonly executor: Executor, protected readonly persistence: Persistence) {}
+  constructor(
+    protected readonly executor: Executor,
+    protected readonly persistence: Persistence,
+  ) {}
 
   /** Reconcile all unknown orders. */
   async reconcileAll(): Promise<void> {

@@ -1,9 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import {
-  accessAllows,
-  computeAccessGate,
-} from "@polyroot/control";
+import { accessAllows, computeAccessGate } from "@polyroot/control";
 
 describe("PR-GOV-06 / T-PR-GOV-06: access & compliance state", () => {
   it("BLOCKED and CLOSE_ONLY are first-class states; entry is denied in both", () => {

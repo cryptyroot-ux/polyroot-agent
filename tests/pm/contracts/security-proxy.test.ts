@@ -11,14 +11,19 @@ describe("PR-SEC-04, PR-SEC-07 / T-PR-SEC-04, T-PR-SEC-07: Security Proxy (ingre
   const makeProxy = () =>
     new SecurityProxy({
       ownerApiKey: "b3duZXJfa2V5X2Jhc2U2NA==", // "owner_key_base64" in base64
-      allowedServices: ["spiffe://polyroot/executor", "spiffe://polyroot/signer"],
+      allowedServices: [
+        "spiffe://polyroot/executor",
+        "spiffe://polyroot/signer",
+      ],
       protectedPaths: ["/api/", "/admin/", "/control/"],
       publicPaths: ["/health", "/metrics", "/ready"],
       rateLimitMax: 10,
       rateLimitWindowMs: 1000,
     });
 
-  const makeRequest = (overrides: Partial<IngressRequest> = {}): IngressRequest => ({
+  const makeRequest = (
+    overrides: Partial<IngressRequest> = {},
+  ): IngressRequest => ({
     url: "http://localhost:3000/api/test",
     method: "GET",
     headers: {},
@@ -97,11 +102,16 @@ describe("PR-SEC-04, PR-SEC-07 / T-PR-SEC-04, T-PR-SEC-07: Security Proxy (ingre
 
   it("creates session with CSRF token and validates it", async () => {
     const proxy = makeProxy();
-    const { sessionId, csrfToken, expiresAt } = proxy.createSession("10.0.0.2", "test-agent");
+    const { sessionId, csrfToken, expiresAt } = proxy.createSession(
+      "10.0.0.2",
+      "test-agent",
+    );
 
     // Valid session cookie
     const req1 = makeRequest({
-      headers: { cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}` },
+      headers: {
+        cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}`,
+      },
     });
     const res1 = await proxy.check(req1);
     assert.equal(res1.ok, true);
@@ -111,7 +121,9 @@ describe("PR-SEC-04, PR-SEC-07 / T-PR-SEC-04, T-PR-SEC-07: Security Proxy (ingre
     // Invalid CSRF on mutating request
     const req2 = makeRequest({
       method: "POST",
-      headers: { cookie: `polyroot_sid=${sessionId}; polyroot_csrf=wrong_token` },
+      headers: {
+        cookie: `polyroot_sid=${sessionId}; polyroot_csrf=wrong_token`,
+      },
     });
     const res2 = await proxy.check(req2);
     assert.equal(res2.ok, false);
@@ -120,7 +132,9 @@ describe("PR-SEC-04, PR-SEC-07 / T-PR-SEC-04, T-PR-SEC-07: Security Proxy (ingre
     // Valid CSRF on mutating request
     const req3 = makeRequest({
       method: "POST",
-      headers: { cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}` },
+      headers: {
+        cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}`,
+      },
     });
     const res3 = await proxy.check(req3);
     assert.equal(res3.ok, true);
@@ -134,12 +148,17 @@ describe("PR-SEC-04, PR-SEC-07 / T-PR-SEC-04, T-PR-SEC-07: Security Proxy (ingre
       publicPaths: ["/health"],
       sessionTtlMs: 1, // 1ms
     });
-    const { sessionId, csrfToken } = proxy.createSession("10.0.0.3", "test-agent");
+    const { sessionId, csrfToken } = proxy.createSession(
+      "10.0.0.3",
+      "test-agent",
+    );
     // Wait for expiry
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 10));
 
     const req = makeRequest({
-      headers: { cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}` },
+      headers: {
+        cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}`,
+      },
     });
     const res = await proxy.check(req);
     assert.equal(res.ok, false);
@@ -148,11 +167,16 @@ describe("PR-SEC-04, PR-SEC-07 / T-PR-SEC-04, T-PR-SEC-07: Security Proxy (ingre
 
   it("invalidates session on logout", async () => {
     const proxy = makeProxy();
-    const { sessionId, csrfToken } = proxy.createSession("10.0.0.4", "test-agent");
+    const { sessionId, csrfToken } = proxy.createSession(
+      "10.0.0.4",
+      "test-agent",
+    );
 
     // Session works
     let req = makeRequest({
-      headers: { cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}` },
+      headers: {
+        cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}`,
+      },
     });
     let res = await proxy.check(req);
     assert.equal(res.ok, true);
@@ -162,7 +186,9 @@ describe("PR-SEC-04, PR-SEC-07 / T-PR-SEC-04, T-PR-SEC-07: Security Proxy (ingre
 
     // Session rejected
     req = makeRequest({
-      headers: { cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}` },
+      headers: {
+        cookie: `polyroot_sid=${sessionId}; polyroot_csrf=${csrfToken}`,
+      },
     });
     res = await proxy.check(req);
     assert.equal(res.ok, false);
@@ -230,7 +256,7 @@ describe("PR-SEC-04, PR-SEC-07 / T-PR-SEC-04, T-PR-SEC-07: Security Proxy (ingre
     assert.equal(res.ok, false);
 
     // Wait for window to reset
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
 
     // Should work again
     res = await proxy.check(req);
@@ -312,7 +338,7 @@ describe("PR-SEC-04, PR-SEC-07 / T-PR-SEC-04, T-PR-SEC-07: Security Proxy (ingre
     assert.equal(res.ok, false);
 
     // Wait for expiry
-    await new Promise(r => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 20));
 
     // Cleanup
     proxy.cleanup();

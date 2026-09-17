@@ -16,10 +16,7 @@ import type { AccountMode, VenueCapability } from "@polyroot/domain";
 
 // Canonical adapter contract types live in types.ts (no circular runtime import
 // with the concrete adapter below).
-export type {
-  SubmitOutcome,
-  VenueAdapter,
-} from "./types.js";
+export type { SubmitOutcome, VenueAdapter } from "./types.js";
 
 // Venue-mode gate, capability intersection, error taxonomy, throttling,
 // recovery (PM-VENUE-01..06)

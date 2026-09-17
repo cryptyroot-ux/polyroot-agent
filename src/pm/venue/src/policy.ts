@@ -7,7 +7,12 @@
  * reach the network. The wired VenueAdapter (Phase 9) applies them.
  */
 
-import type { AccountMode, VenueCapability, VenueMode, OrderResult } from "@polyroot/domain";
+import type {
+  AccountMode,
+  VenueCapability,
+  VenueMode,
+  OrderResult,
+} from "@polyroot/domain";
 
 /* ─── 0. Venue-mode action gate (TABLE 17, PM-VENUE-01) ────────────────── */
 
@@ -101,7 +106,10 @@ export function capabilityIntersection(
     };
   }
 
-  if (input.accountMode === "ACCESS_BLOCKED" || input.accountMode === "SUSPENDED") {
+  if (
+    input.accountMode === "ACCESS_BLOCKED" ||
+    input.accountMode === "SUSPENDED"
+  ) {
     return {
       allowed: false,
       code: "ACCOUNT_BLOCKED",
@@ -117,7 +125,8 @@ export function capabilityIntersection(
           allowed: false,
           code: "ACCOUNT_CLOSE_ONLY",
           action,
-          reason: "account close_only: submit only reduce of verified inventory",
+          reason:
+            "account close_only: submit only reduce of verified inventory",
         };
       }
       return {
@@ -140,7 +149,11 @@ export function capabilityIntersection(
 
   if (action === "ORDER_CANCEL") {
     // Cancels do not consume mandate/freshness/risk entry; they are remedial.
-    return { allowed: true, action, reason: "cancel is remedial, not an entry" };
+    return {
+      allowed: true,
+      action,
+      reason: "cancel is remedial, not an entry",
+    };
   }
 
   if (!input.mandateAllows) {
@@ -213,7 +226,10 @@ export interface NormalizedVenueError {
  */
 export function normalizeVenueError(
   err: RawVenueError,
-  context: { arrivedPendingStore: boolean; orderType?: "LIMIT" | "POST_ONLY" | "FOK" | "IOC" },
+  context: {
+    arrivedPendingStore: boolean;
+    orderType?: "LIMIT" | "POST_ONLY" | "FOK" | "IOC";
+  },
 ): NormalizedVenueError {
   const status = err.status;
   const code = (err.code ?? "").toUpperCase();
@@ -233,8 +249,12 @@ export function normalizeVenueError(
   }
 
   // Terminal zero-fill for FAK / IOC no-match.
-  if ((context.orderType === "FOK" || context.orderType === "IOC") &&
-      /NO_MATCH|NO_FILL|FOK_NOT_FILLED|NOT_FILLED|EXPIRED|EXPIRED_BOOK/i.test(code)) {
+  if (
+    (context.orderType === "FOK" || context.orderType === "IOC") &&
+    /NO_MATCH|NO_FILL|FOK_NOT_FILLED|NOT_FILLED|EXPIRED|EXPIRED_BOOK/i.test(
+      code,
+    )
+  ) {
     return {
       kind: "PERMANENT_REJECT",
       actionable: false,
@@ -246,7 +266,11 @@ export function normalizeVenueError(
     };
   }
 
-  if (status === 401 || status === 403 || /AUTH|UNAUTHORIZED|FORBIDDEN|INVALID_KEY/i.test(code)) {
+  if (
+    status === 401 ||
+    status === 403 ||
+    /AUTH|UNAUTHORIZED|FORBIDDEN|INVALID_KEY/i.test(code)
+  ) {
     return {
       kind: "AUTH_FAILURE",
       actionable: true,
@@ -270,7 +294,11 @@ export function normalizeVenueError(
     };
   }
 
-  if (/POLICY|MANDATE|RISK|RESTRICTED|INVALID_STATE|READ_ONLY|CANCEL_ONLY/i.test(code)) {
+  if (
+    /POLICY|MANDATE|RISK|RESTRICTED|INVALID_STATE|READ_ONLY|CANCEL_ONLY/i.test(
+      code,
+    )
+  ) {
     return {
       kind: "POLICY_BLOCK",
       actionable: true,
@@ -282,7 +310,11 @@ export function normalizeVenueError(
     };
   }
 
-  if (/STALE|EXPIRED_DATA|PRICE_EXPIRED|BOOK_EXPIRED|TIMEOUT_UNSUBSCRIBE/i.test(code)) {
+  if (
+    /STALE|EXPIRED_DATA|PRICE_EXPIRED|BOOK_EXPIRED|TIMEOUT_UNSUBSCRIBE/i.test(
+      code,
+    )
+  ) {
     return {
       kind: "STALE_DATA",
       actionable: true,
@@ -350,7 +382,10 @@ export interface RateBucketConfig {
   windowMs: number;
 }
 
-const DEFAULT_CLASSES: Record<"submit" | "cancel" | "read" | "heartbeat", RateBucketConfig> = {
+const DEFAULT_CLASSES: Record<
+  "submit" | "cancel" | "read" | "heartbeat",
+  RateBucketConfig
+> = {
   submit: { limit: 20, windowMs: 60_000 },
   cancel: { limit: 40, windowMs: 60_000 },
   read: { limit: 120, windowMs: 60_000 },
@@ -361,7 +396,9 @@ export interface DeadlineAwareQueueArgs {
   now: number;
   classes?: Partial<typeof DEFAULT_CLASSES>;
   /** Server-observed queue delay hint (ms) — not only HTTP 429 (PM-VENUE-05). */
-  serverQueueDelayMs?: Partial<Record<"submit" | "cancel" | "read" | "heartbeat", number>>;
+  serverQueueDelayMs?: Partial<
+    Record<"submit" | "cancel" | "read" | "heartbeat", number>
+  >;
 }
 
 /**
@@ -377,38 +414,59 @@ export class RateGovernor {
   private readonly serverDelay: Partial<Record<string, number>> = {};
   private readonly clock: () => number;
 
-  constructor(opts?: { classes?: Partial<typeof DEFAULT_CLASSES>; clock?: () => number }) {
+  constructor(opts?: {
+    classes?: Partial<typeof DEFAULT_CLASSES>;
+    clock?: () => number;
+  }) {
     this.classes = { ...DEFAULT_CLASSES, ...(opts?.classes ?? {}) };
     this.clock = opts?.clock ?? (() => Date.now());
   }
 
-  ingestServerHint(kind: "submit" | "cancel" | "read" | "heartbeat", delayMs: number) {
+  ingestServerHint(
+    kind: "submit" | "cancel" | "read" | "heartbeat",
+    delayMs: number,
+  ) {
     this.serverDelay[kind] = delayMs;
   }
 
   private prune(kind: string, now: number) {
     const list = this.stamps[kind];
     if (!list) return;
-    const w = this.classes[kind as keyof typeof DEFAULT_CLASSES]?.windowMs ?? 60_000;
+    const w =
+      this.classes[kind as keyof typeof DEFAULT_CLASSES]?.windowMs ?? 60_000;
     while (list.length > 0 && now - (list[0] ?? 0) > w) list.shift();
   }
 
-  async acquire(kind: "submit" | "cancel" | "read" | "heartbeat", opts?: { deadline?: number; queuedDelayMs?: number }): Promise<{ ok: boolean; code: string; afterMs: number }> {
+  async acquire(
+    kind: "submit" | "cancel" | "read" | "heartbeat",
+    opts?: { deadline?: number; queuedDelayMs?: number },
+  ): Promise<{ ok: boolean; code: string; afterMs: number }> {
     const now = this.clock();
     this.prune(kind, now);
     const cfg = this.classes[kind];
     const used = this.stamps[kind]?.length ?? 0;
     if (used >= cfg.limit) {
-      return { ok: false, code: "RATE_EXCEEDED", afterMs: cfg.windowMs - (now - (this.stamps[kind]?.[0] ?? now)) };
+      return {
+        ok: false,
+        code: "RATE_EXCEEDED",
+        afterMs: cfg.windowMs - (now - (this.stamps[kind]?.[0] ?? now)),
+      };
     }
     if (opts?.queuedDelayMs) this.ingestServerHint(kind, opts.queuedDelayMs);
 
     // Before admitting, the estimated queue (server hint + our own latency
     // budget) must fit before the deadline.
     if (opts?.deadline !== undefined) {
-      const delay = Math.max((this.serverDelay[kind] ?? 0), opts.queuedDelayMs ?? 0);
+      const delay = Math.max(
+        this.serverDelay[kind] ?? 0,
+        opts.queuedDelayMs ?? 0,
+      );
       if (now + delay > opts.deadline) {
-        return { ok: false, code: "INTENT_EXPIRED", afterMs: opts.deadline - now };
+        return {
+          ok: false,
+          code: "INTENT_EXPIRED",
+          afterMs: opts.deadline - now,
+        };
       }
     }
 
@@ -435,7 +493,7 @@ export const InFlightState = {
   DEFINITIVE_REJECT: "DEFINITIVE_REJECT" as const,
 } as const;
 
-export type InFlightState = typeof InFlightState[keyof typeof InFlightState];
+export type InFlightState = (typeof InFlightState)[keyof typeof InFlightState];
 
 export interface InternalInFlightOrder {
   orderId: string;

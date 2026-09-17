@@ -7,3 +7,10 @@ docs/*.txt
 docs/*.docx
 migrations/
 *.tsbuildinfo
+
+# Generated / spec artifacts — not subject to source-formatter
+.gitleaks_baseline.json
+release_manifest.json
+docs/**/*.md
+docs/**/*.json
+docs/spec_pack/**

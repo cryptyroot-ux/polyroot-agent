@@ -84,15 +84,25 @@ export function containsSecretCanary(text: string): boolean {
  * Redacts sensitive fields from an object for safe logging.
  * Returns a new object with secret-like keys replaced.
  */
-export function redactForLogging(obj: Record<string, unknown>): Record<string, unknown> {
+export function redactForLogging(
+  obj: Record<string, unknown>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (/secret|token|key|password|credential|private_key|signature|mnemonic|api_key|api_key_base64|bearer/i.test(k)) {
+    if (
+      /secret|token|key|password|credential|private_key|signature|mnemonic|api_key|api_key_base64|bearer/i.test(
+        k,
+      )
+    ) {
       out[k] = "REDACTED";
     } else if (typeof v === "object" && v !== null && !Array.isArray(v)) {
       out[k] = redactForLogging(v as Record<string, unknown>);
     } else if (Array.isArray(v)) {
-      out[k] = v.map(item => typeof item === "object" && item !== null ? redactForLogging(item as Record<string, unknown>) : item);
+      out[k] = v.map((item) =>
+        typeof item === "object" && item !== null
+          ? redactForLogging(item as Record<string, unknown>)
+          : item,
+      );
     } else {
       out[k] = v;
     }
@@ -104,7 +114,10 @@ export class SecurityProxy {
   private readonly config: Required<SecurityProxyConfig>;
   private readonly sessions = new Map<string, SessionInfo>();
   private readonly rateLimits = new Map<string, RateLimitEntry>();
-  private readonly csrfTokens = new Map<string, { token: string; expiresAt: number }>();
+  private readonly csrfTokens = new Map<
+    string,
+    { token: string; expiresAt: number }
+  >();
 
   constructor(config: SecurityProxyConfig) {
     this.config = {
@@ -131,8 +144,16 @@ export class SecurityProxy {
     const path = new URL(request.url, "http://localhost").pathname;
 
     // Public paths bypass all auth
-    if (this.config.publicPaths.some(p => path.startsWith(p))) {
-      return { ok: true, identity: { type: "system", id: "anonymous", roles: ["public"], verifiedAt: new Date() } };
+    if (this.config.publicPaths.some((p) => path.startsWith(p))) {
+      return {
+        ok: true,
+        identity: {
+          type: "system",
+          id: "anonymous",
+          roles: ["public"],
+          verifiedAt: new Date(),
+        },
+      };
     }
 
     // Rate limiting (per IP)
@@ -152,13 +173,18 @@ export class SecurityProxy {
     }
 
     // Check for owner API key
-    const authHeader = request.headers["authorization"] || request.headers["Authorization"];
+    const authHeader =
+      request.headers["authorization"] || request.headers["Authorization"];
     if (authHeader) {
       // A present but malformed Authorization header is an explicit auth failure
       // (e.g. "Basic ..." or "Bearer" with no token), not a missing credential.
       const apiKey = this.extractApiKey(request);
       if (!apiKey) {
-        return { ok: false, code: "INVALID_API_KEY", reason: "Malformed Authorization header" };
+        return {
+          ok: false,
+          code: "INVALID_API_KEY",
+          reason: "Malformed Authorization header",
+        };
       }
       const apiResult = this.verifyApiKey(apiKey);
       if (apiResult.ok) {
@@ -179,12 +205,24 @@ export class SecurityProxy {
     }
 
     // Protected path with no valid auth
-    if (this.config.protectedPaths.some(p => path.startsWith(p))) {
-      return { ok: false, code: "UNAUTHENTICATED", reason: "Authentication required for this path" };
+    if (this.config.protectedPaths.some((p) => path.startsWith(p))) {
+      return {
+        ok: false,
+        code: "UNAUTHENTICATED",
+        reason: "Authentication required for this path",
+      };
     }
 
     // Default allow for non-protected paths
-    return { ok: true, identity: { type: "system", id: "anonymous", roles: ["public"], verifiedAt: new Date() } };
+    return {
+      ok: true,
+      identity: {
+        type: "system",
+        id: "anonymous",
+        roles: ["public"],
+        verifiedAt: new Date(),
+      },
+    };
   }
 
   /**
@@ -198,13 +236,23 @@ export class SecurityProxy {
     const subject = subjectMatch?.[1]?.trim();
 
     if (!subject) {
-      return { ok: false, code: "INVALID_MTLS_CERT", reason: "Client certificate missing subject" };
+      return {
+        ok: false,
+        code: "INVALID_MTLS_CERT",
+        reason: "Client certificate missing subject",
+      };
     }
 
     // Check against allowed services
-    const allowed = this.config.allowedServices.some(s => subject.includes(s) || subject === s);
+    const allowed = this.config.allowedServices.some(
+      (s) => subject.includes(s) || subject === s,
+    );
     if (!allowed) {
-      return { ok: false, code: "UNAUTHORIZED_SERVICE", reason: `Service ${subject} not in allowlist` };
+      return {
+        ok: false,
+        code: "UNAUTHORIZED_SERVICE",
+        reason: `Service ${subject} not in allowlist`,
+      };
     }
 
     return {
@@ -220,7 +268,8 @@ export class SecurityProxy {
 
   /** Extract API key from Authorization header. */
   private extractApiKey(request: IngressRequest): string | undefined {
-    const auth = request.headers["authorization"] || request.headers["Authorization"];
+    const auth =
+      request.headers["authorization"] || request.headers["Authorization"];
     if (!auth) return undefined;
     const match = auth.match(/^Bearer\s+(.+)$/i);
     return match?.[1];
@@ -268,7 +317,11 @@ export class SecurityProxy {
 
     const session = this.sessions.get(sessionId);
     if (!session) {
-      return { ok: false, code: "INVALID_SESSION", reason: "Session not found or expired" };
+      return {
+        ok: false,
+        code: "INVALID_SESSION",
+        reason: "Session not found or expired",
+      };
     }
 
     // Check session expiry
@@ -281,12 +334,20 @@ export class SecurityProxy {
     const method = request.method?.toUpperCase() || "GET";
     if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
       if (!csrfToken || csrfToken !== session.csrfToken) {
-        return { ok: false, code: "CSRF_INVALID", reason: "Invalid or missing CSRF token" };
+        return {
+          ok: false,
+          code: "CSRF_INVALID",
+          reason: "Invalid or missing CSRF token",
+        };
       }
       // Check CSRF token expiry
       const csrfEntry = this.csrfTokens.get(csrfToken);
       if (csrfEntry && Date.now() > csrfEntry.expiresAt) {
-        return { ok: false, code: "CSRF_EXPIRED", reason: "CSRF token expired" };
+        return {
+          ok: false,
+          code: "CSRF_EXPIRED",
+          reason: "CSRF token expired",
+        };
       }
     }
 
@@ -294,11 +355,23 @@ export class SecurityProxy {
     session.expiresAt = new Date(Date.now() + this.config.sessionTtlMs);
     this.sessions.set(sessionId, session);
 
-    return { ok: true, identity: { type: "owner", id: "owner", roles: ["owner", "admin"], verifiedAt: new Date() }, session };
+    return {
+      ok: true,
+      identity: {
+        type: "owner",
+        id: "owner",
+        roles: ["owner", "admin"],
+        verifiedAt: new Date(),
+      },
+      session,
+    };
   }
 
   /** Create a new owner session (login). */
-  createSession(ip: string, userAgent: string): { sessionId: string; csrfToken: string; expiresAt: Date } {
+  createSession(
+    ip: string,
+    userAgent: string,
+  ): { sessionId: string; csrfToken: string; expiresAt: Date } {
     const sessionId = this.generateSecureId(32);
     const csrfToken = this.generateSecureId(32);
     const now = Date.now();
@@ -314,7 +387,10 @@ export class SecurityProxy {
     };
 
     this.sessions.set(sessionId, session);
-    this.csrfTokens.set(csrfToken, { token: csrfToken, expiresAt: now + this.config.csrfTtlMs });
+    this.csrfTokens.set(csrfToken, {
+      token: csrfToken,
+      expiresAt: now + this.config.csrfTtlMs,
+    });
 
     return { sessionId, csrfToken, expiresAt };
   }
@@ -352,7 +428,11 @@ export class SecurityProxy {
     }
 
     if (entry.count >= this.config.rateLimitMax) {
-      return { ok: false, code: "RATE_LIMITED", reason: `Rate limit exceeded: ${this.config.rateLimitMax} requests per ${this.config.rateLimitWindowMs}ms` };
+      return {
+        ok: false,
+        code: "RATE_LIMITED",
+        reason: `Rate limit exceeded: ${this.config.rateLimitMax} requests per ${this.config.rateLimitWindowMs}ms`,
+      };
     }
 
     entry.count++;
@@ -375,7 +455,9 @@ export class SecurityProxy {
   private generateSecureId(bytes: number): string {
     const buffer = new Uint8Array(bytes);
     crypto.getRandomValues(buffer);
-    return Array.from(buffer).map(b => b.toString(16).padStart(2, "0")).join("");
+    return Array.from(buffer)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
   }
 
   /** Get active session count (for monitoring). */

@@ -10,7 +10,13 @@
 import { z } from "zod";
 
 /** Disposition of an upstream/reused path. REMOVE must not be resolved=true. */
-export const DispositionSchema = z.enum(["KEEP", "ADAPT", "REWRITE", "REMOVE", "QUARANTINE"]);
+export const DispositionSchema = z.enum([
+  "KEEP",
+  "ADAPT",
+  "REWRITE",
+  "REMOVE",
+  "QUARANTINE",
+]);
 export type Disposition = z.infer<typeof DispositionSchema>;
 
 const DepInput = z.object({
@@ -43,7 +49,10 @@ export function parseReleaseManifest(
     }
     return { ok: true, manifest: parsed.data };
   } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : "parse error" };
+    return {
+      ok: false,
+      reason: e instanceof Error ? e.message : "parse error",
+    };
   }
 }
 
@@ -52,16 +61,27 @@ export function assertDependencyResolved(
   depName: string,
 ): { ok: boolean; reason?: string } {
   const dep = manifest.dependencies[depName];
-  if (!dep) return { ok: false, reason: `missing dependency disposition: ${depName}` };
-  if (!dep.resolved) return { ok: false, reason: `unresolved dependency: ${depName} (${dep.disposition})` };
+  if (!dep)
+    return { ok: false, reason: `missing dependency disposition: ${depName}` };
+  if (!dep.resolved)
+    return {
+      ok: false,
+      reason: `unresolved dependency: ${depName} (${dep.disposition})`,
+    };
   if (dep.disposition === "REMOVE") {
-    return { ok: false, reason: `REMOVED path still marked active: ${depName}` };
+    return {
+      ok: false,
+      reason: `REMOVED path still marked active: ${depName}`,
+    };
   }
   return { ok: true };
 }
 
 /** Convenience: every record in `dependencies` must be resolved & non-REMOVE. */
-export function allDependenciesResolved(manifest: ReleaseManifest): { ok: boolean; reason?: string } {
+export function allDependenciesResolved(manifest: ReleaseManifest): {
+  ok: boolean;
+  reason?: string;
+} {
   for (const name of Object.keys(manifest.dependencies)) {
     const res = assertDependencyResolved(manifest, name);
     if (!res.ok) return res;

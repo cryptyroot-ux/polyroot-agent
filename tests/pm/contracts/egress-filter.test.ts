@@ -17,7 +17,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
       ...overrides,
     });
 
-  const makeInput = (overrides: Partial<EgressCheckInput> = {}): EgressCheckInput => ({
+  const makeInput = (
+    overrides: Partial<EgressCheckInput> = {},
+  ): EgressCheckInput => ({
     url: "https://api.polymarket.com/markets",
     redirectChain: [],
     responseSize: 100,
@@ -34,7 +36,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
         { pattern: /api\.polymarket/i, category: "market_data" },
       ],
     });
-    const res = await filter.check(makeInput({ url: "https://news.example.com/article" }));
+    const res = await filter.check(
+      makeInput({ url: "https://news.example.com/article" }),
+    );
     assert.equal(res.category, "research");
     assert.equal(res.policyDecision, "QUARANTINE"); // default policy for research
   });
@@ -46,7 +50,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
         { pattern: /news|blog/i, category: "research" },
       ],
     });
-    const res = await filter.check(makeInput({ url: "https://api.polymarket.com/markets" }));
+    const res = await filter.check(
+      makeInput({ url: "https://api.polymarket.com/markets" }),
+    );
     assert.equal(res.category, "market_data");
     assert.equal(res.policyDecision, "ALLOW"); // default policy for market_data
   });
@@ -55,7 +61,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
     const filter = makeFilter({
       categoryRules: [{ pattern: /api\.polymarket/i, category: "market_data" }],
     });
-    const res = await filter.check(makeInput({ url: "https://unknown.example.com/" }));
+    const res = await filter.check(
+      makeInput({ url: "https://unknown.example.com/" }),
+    );
     assert.equal(res.category, "unknown");
     assert.equal(res.policyDecision, "BLOCK"); // default policy for unknown
   });
@@ -64,7 +72,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
     const filter = makeFilter({
       categoryRules: [{ pattern: /research/i, category: "research" }],
     });
-    const res = await filter.check(makeInput({ url: "https://example.com/research/data" }));
+    const res = await filter.check(
+      makeInput({ url: "https://example.com/research/data" }),
+    );
     assert.equal(res.category, "research");
   });
 
@@ -75,7 +85,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
       categoryRules: [{ pattern: /\.gov/i, category: "research" }],
       categoryPolicy: { research: "BLOCK" },
     });
-    const res = await filter.check(makeInput({ url: "https://agency.gov/data" }));
+    const res = await filter.check(
+      makeInput({ url: "https://agency.gov/data" }),
+    );
     assert.equal(res.category, "research");
     assert.equal(res.policyDecision, "BLOCK");
     assert.equal(res.ok, false); // blocked by policy
@@ -87,7 +99,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
       categoryRules: [{ pattern: /api\.external/i, category: "external_api" }],
       categoryPolicy: { external_api: "QUARANTINE" },
     });
-    const res = await filter.check(makeInput({ url: "https://api.external.com/webhook" }));
+    const res = await filter.check(
+      makeInput({ url: "https://api.external.com/webhook" }),
+    );
     assert.equal(res.category, "external_api");
     assert.equal(res.policyDecision, "QUARANTINE");
     assert.equal(res.ok, true); // quarantine allows but logs
@@ -99,7 +113,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
       categoryRules: [{ pattern: /api\/internal/i, category: "executor" }],
       // no categoryPolicy set -> defaults to the configured policy
     });
-    const res = await filter.check(makeInput({ url: "https://api.polymarket.com/markets" }));
+    const res = await filter.check(
+      makeInput({ url: "https://api.polymarket.com/markets" }),
+    );
     assert.equal(res.category, "unknown"); // no rule matched
     assert.equal(res.policyDecision, "BLOCK"); // unknown defaults to BLOCK
     assert.equal(res.ok, false);
@@ -114,7 +130,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
         auditEntry = entry;
       },
     });
-    await filter.check(makeInput({ url: "https://api.polymarket.com/markets" }));
+    await filter.check(
+      makeInput({ url: "https://api.polymarket.com/markets" }),
+    );
     assert.ok(auditEntry);
     assert.equal(auditEntry!.category, "market_data");
     assert.equal(auditEntry!.url, "https://api.polymarket.com/markets");
@@ -131,7 +149,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
         auditEntry = entry;
       },
     });
-    await filter.check(makeInput({ url: "https://api.polymarket.com/markets" }));
+    await filter.check(
+      makeInput({ url: "https://api.polymarket.com/markets" }),
+    );
     assert.equal(auditEntry, null);
   });
 
@@ -151,7 +171,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
       categoryRules: [{ pattern: /localhost/i, category: "research" }],
       categoryPolicy: { research: "ALLOW" },
     });
-    const res = await filter.check(makeInput({ url: "http://127.0.0.1:8080/" }));
+    const res = await filter.check(
+      makeInput({ url: "http://127.0.0.1:8080/" }),
+    );
     assert.equal(res.ok, false);
     assert.equal(res.code, "BLOCKED_PRIVATE_IP"); // from EgressGuard
   });
@@ -161,7 +183,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
       categoryRules: [{ pattern: /169\.254/i, category: "research" }],
       categoryPolicy: { research: "ALLOW" },
     });
-    const res = await filter.check(makeInput({ url: "http://169.254.169.254/latest/meta-data/" }));
+    const res = await filter.check(
+      makeInput({ url: "http://169.254.169.254/latest/meta-data/" }),
+    );
     assert.equal(res.ok, false);
     assert.equal(res.code, "BLOCKED_METADATA_ENDPOINT");
   });
@@ -172,10 +196,15 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
       categoryRules: [{ pattern: /example/i, category: "research" }],
       categoryPolicy: { research: "ALLOW" },
     });
-    const res = await filter.check(makeInput({
-      url: "http://example.com/redirect",
-      redirectChain: ["http://example.com/redirect", "http://example.com/final"], // 2 hops > max 1
-    }));
+    const res = await filter.check(
+      makeInput({
+        url: "http://example.com/redirect",
+        redirectChain: [
+          "http://example.com/redirect",
+          "http://example.com/final",
+        ], // 2 hops > max 1
+      }),
+    );
     assert.equal(res.ok, false);
     assert.equal(res.code, "MAX_REDIRECTS_EXCEEDED");
   });
@@ -186,7 +215,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
       categoryRules: [{ pattern: /example/i, category: "research" }],
       categoryPolicy: { research: "ALLOW" },
     });
-    const res = await filter.check(makeInput({ url: "http://example.com/large", responseSize: 200 }));
+    const res = await filter.check(
+      makeInput({ url: "http://example.com/large", responseSize: 200 }),
+    );
     assert.equal(res.ok, false);
     assert.equal(res.code, "BODY_TOO_LARGE");
   });
@@ -197,7 +228,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
       categoryRules: [{ pattern: /example/i, category: "research" }],
       categoryPolicy: { research: "ALLOW" },
     });
-    const res = await filter.check(makeInput({ url: "http://example.com/slow", delayMs: 200 }));
+    const res = await filter.check(
+      makeInput({ url: "http://example.com/slow", delayMs: 200 }),
+    );
     assert.equal(res.ok, false);
     assert.equal(res.code, "TIMEOUT");
   });
@@ -212,7 +245,9 @@ describe("PR-SEC-03, PR-OPS-06 / T-PR-SEC-03P0: Egress Filter (categorization, p
     let before = await filter.check(makeInput({ url: "https://newsite.com/" }));
     assert.equal(before.category, "unknown");
 
-    filter.updateCategoryRules([{ pattern: /newsite/i, category: "market_data" }]);
+    filter.updateCategoryRules([
+      { pattern: /newsite/i, category: "market_data" },
+    ]);
     let after = await filter.check(makeInput({ url: "https://newsite.com/" }));
     assert.equal(after.category, "market_data");
   });

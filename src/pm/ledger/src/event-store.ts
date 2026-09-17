@@ -14,10 +14,7 @@
  *     projection engines to resume after a restart.
  */
 
-import {
-  type LedgerEvent,
-  LedgerEventSchema,
-} from "@polyroot/domain";
+import { type LedgerEvent, LedgerEventSchema } from "@polyroot/domain";
 
 /** Cursor for resumable replay. `fromSequence` is inclusive. */
 export interface EventCursor {
@@ -47,7 +44,9 @@ export interface EventStore {
   appendMany(events: LedgerEvent[]): Promise<AppendResult[]>;
   getEvent(id: string): Promise<LedgerEvent | undefined>;
   /** Replay events for an aggregate, or all events, from a cursor. */
-  replay(cursor: EventCursor & { aggregateId?: string }): Promise<LedgerEvent[]>;
+  replay(
+    cursor: EventCursor & { aggregateId?: string },
+  ): Promise<LedgerEvent[]>;
   /** Highest sequence currently stored (0n if empty). */
   lastSequence(): Promise<bigint>;
   /** Total number of events stored. */
@@ -102,7 +101,9 @@ export class InMemoryEventStore implements EventStore {
     return this.events.get(id);
   }
 
-  async replay(cursor: EventCursor & { aggregateId?: string }): Promise<LedgerEvent[]> {
+  async replay(
+    cursor: EventCursor & { aggregateId?: string },
+  ): Promise<LedgerEvent[]> {
     const start = cursor.fromSequence;
     const ids: string[] = [];
     for (const [seq, id] of this.bySequence) {

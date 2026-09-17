@@ -42,11 +42,23 @@ export interface BalanceEntry {
 export interface BalanceStore {
   get(account: string, asset: string): Promise<BalanceEntry>;
   /** Reserve funds: move from available to committed. */
-  reserveFunds(account: string, asset: string, amountBase: bigint): Promise<void>;
+  reserveFunds(
+    account: string,
+    asset: string,
+    amountBase: bigint,
+  ): Promise<void>;
   /** Release funds: move from committed back to available. */
-  releaseFunds(account: string, asset: string, amountBase: bigint): Promise<void>;
+  releaseFunds(
+    account: string,
+    asset: string,
+    amountBase: bigint,
+  ): Promise<void>;
   /** Consume funds: move from committed to final settlement (decrease committed). */
-  consumeFunds(account: string, asset: string, amountBase: bigint): Promise<void>;
+  consumeFunds(
+    account: string,
+    asset: string,
+    amountBase: bigint,
+  ): Promise<void>;
   /**
    * Number of currently-open reservations for an account/asset.
    * Derived from committed_base > 0 so it survives process restarts.
@@ -73,7 +85,7 @@ export interface MoneyAuthority {
     decisionId: string,
     intentId: string,
     leaseEpoch: number,
-    now: Date
+    now: Date,
   ): Promise<MoneyAuthorityResult>;
 }
 
@@ -133,7 +145,7 @@ export type ReserveResult =
  */
 export function cashNeededFor(
   amountSharesBase: bigint,
-  perSharePriceBase: bigint
+  perSharePriceBase: bigint,
 ): bigint {
   return (amountSharesBase * perSharePriceBase) / 1_000_000n;
 }
@@ -162,7 +174,7 @@ export class MoneyKernel {
    */
   private async countOpenReservations(
     account: string,
-    asset: string
+    asset: string,
   ): Promise<number> {
     const getOpenCount = (this.opts.balance as BalanceStore).getOpenCount;
     return await getOpenCount.call(this.opts.balance, account, asset);
@@ -217,7 +229,7 @@ export class MoneyKernel {
 
     // Open-reservation limit is enforced against the durable count.
     if (
-      await this.countOpenReservations(req.account, req.asset) >=
+      (await this.countOpenReservations(req.account, req.asset)) >=
       this.opts.maxOpenReservations
     ) {
       return {
@@ -241,7 +253,7 @@ export class MoneyKernel {
     // Cash needed = shares * price (integer base units). price is per share in base units.
     const cashNeeded = cashNeededFor(
       req.amountSharesBase,
-      req.perSharePriceBase
+      req.perSharePriceBase,
     );
     if (cashNeeded > req.maxCashBase) {
       return {
@@ -267,7 +279,7 @@ export class MoneyKernel {
         req.decisionId,
         req.intentId,
         req.leaseEpoch,
-        req.now
+        req.now,
       );
       if (!res.ok) {
         return {
@@ -367,7 +379,7 @@ export class MoneyKernel {
   async release(
     account: string,
     asset: string,
-    cashBase: bigint
+    cashBase: bigint,
   ): Promise<void> {
     if (cashBase < 0n) return;
     // Use semantic method: releaseFunds moves committed -> available
@@ -383,7 +395,7 @@ export class MoneyKernel {
   async consume(
     account: string,
     asset: string,
-    cashBase: bigint
+    cashBase: bigint,
   ): Promise<void> {
     if (cashBase < 0n) return;
     // Use semantic method: consumeFunds decreases committed (final economic posting)

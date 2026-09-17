@@ -84,7 +84,12 @@ export async function orchestrate(
 
   // Bind edge side/price to intent – reject mismatched intent.
   // Edge sides are YES/NO while intents may use BUY/SELL or the equivalent YES/NO.
-  const intentSide = input.intent.side === "BUY" ? "YES" : input.intent.side === "SELL" ? "NO" : input.intent.side;
+  const intentSide =
+    input.intent.side === "BUY"
+      ? "YES"
+      : input.intent.side === "SELL"
+        ? "NO"
+        : input.intent.side;
   if (intentSide !== edge.side) {
     return {
       ok: false,
@@ -150,7 +155,12 @@ export async function orchestrate(
     deps.signer,
   );
   if (!built.ok) {
-    return { ok: false, stage: "BUILD", code: built.code, reason: built.reason };
+    return {
+      ok: false,
+      stage: "BUILD",
+      code: built.code,
+      reason: built.reason,
+    };
   }
 
   // ── Stage SUBMIT: idempotent, permit-bound, venue-gated ───────────────────

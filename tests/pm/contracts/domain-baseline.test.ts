@@ -11,7 +11,12 @@ import {
 describe("Domain baseline — canonical enums vs spec pack 124 PM-*", () => {
   it("PM-GOV-02: operation modes are RESEARCH/PAPER/SHADOW/LIVE; fresh install defaults to PAPER", () => {
     const modes = OperationModeSchema.options;
-    assert.deepEqual([...modes].sort(), ["LIVE", "PAPER", "RESEARCH", "SHADOW"]);
+    assert.deepEqual([...modes].sort(), [
+      "LIVE",
+      "PAPER",
+      "RESEARCH",
+      "SHADOW",
+    ]);
     assert.equal(OperationModeSchema.safeParse("RESEARCH").success, true);
     assert.equal(OperationModeSchema.safeParse("PAPER").success, true);
   });

@@ -60,7 +60,10 @@ describe("Phase 11: Supervisor & Reconciler Persistence", () => {
     fakeExecutor.reconciledOrders.set("o1", "ACKNOWLEDGED");
     fakeExecutor.reconciledOrders.set("o2", "DEFINITIVE_REJECT");
 
-    const reconciler = new Reconciler(fakeExecutor as unknown as Executor, store);
+    const reconciler = new Reconciler(
+      fakeExecutor as unknown as Executor,
+      store,
+    );
     await reconciler.reconcileAll();
 
     assert.equal(await store.get("o1"), "ACKNOWLEDGED");
@@ -71,7 +74,10 @@ describe("Phase 11: Supervisor & Reconciler Persistence", () => {
   it("supervisor records orchestrate results and monitors health", async () => {
     const store = new InMemoryPersistence();
     const fakeExecutor = new FakeExecutor();
-    const reconciler = new Reconciler(fakeExecutor as unknown as Executor, store);
+    const reconciler = new Reconciler(
+      fakeExecutor as unknown as Executor,
+      store,
+    );
 
     const supervisor = new Supervisor({
       reconciler,

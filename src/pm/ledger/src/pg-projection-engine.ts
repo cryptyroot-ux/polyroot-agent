@@ -16,7 +16,13 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
-import { type EventStore, type EventCursor, type ProjectionEngine, type ProjectionResult, type ProjectionOptions } from "./index.js";
+import {
+  type EventStore,
+  type EventCursor,
+  type ProjectionEngine,
+  type ProjectionResult,
+  type ProjectionOptions,
+} from "./index.js";
 import { type LedgerEvent } from "@polyroot/domain";
 
 /** Type for a single kernel event row. */
@@ -44,15 +50,18 @@ export class PgProjectionEngine implements ProjectionEngine {
   private readonly eventStore: EventStore;
 
   constructor(config: PoolConfig | string | Pool, eventStore: EventStore) {
-    this.pool = config instanceof Pool
-      ? config
-      : new Pool(typeof config === "string"
-          ? { connectionString: config }
-          : config);
+    this.pool =
+      config instanceof Pool
+        ? config
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
     this.eventStore = eventStore;
   }
 
-  private async withClient<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  private async withClient<T>(
+    fn: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
     const client = await this.pool.connect();
     try {
       return await fn(client);
@@ -76,43 +85,68 @@ export class PgProjectionEngine implements ProjectionEngine {
         const account = payload.account as string;
         const asset = payload.asset as string;
         const cashBase = BigInt(payload.cashBase as string);
-        return { account, asset, availableDelta: -cashBase, committedDelta: cashBase };
+        return {
+          account,
+          asset,
+          availableDelta: -cashBase,
+          committedDelta: cashBase,
+        };
       }
       case "RESERVATION_CONSUMED": {
         // payload: { account, asset, cashBase }
         const account = payload.account as string;
         const asset = payload.asset as string;
         const cashBase = BigInt(payload.cashBase as string);
-        return { account, asset, availableDelta: 0n, committedDelta: -cashBase };
+        return {
+          account,
+          asset,
+          availableDelta: 0n,
+          committedDelta: -cashBase,
+        };
       }
       case "RESERVATION_RELEASED": {
         // payload: { account, asset, cashBase }
         const account = payload.account as string;
         const asset = payload.asset as string;
         const cashBase = BigInt(payload.cashBase as string);
-        return { account, asset, availableDelta: cashBase, committedDelta: -cashBase };
+        return {
+          account,
+          asset,
+          availableDelta: cashBase,
+          committedDelta: -cashBase,
+        };
       }
       case "ORDER_FILLED": {
         // payload: { account, asset, filledSharesBase, cashBase, feeBase, rebateBase }
         const account = payload.account as string;
         const asset = payload.asset as string;
         const cashBase = BigInt(payload.cashBase as string);
-        const feeBase = BigInt(payload.feeBase as string ?? "0");
-        const rebateBase = BigInt(payload.rebateBase as string ?? "0");
+        const feeBase = BigInt((payload.feeBase as string) ?? "0");
+        const rebateBase = BigInt((payload.rebateBase as string) ?? "0");
         // Filled order: committed -> position (net cash after fees/rebates)
         // For the balance projection: committed decreases by (cashBase + feeBase - rebateBase)
         // The filled shares are tracked separately in position state
-        return { account, asset, availableDelta: 0n, committedDelta: -(cashBase + feeBase - rebateBase) };
+        return {
+          account,
+          asset,
+          availableDelta: 0n,
+          committedDelta: -(cashBase + feeBase - rebateBase),
+        };
       }
       case "ORDER_PARTIAL": {
         // payload: { account, asset, filledSharesBase, cashBase, feeBase, rebateBase, remainingSharesBase }
         const account = payload.account as string;
         const asset = payload.asset as string;
         const cashBase = BigInt(payload.cashBase as string);
-        const feeBase = BigInt(payload.feeBase as string ?? "0");
-        const rebateBase = BigInt(payload.rebateBase as string ?? "0");
+        const feeBase = BigInt((payload.feeBase as string) ?? "0");
+        const rebateBase = BigInt((payload.rebateBase as string) ?? "0");
         // Partial fill: committed decreases for filled portion, remaining stays committed
-        return { account, asset, availableDelta: 0n, committedDelta: -(cashBase + feeBase - rebateBase) };
+        return {
+          account,
+          asset,
+          availableDelta: 0n,
+          committedDelta: -(cashBase + feeBase - rebateBase),
+        };
       }
       case "FUNDS_TRANSFERRED": {
         // payload: { fromAccount, toAccount, asset, amountBase }
@@ -146,14 +180,24 @@ export class PgProjectionEngine implements ProjectionEngine {
         const asset = payload.asset as string;
         const amountBase = BigInt(payload.amountBase as string);
         const isGain = payload.isGain ?? true;
-        return { account, asset, availableDelta: isGain ? amountBase : -amountBase, committedDelta: 0n };
+        return {
+          account,
+          asset,
+          availableDelta: isGain ? amountBase : -amountBase,
+          committedDelta: 0n,
+        };
       }
       case "REDEEM": {
         // payload: { account, asset, amountBase }
         const account = payload.account as string;
         const asset = payload.asset as string;
         const amountBase = BigInt(payload.amountBase as string);
-        return { account, asset, availableDelta: amountBase, committedDelta: 0n };
+        return {
+          account,
+          asset,
+          availableDelta: amountBase,
+          committedDelta: 0n,
+        };
       }
     }
     return null;
@@ -171,7 +215,9 @@ export class PgProjectionEngine implements ProjectionEngine {
     return result;
   }
 
-  async rebuild(options: Omit<ProjectionOptions, "fromSequence">): Promise<ProjectionResult[]> {
+  async rebuild(
+    options: Omit<ProjectionOptions, "fromSequence">,
+  ): Promise<ProjectionResult[]> {
     const fromSequence = 1n;
     const toSequence = options.toSequence ?? undefined;
     const limit = options.limit ?? undefined;
@@ -205,7 +251,10 @@ export class PgProjectionEngine implements ProjectionEngine {
 
   async process(options: ProjectionOptions): Promise<ProjectionResult[]> {
     const checkpoint = await this.getCheckpoint(options.projectionName);
-    const startSeq = checkpoint >= options.fromSequence ? checkpoint + 1n : options.fromSequence;
+    const startSeq =
+      checkpoint >= options.fromSequence
+        ? checkpoint + 1n
+        : options.fromSequence;
 
     // Get events to process
     const replayOptions: EventCursor & { aggregateId?: string } = {
@@ -244,7 +293,11 @@ export class PgProjectionEngine implements ProjectionEngine {
           const projected = this.projectEvent(row);
           if (!projected) {
             // Still advance checkpoint
-            await this.updateCheckpoint(client, options.projectionName, row.sequence);
+            await this.updateCheckpoint(
+              client,
+              options.projectionName,
+              row.sequence,
+            );
             continue;
           }
 
@@ -276,7 +329,11 @@ export class PgProjectionEngine implements ProjectionEngine {
           }
 
           // Advance checkpoint
-          await this.updateCheckpoint(client, options.projectionName, row.sequence);
+          await this.updateCheckpoint(
+            client,
+            options.projectionName,
+            row.sequence,
+          );
 
           results.push({
             account,

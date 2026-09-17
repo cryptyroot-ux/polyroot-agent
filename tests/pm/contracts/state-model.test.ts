@@ -5,7 +5,10 @@ import { computeGate } from "@polyroot/control";
 describe("PRD P3.2 operational state model", () => {
   it("Only LIVE can send financial orders; PAPER/SHADOW cannot", () => {
     assert.equal(computeGate("PAPER", "ACTIVE", "NORMAL"), "FINANCIAL_BLOCKED");
-    assert.equal(computeGate("SHADOW", "ACTIVE", "NORMAL"), "FINANCIAL_BLOCKED");
+    assert.equal(
+      computeGate("SHADOW", "ACTIVE", "NORMAL"),
+      "FINANCIAL_BLOCKED",
+    );
     assert.equal(computeGate("LIVE", "ACTIVE", "NORMAL"), "ALLOW");
   });
 
@@ -14,9 +17,18 @@ describe("PRD P3.2 operational state model", () => {
   });
 
   it("Hard-blocking health states stop all financial activity and cannot self-bypass", () => {
-    assert.equal(computeGate("LIVE", "RECOVERING", "NORMAL"), "FINANCIAL_BLOCKED");
-    assert.equal(computeGate("LIVE", "ACCESS_BLOCKED", "NORMAL"), "FINANCIAL_BLOCKED");
-    assert.equal(computeGate("LIVE", "EMERGENCY_HALT", "NORMAL"), "FINANCIAL_BLOCKED");
+    assert.equal(
+      computeGate("LIVE", "RECOVERING", "NORMAL"),
+      "FINANCIAL_BLOCKED",
+    );
+    assert.equal(
+      computeGate("LIVE", "ACCESS_BLOCKED", "NORMAL"),
+      "FINANCIAL_BLOCKED",
+    );
+    assert.equal(
+      computeGate("LIVE", "EMERGENCY_HALT", "NORMAL"),
+      "FINANCIAL_BLOCKED",
+    );
     assert.equal(computeGate("LIVE", "STOPPED", "NORMAL"), "FINANCIAL_BLOCKED");
   });
 
@@ -24,6 +36,9 @@ describe("PRD P3.2 operational state model", () => {
     assert.equal(computeGate("LIVE", "ACTIVE", "POST_ONLY"), "ENTRY_BLOCKED");
     assert.equal(computeGate("LIVE", "ACTIVE", "CANCEL_ONLY"), "ENTRY_BLOCKED");
     assert.equal(computeGate("LIVE", "ACTIVE", "UNKNOWN"), "FINANCIAL_BLOCKED");
-    assert.equal(computeGate("LIVE", "ACTIVE", "UNAVAILABLE"), "FINANCIAL_BLOCKED");
+    assert.equal(
+      computeGate("LIVE", "ACTIVE", "UNAVAILABLE"),
+      "FINANCIAL_BLOCKED",
+    );
   });
 });

@@ -32,7 +32,9 @@ function computeBuildDigest() {
   try {
     const lock = fs.readFileSync("package-lock.json", "utf8");
     hash.update(lock);
-  } catch { /* no lockfile */ }
+  } catch {
+    /* no lockfile */
+  }
 
   // Include all source .ts files in deterministic order
   const srcDirs = ["src"];
@@ -45,20 +47,27 @@ function computeBuildDigest() {
         hash.update(rel);
         hash.update(fs.readFileSync(f));
       }
-    } catch { /* dir missing */ }
+    } catch {
+      /* dir missing */
+    }
   }
 
   // Include migration files
   try {
     const migDir = "migrations";
     if (fs.existsSync(migDir)) {
-      const migs = fs.readdirSync(migDir).filter(f => f.endsWith(".sql")).sort();
+      const migs = fs
+        .readdirSync(migDir)
+        .filter((f) => f.endsWith(".sql"))
+        .sort();
       for (const f of migs) {
         hash.update(f);
         hash.update(fs.readFileSync(path.join(migDir, f)));
       }
     }
-  } catch { /* no migrations */ }
+  } catch {
+    /* no migrations */
+  }
 
   return "sha256:" + hash.digest("hex");
 }
@@ -68,17 +77,30 @@ function getAllTsFiles(dir) {
   try {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory() && entry.name !== "node_modules" && entry.name !== "dist" && entry.name !== ".turbo") {
+      if (
+        entry.isDirectory() &&
+        entry.name !== "node_modules" &&
+        entry.name !== "dist" &&
+        entry.name !== ".turbo"
+      ) {
         results.push(...getAllTsFiles(full));
-      } else if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
+      } else if (
+        entry.isFile() &&
+        entry.name.endsWith(".ts") &&
+        !entry.name.endsWith(".d.ts")
+      ) {
         results.push(full);
       }
     }
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
   return results;
 }
 
-const repo = git("config --get remote.origin.url") || "https://github.com/cryptyroot-ux/polyroot-agent";
+const repo =
+  git("config --get remote.origin.url") ||
+  "https://github.com/cryptyroot-ux/polyroot-agent";
 const branch = git("rev-parse --abbrev-ref HEAD") || "main";
 const commit = git("rev-parse HEAD").padStart(40, "0").slice(0, 40);
 const tag = git("describe --tags --abbrev=0") || "v0.1.0-foundation";
@@ -94,16 +116,32 @@ const imageDigest = computeBuildDigest();
 const migrationDir = "migrations";
 let migrationFiles = [];
 try {
-  migrationFiles = fs.readdirSync(migrationDir).filter(f => f.endsWith(".sql")).sort();
+  migrationFiles = fs
+    .readdirSync(migrationDir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 } catch {}
 
 // Compute SBOM hash from package.json + lockfile
 const pkgJson = fs.readFileSync("package.json", "utf8");
-const sbomHash = crypto.createHash("sha256").update(pkgJson).update(lock).digest("hex");
+const sbomHash = crypto
+  .createHash("sha256")
+  .update(pkgJson)
+  .update(lock)
+  .digest("hex");
 
 const manifest = {
   schema_version: "1.0.0",
-  release_id: commit.slice(0, 8) + "-" + commit.slice(8, 12) + "-" + commit.slice(12, 16) + "-" + commit.slice(16, 20) + "-" + commit.slice(20, 32),
+  release_id:
+    commit.slice(0, 8) +
+    "-" +
+    commit.slice(8, 12) +
+    "-" +
+    commit.slice(12, 16) +
+    "-" +
+    commit.slice(16, 20) +
+    "-" +
+    commit.slice(20, 32),
   timestamp_utc: new Date().toISOString(),
   git: { repo, branch, commit_sha: commit, tag, dirty },
   upstream: {
@@ -138,7 +176,8 @@ const manifest = {
     policy_hash: "TBD-computed-at-commissioning",
   },
   gate_reports: [],
-  fork_disposition: "docs/ARTEFAK/fork_disposition.csv (TBD — required before G1)",
+  fork_disposition:
+    "docs/ARTEFAK/fork_disposition.csv (TBD — required before G1)",
   sbom: { format: "spdx-json", sha256: sbomHash },
 };
 
@@ -149,7 +188,9 @@ if (!imageDigest.startsWith("sha256:") || imageDigest.length !== 71) {
 }
 
 if (dirty) {
-  console.warn("WARNING: working tree is dirty; manifest reflects uncommitted changes");
+  console.warn(
+    "WARNING: working tree is dirty; manifest reflects uncommitted changes",
+  );
 }
 
 fs.writeFileSync("release_manifest.json", JSON.stringify(manifest, null, 2));
