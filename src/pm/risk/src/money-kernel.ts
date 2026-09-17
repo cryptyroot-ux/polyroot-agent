@@ -278,25 +278,43 @@ export class MoneyKernel {
 
     // Use authority if available for atomic reservation and permit creation.
     if (this.authority) {
-      // Generate the authoritative quoteId once, use it consistently everywhere
       const authoritativeQuoteId = `quote_${randomUUID()}`;
-      const res = await this.authority.reserve(
-        req.account,
-        req.asset,
-        cashNeeded,
-        req.decisionId,
-        req.intentId,
-        req.leaseEpoch,
-        req.now,
-        req.amountSharesBase,
-        req.policyHash,
-        authoritativeQuoteId,
-      );
-      if (!res.ok) {
+
+      // Bounded retry for transient PostgreSQL serialization conflicts (40001)
+      // and deadlocks (40P01). A conflict is NOT a fatal money error: the
+      // authoritative re-read (lock + duplicate-intent guard inside the retry)
+      // prevents double-allocation, so a bounded retry is safe.
+      const MAX_SERIALIZATION_RETRIES = 2;
+      let res: MoneyAuthorityResult | undefined;
+      for (let attempt = 0; attempt <= MAX_SERIALIZATION_RETRIES; attempt++) {
+        res = await this.authority.reserve(
+          req.account,
+          req.asset,
+          cashNeeded,
+          req.decisionId,
+          req.intentId,
+          req.leaseEpoch,
+          req.now,
+          req.amountSharesBase,
+          req.policyHash,
+          authoritativeQuoteId,
+        );
+        if (res.ok || res.code !== "SERIALIZATION_CONFLICT") break;
+        // Back off briefly before re-reading authoritative state.
+        await new Promise((r) => setTimeout(r, 10 * (attempt + 1)));
+      }
+      if (!res || !res.ok) {
+        if (res) {
+          return {
+            ok: false,
+            code: res.code,
+            reason: res.reason,
+          };
+        }
         return {
           ok: false,
-          code: res.code,
-          reason: res.reason,
+          code: "MONEY_AUTHORITY_FAILED",
+          reason: "unreachable: reserve returned undefined",
         };
       }
       const { reservationId, permitId } = res;
