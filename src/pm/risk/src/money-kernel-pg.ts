@@ -203,6 +203,10 @@ export class PgMoneyAuthority implements MoneyAuthority {
     now: Date,
     /** Share quantity in base units (e.g. 100 shares => 100_000_000 base). */
     amountSharesBase?: bigint,
+    /** Authoritative policy hash for the permit. */
+    policyHash?: string,
+    /** Authoritative quote id for the permit. */
+    quoteId?: string,
   ): Promise<import("./money-kernel.js").MoneyAuthorityResult> {
     const reservationId = randomUUID();
     const permitId = randomUUID();
@@ -309,8 +313,8 @@ export class PgMoneyAuthority implements MoneyAuthority {
           intentId,
           riskDecision.ledger_version ?? "1.0.0",
           riskDecision.policy_version ?? "1.0.0",
-          "", // policy_hash - not in risk_decisions
-          "", // quote_id - not in risk_decisions
+          policyHash ?? "",
+          quoteId ?? "",
           leaseEpoch,
           [reservationId],
           (amountSharesBase ?? cashNeededBase).toString(),

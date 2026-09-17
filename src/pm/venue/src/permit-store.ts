@@ -79,23 +79,7 @@ export class PgPermitStore implements PermitStore {
         policy_hash, quote_id, lease_epoch, reservation_ids, max_qty, max_cash,
         allowed_order_style, venue_mode, issued_at, expires_at, single_use, used_at, schema_version
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-      ON CONFLICT (permit_id) DO UPDATE SET
-        decision_id = EXCLUDED.decision_id,
-        intent_id = EXCLUDED.intent_id,
-        ledger_version = EXCLUDED.ledger_version,
-        policy_version = EXCLUDED.policy_version,
-        policy_hash = EXCLUDED.policy_hash,
-        quote_id = EXCLUDED.quote_id,
-        lease_epoch = EXCLUDED.lease_epoch,
-        reservation_ids = EXCLUDED.reservation_ids,
-        max_qty = EXCLUDED.max_qty,
-        max_cash = EXCLUDED.max_cash,
-        allowed_order_style = EXCLUDED.allowed_order_style,
-        venue_mode = EXCLUDED.venue_mode,
-        issued_at = EXCLUDED.issued_at,
-        expires_at = EXCLUDED.expires_at,
-        single_use = EXCLUDED.single_use,
-        schema_version = EXCLUDED.schema_version
+      ON CONFLICT (permit_id) DO NOTHING
       `,
       [
         permit.permit_id,

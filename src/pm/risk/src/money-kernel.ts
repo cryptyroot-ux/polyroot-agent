@@ -88,6 +88,10 @@ export interface MoneyAuthority {
     now: Date,
     /** Share quantity in base units (e.g. 100 shares => 100_000_000 base). */
     amountSharesBase?: bigint,
+    /** Authoritative policy hash for the permit (NOT empty string). */
+    policyHash?: string,
+    /** Authoritative quote id for the permit (NOT empty string). */
+    quoteId?: string,
   ): Promise<MoneyAuthorityResult>;
 }
 
@@ -274,6 +278,8 @@ export class MoneyKernel {
 
     // Use authority if available for atomic reservation and permit creation.
     if (this.authority) {
+      // Generate the authoritative quoteId once, use it consistently everywhere
+      const authoritativeQuoteId = `quote_${randomUUID()}`;
       const res = await this.authority.reserve(
         req.account,
         req.asset,
@@ -283,6 +289,8 @@ export class MoneyKernel {
         req.leaseEpoch,
         req.now,
         req.amountSharesBase,
+        req.policyHash,
+        authoritativeQuoteId,
       );
       if (!res.ok) {
         return {
@@ -293,7 +301,7 @@ export class MoneyKernel {
       }
       const { reservationId, permitId } = res;
 
-      // Build the permit (single-use, versioned, TTL-bound)
+      // Build the permit (single-use, versioned, TTL-bound) using the SAME authoritative quoteId
       const permit: ExecutionPermit = {
         schema_version: "1.1",
         permit_id: permitId,
@@ -302,7 +310,7 @@ export class MoneyKernel {
         ledger_version: "0003",
         policy_version: req.policy.policy_version,
         policy_hash: req.policyHash,
-        quote_id: `quote_${randomUUID()}`,
+        quote_id: authoritativeQuoteId,
         lease_epoch: req.leaseEpoch,
         reservation_ids: [reservationId],
         max_qty: Number(req.amountSharesBase) / 1_000_000,
