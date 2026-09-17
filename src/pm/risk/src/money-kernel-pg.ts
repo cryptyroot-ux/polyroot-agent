@@ -190,16 +190,44 @@ export class PgMoneyAuthority implements MoneyAuthority {
 
       // 4. Insert reservation row
       await client.query(
-        `INSERT INTO reservations (reservation_id, decision_id, intent_id, account, asset, amount_base, status, created_at, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'OPEN', now(), $7)`,
-        [reservationId, decisionId, intentId, account, asset, cashNeededBase.toString(), expiresAt.toISOString()],
+        `INSERT INTO reservations (id, risk_decision_id, intent_id, account, asset, amount, currency, status, created_at, expires_at, consumed_at, permit_id, payload_hash, decision_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pUSD', 'ACTIVE', now(), $7, NULL, NULL, NULL, $8)`,
+        [reservationId, decisionId, intentId, account, asset, cashNeededBase.toString(), expiresAt.toISOString(), decisionId],
       );
+
+      // 5. Fetch risk_decision for required execution_permits fields
+      const rd = await client.query(
+        `SELECT ledger_version, policy_version, allowed_order_style, venue_mode, schema_version
+         FROM risk_decisions WHERE id = $1`,
+        [decisionId],
+      );
+      if (rd.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return { ok: false, reason: "RISK_DECISION_NOT_FOUND", code: "RISK_DECISION_NOT_FOUND" };
+      }
+      const riskDecision = rd.rows[0];
 
       // 5. Insert execution permit row
       await client.query(
-        `INSERT INTO execution_permits (permit_id, decision_id, intent_id, reservation_ids, lease_epoch, max_qty, max_cash, issued_at, expires_at, single_use, used_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, now(), $8, true, NULL)`,
-        [permitId, decisionId, intentId, [reservationId], leaseEpoch, cashNeededBase.toString(), cashNeededBase.toString(), expiresAt.toISOString()],
+        `INSERT INTO execution_permits (permit_id, decision_id, intent_id, ledger_version, policy_version, policy_hash, quote_id, lease_epoch, reservation_ids, max_qty, max_cash, allowed_order_style, venue_mode, issued_at, expires_at, single_use, used_at, schema_version)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), $14, true, NULL, $15)`,
+        [
+          permitId,
+          decisionId,
+          intentId,
+          riskDecision.ledger_version ?? "1.0.0",
+          riskDecision.policy_version ?? "1.0.0",
+          "", // policy_hash - not in risk_decisions
+          "", // quote_id - not in risk_decisions
+          leaseEpoch,
+          [reservationId],
+          cashNeededBase.toString(),
+          cashNeededBase.toString(),
+          riskDecision.allowed_order_style ?? [],
+          riskDecision.venue_mode ?? "default",
+          expiresAt.toISOString(),
+          riskDecision.schema_version ?? "1.0.0",
+        ],
       );
 
       // 6. Insert kernel event (audit trail) — schema has NO payload_hash col,

@@ -57,7 +57,7 @@ describe("Migration smoke test (fresh DB)", { skip: !DB_OK }, () => {
       );
       const count = parseInt(countResult.toString().trim(), 10);
       // We expect 9 migrations (0001 through 0009)
-      assert.strictEqual(count, 10, "Expected 10 migrations to be applied");
+      assert.strictEqual(count, 11, "Expected 11 migrations to be applied");
 
       // Optionally, check that a few core tables exist
       const tablesResult = execFileSync(

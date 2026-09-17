@@ -1,3 +1,6 @@
+import { describe, it } from "node:test";
+import { PgMoneyAuthority } from "@polyroot/risk";
+import assert from "node:assert/strict";
 /**
  * P0: PgMoneyAuthority — real PostgreSQL integration tests.
  *
@@ -11,6 +14,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "child_process";
 import { randomUUID } from "crypto";
+import { Pool } from "pg";
 
 const PG_URL =
   process.env.TEST_DATABASE_URL ||
@@ -29,14 +33,24 @@ const DB_OK = dbAvailable();
 
 describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
   it("reserve() atomically writes reservation + permit + event + balance", async () => {
-    const { PgMoneyAuthority } = await import("@polyroot/risk");
-    const { Pool } = await import("pg");
     const pool = new Pool({ connectionString: PG_URL });
     const auth = new PgMoneyAuthority(pool);
 
     const acct = `auth_wallet_${randomUUID()}`;
     const decisionId = randomUUID();
     const intentId = randomUUID();
+
+    // Create required FK rows
+    await pool.query(
+      `INSERT INTO trade_intents (id, market_id, side, price, size, order_type, expiration_sec, strategy, status)
+       VALUES ($1, 'test_market', 'YES', 0.5, 100, 'LIMIT', 3600, 'test_strategy', 'PROPOSED')`,
+      [intentId],
+    );
+    await pool.query(
+      `INSERT INTO risk_decisions (id, intent_id, status, decision_id, decided_at, reason_codes)
+       VALUES ($1, $2, 'ACCEPTED', $1, now(), ARRAY[]::text[])`,
+      [decisionId, intentId],
+    );
 
     // Seed balance 10,000,000
     await pool.query(
@@ -47,6 +61,7 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
     );
 
     const res = await auth.reserve(acct, "pUSD", 5_000_000n, decisionId, intentId, 1, new Date());
+    console.log("Test 1 Result:", JSON.stringify(res));
     assert.equal(res.ok, true);
     if (!res.ok) throw new Error(res.reason);
 
@@ -59,10 +74,10 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
     assert.equal(bal.rows[0].committed_base, "5000000", "committed should rise by 5M");
 
     const resv = await pool.query(
-      `SELECT COUNT(*)::int AS c FROM reservations WHERE reservation_id = $1 AND status = 'OPEN'`,
+      `SELECT COUNT(*)::int AS c FROM reservations WHERE id = $1 AND status = 'ACTIVE'`,
       [res.reservationId],
     );
-    assert.equal(resv.rows[0].c, 1, "reservation row must exist OPEN");
+    assert.equal(resv.rows[0].c, 1, "reservation row must exist ACTIVE");
 
     const perm = await pool.query(
       `SELECT COUNT(*)::int AS c FROM execution_permits WHERE permit_id = $1 AND used_at IS NULL`,
@@ -79,14 +94,25 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
   });
 
   it("insufficient balance → ROLLBACK (no reservation, permit, or event)", async () => {
-    const { PgMoneyAuthority } = await import("@polyroot/risk");
-    const { Pool } = await import("pg");
     const pool = new Pool({ connectionString: PG_URL });
     const auth = new PgMoneyAuthority(pool);
 
     const acct = `auth_short_${randomUUID()}`;
     const decisionId = randomUUID();
     const intentId = randomUUID();
+
+    // Create required FK rows
+    await pool.query(
+      `INSERT INTO trade_intents (id, market_id, side, price, size, order_type, expiration_sec, strategy, status)
+       VALUES ($1, 'test_market', 'YES', 0.5, 100, 'LIMIT', 3600, 'test_strategy', 'PROPOSED')`,
+      [intentId],
+    );
+    await pool.query(
+      `INSERT INTO risk_decisions (id, intent_id, status, decision_id, decided_at, reason_codes)
+       VALUES ($1, $2, 'ACCEPTED', $1, now(), ARRAY[]::text[])`,
+      [decisionId, intentId],
+    );
+
     const before = (
       await pool.query(`SELECT COUNT(*)::int AS c FROM kernel_events`)
     ).rows[0].c;
@@ -98,6 +124,7 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
     );
 
     const res = await auth.reserve(acct, "pUSD", 5_000_000n, decisionId, intentId, 1, new Date());
+    console.log("Test 2 Result:", JSON.stringify(res));
     assert.equal(res.ok, false);
     if (res.ok) throw new Error("should have rejected");
 
@@ -113,8 +140,6 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
   });
 
   it("two concurrent reserves cannot overspend a single balance", async () => {
-    const { PgMoneyAuthority } = await import("@polyroot/risk");
-    const { Pool } = await import("pg");
     const pool = new Pool({ connectionString: PG_URL });
     const auth = new PgMoneyAuthority(pool);
 
@@ -125,11 +150,27 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
       [acct],
     );
 
+    // Create required FK rows
+    const intentId = randomUUID();
+    await pool.query(
+      `INSERT INTO trade_intents (id, market_id, side, price, size, order_type, expiration_sec, strategy, status)
+       VALUES ($1, 'test_market', 'YES', 0.5, 100, 'LIMIT', 3600, 'test_strategy', 'PROPOSED')`,
+      [intentId],
+    );
+    const decisionId = randomUUID();
+    await pool.query(
+      `INSERT INTO risk_decisions (id, intent_id, status, decision_id, decided_at, reason_codes)
+       VALUES ($1, $2, 'ACCEPTED', $1, now(), ARRAY[]::text[])`,
+      [decisionId, intentId],
+    );
+
     // Two concurrent reserves of 5M each against 6M total → at most one succeeds.
     const [a, b] = await Promise.all([
-      auth.reserve(acct, "pUSD", 5_000_000n, randomUUID(), randomUUID(), 1, new Date()),
-      auth.reserve(acct, "pUSD", 5_000_000n, randomUUID(), randomUUID(), 1, new Date()),
+      auth.reserve(acct, "pUSD", 5_000_000n, decisionId, intentId, 1, new Date()),
+      auth.reserve(acct, "pUSD", 5_000_000n, decisionId, intentId, 1, new Date()),
     ]);
+    console.log("Test 3 Result A:", JSON.stringify(a));
+    console.log("Test 3 Result B:", JSON.stringify(b));
     const okCount = [a, b].filter((r) => r.ok).length;
     assert.equal(okCount, 1, "exactly one of two concurrent 5M reserves should win against 6M balance");
 

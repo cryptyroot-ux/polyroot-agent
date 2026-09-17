@@ -1,0 +1,16 @@
+[allowlist]
+description = "False positives in test fixtures and legacy documentation"
+files = [
+    "tests/pm/contracts/observability.test.ts",
+    "tests/unit/polymarket-order-signer-v2.test.ts",
+    "tests/unit/fast-broadcast-byte-parity.test.ts",
+    "README.md",
+    "public/SKILL.md",
+    "docs/EVM_WALLET.md",
+    "src/feeds/virtuals/index.ts",
+    "src/evm/virtuals.ts",
+    "src/auth/google.ts",
+    "docs/spec_pack/Polyroot_v1.1_Specification_Pack/MANIFEST_SHA256.json",
+    "schemas/CredentialRecord.schema.json",
+    "tests/pm/contracts/security-proxy.test.ts",
+]

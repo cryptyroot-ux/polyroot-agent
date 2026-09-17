@@ -10,16 +10,14 @@ RUN apk add --no-cache python3 make g++ git
 COPY package*.json ./
 COPY turbo.json ./
 COPY tsconfig.base.json ./
+COPY tsconfig/ ./tsconfig/
 
-# Copy workspace packages
-COPY src/pm/*/package.json ./src/pm/
+# Copy workspace source (preserves src/pm/<pkg>/package.json hierarchy)
+COPY src/ ./src/
+COPY migrations/ ./migrations/
 
 # Install dependencies
 RUN npm ci
-
-# Copy source
-COPY src/ ./src/
-COPY migrations/ ./migrations/
 
 # Build all workspaces
 RUN npm run build:all
@@ -42,10 +40,12 @@ RUN apk add --no-cache \
 # Copy package files
 COPY package*.json ./
 COPY turbo.json ./
+COPY tsconfig.base.json ./
+COPY tsconfig/ ./tsconfig/
 
 # Copy built artifacts from builder
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
-COPY --from=builder --chown=nodejs:nodejs /app/src/pm/*/package.json ./src/pm/
+COPY --from=builder --chown=nodejs:nodejs /app/src ./src
 COPY --from=builder --chown=nodejs:nodejs /app/migrations ./migrations
 
 # Install production dependencies only
