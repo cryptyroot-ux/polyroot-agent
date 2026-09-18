@@ -138,6 +138,22 @@ describe("Signer Vault — TABLE 8 pre-sign invariants (PM-WALLET-07)", () => {
     if (!res.ok) assert.equal(res.code, "IDENTITY_CONFLICT");
   });
 
+  it("refuses when signer and account are the same identity", async () => {
+    const res = await vault().sign(
+      makeReq({ wallet: makeWallet({ account_wallet: "0xSIGNER" }) }),
+    );
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "IDENTITY_CONFLICT");
+  });
+
+  it("refuses when account and funder are the same identity", async () => {
+    const res = await vault().sign(
+      makeReq({ wallet: makeWallet({ account_wallet: "0xFUNDER" }) }),
+    );
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "IDENTITY_CONFLICT");
+  });
+
   it("refuses a payload hash that does not bind to the permit", async () => {
     const res = await vault().sign(makeReq({ payloadHash: "ph_tampered" }));
     assert.equal(res.ok, false);
