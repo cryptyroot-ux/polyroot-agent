@@ -81,7 +81,8 @@ export async function validateAndReserve(
     );
   }
 
-  // 3. Order dimensions (USD-decimal domain view).
+  // 3. Order dimensions — convert to exact base-unit integers FIRST so all
+//    downstream exposure arithmetic is integer-only (P0-11: no float money).
   const price = intent.limit_price ?? intent.price;
   if (price === undefined) {
     return fail("PRICE_REQUIRED", "intent must carry a limit price");
@@ -94,34 +95,40 @@ export async function validateAndReserve(
   if (size === undefined) {
     return fail("SIZE_REQUIRED", "intent must carry a size or a notional");
   }
-  const orderNotional = size * price;
-
-  // 4. Policy percentage limits (percentages of the commissioned capital).
-  if (orderNotional > capitalUsd * policy.max_order_pct) {
-    return fail(
-      "ORDER_PCT_EXCEEDED",
-      `order ${orderNotional} exceeds max_order_pct of capital ${policy.max_order_pct}`,
-    );
-  }
-  const marketExposure = (input.currentMarketExposureUsd ?? 0) + orderNotional;
-  if (marketExposure > capitalUsd * policy.max_market_pct) {
-    return fail(
-      "MARKET_PCT_EXCEEDED",
-      `market exposure ${marketExposure} exceeds max_market_pct of capital ${policy.max_market_pct}`,
-    );
-  }
-  const portfolioExposure =
-    (input.currentPortfolioExposureUsd ?? 0) + orderNotional;
-  if (portfolioExposure > capitalUsd * policy.max_portfolio_pct) {
-    return fail(
-      "PORTFOLIO_PCT_EXCEEDED",
-      `portfolio exposure ${portfolioExposure} exceeds max_portfolio_pct of capital ${policy.max_portfolio_pct}`,
-    );
-  }
-
-  // 5. Exact reservation in base units, atomic with the permit (PM-RISK-03).
   const sizeBase = decimalToBase(size);
   const priceBase = decimalToBase(price);
+  // orderNotional = size(shares) * price(cents)  [exact cash in base units]
+  const orderNotionalBase = cashNeededFor(sizeBase, priceBase);
+  const capitalBase = decimalToBase(capitalUsd);
+
+  // 4. Policy percentage limits — exact integer math (percentages are
+  //    fractions of commissioned capital in base units).
+  const orderCapBase = (capitalBase * BigInt(Math.round(policy.max_order_pct * 10_000))) / 10_000n;
+  if (orderNotionalBase > orderCapBase) {
+    return fail(
+      "ORDER_PCT_EXCEEDED",
+      `order ${orderNotionalBase} exceeds max_order_pct of capital ${capitalBase}`,
+    );
+  }
+  const currentMarketBase = decimalToBase(input.currentMarketExposureUsd ?? 0);
+  const marketCapBase = (capitalBase * BigInt(Math.round(policy.max_market_pct * 10_000))) / 10_000n;
+  const marketExposureBase = currentMarketBase + orderNotionalBase;
+  if (marketExposureBase > marketCapBase) {
+    return fail(
+      "MARKET_PCT_EXCEEDED",
+      `market exposure ${marketExposureBase} exceeds max_market_pct of capital ${marketCapBase}`,
+    );
+  }
+  const currentPortfolioBase = decimalToBase(input.currentPortfolioExposureUsd ?? 0);
+  const portfolioCapBase = (capitalBase * BigInt(Math.round(policy.max_portfolio_pct * 10_000))) / 10_000n;
+  const portfolioExposureBase = currentPortfolioBase + orderNotionalBase;
+  if (portfolioExposureBase > portfolioCapBase) {
+    return fail(
+      "PORTFOLIO_PCT_EXCEEDED",
+      `portfolio exposure ${portfolioExposureBase} exceeds max_portfolio_pct of capital ${portfolioCapBase}`,
+    );
+  }
+
   const maxCashBase = cashNeededFor(sizeBase, priceBase);
   const decisionId = randomUUID();
 
@@ -161,8 +168,8 @@ export async function validateAndReserve(
     ledger_version: permit.ledger_version,
     policy_version: permit.policy_version,
     risk_metrics: {
-      portfolio_impact: orderNotional,
-      market_impact: orderNotional,
+      portfolio_impact: Number(orderNotionalBase) / 1_000_000,
+      market_impact: Number(orderNotionalBase) / 1_000_000,
     },
     decided_at: input.now,
   };

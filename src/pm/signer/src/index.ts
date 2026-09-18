@@ -419,6 +419,11 @@ export function decimalToBase(value: number, decimals = 6): bigint {
   const parts = String(value).split(".");
   const int = parts[0] ?? "0";
   const fracRaw = parts.length > 1 ? parts[1]! : "";
+  if (fracRaw.length > decimals) {
+    throw new Error(
+      `REJECT_PRECISION_LOSS: value ${value} has ${fracRaw.length} decimal places, max allowed ${decimals}`,
+    );
+  }
   const fracPadded = fracRaw.padEnd(decimals, "0").slice(0, decimals);
   const base = BigInt(int + fracPadded);
   return base * (int.startsWith("-") ? -1n : 1n);
