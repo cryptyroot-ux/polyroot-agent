@@ -68,6 +68,9 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
       intentId,
       1,
       new Date(),
+      5_000_000n,
+      "ph_audited_policy_hash",
+      `quote_${randomUUID()}`,
     );
     console.log("Test 1 Result:", JSON.stringify(res));
     assert.equal(res.ok, true);
@@ -150,6 +153,9 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
       intentId,
       1,
       new Date(),
+      5_000_000n,
+      "ph_audited_policy_hash",
+      `quote_${randomUUID()}`,
     );
     console.log("Test 2 Result:", JSON.stringify(res));
     assert.equal(res.ok, false);
@@ -212,6 +218,9 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
         intentId,
         1,
         new Date(),
+        5_000_000n,
+        "ph_audited_policy_hash",
+        `quote_${randomUUID()}`,
       ),
       auth.reserve(
         acct,
@@ -221,6 +230,9 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
         intentId,
         1,
         new Date(),
+        5_000_000n,
+        "ph_audited_policy_hash",
+        `quote_${randomUUID()}`,
       ),
     ]);
     console.log("Test 3 Result A:", JSON.stringify(a));

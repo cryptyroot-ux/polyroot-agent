@@ -212,6 +212,24 @@ export class PgMoneyAuthority implements MoneyAuthority {
     const permitId = randomUUID();
     const expiresAt = new Date(now.getTime() + 60_000);
 
+    // 0. Fail-closed on missing authority provenance. The permit MUST carry an
+    //    authoritative policy hash and quote id — empty values are never
+    //    coerced to "" because that would fabricate authorization provenance.
+    if (!policyHash || policyHash.length === 0) {
+      return {
+        ok: false,
+        reason: "authoritative policy hash required",
+        code: "POLICY_HASH_REQUIRED",
+      };
+    }
+    if (!quoteId || quoteId.length === 0) {
+      return {
+        ok: false,
+        reason: "authoritative quote id required",
+        code: "QUOTE_ID_REQUIRED",
+      };
+    }
+
     const client: PoolClient = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -408,6 +426,7 @@ export function createPgStores(
 ): {
   balanceStore: PgBalanceStore;
   eventSink: PgKernelEventSink;
+  authority: PgMoneyAuthority;
   pool: Pool;
 } {
   const pool =
@@ -419,6 +438,7 @@ export function createPgStores(
   return {
     balanceStore: new PgBalanceStore(pool),
     eventSink: new PgKernelEventSink(pool),
+    authority: new PgMoneyAuthority(pool),
     pool,
   };
 }

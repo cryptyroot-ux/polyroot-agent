@@ -24,12 +24,15 @@ export interface Reservation {
   account: string;
   asset: string;
   amount: bigint; // in base units (shares * 1e6)
+  consumedAmount: bigint; // cumulative consumed (base units)
+  releasedAmount: bigint; // cumulative released (base units)
   currency: string;
   status: ReservationStatus;
   createdAt: Date;
   expiresAt: Date;
   consumedAt?: Date;
   releasedAt?: Date;
+  expiredAt?: Date;
   permitId: string;
 }
 
@@ -105,39 +108,90 @@ export class ReservationManager {
   }
 
   /**
-   * Consume a reservation atomically:
-   *   UPDATE reservations SET status='CONSUMED', consumed_at=now()
-   *   WHERE id=$1 AND status='ACTIVE'
-   * then decrement committed balance.
+   * Consume a reservation atomically, supporting PARTIAL fills.
+   *
+   * All balance + reservation updates run inside ONE database transaction on a
+   * single client (P0-2), so there is no window where the reservation status
+   * and the balance disagree.
+   *
+   * Accounting invariant (P0-3):
+   *   0 <= consumed_amount <= amount
+   *   consumed_amount + released_amount <= amount
+   *   status = CONSUMED when consumed == amount, else PARTIALLY_CONSUMED.
    */
   async consume(
     reservationId: string,
     filledAmount: bigint,
   ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
     if (!this.deps.pool) return { ok: true }; // in-memory mode
+    if (filledAmount <= 0n) {
+      return {
+        ok: false,
+        code: "INVALID_AMOUNT",
+        reason: "filled amount must be positive",
+      };
+    }
     const client = await this.deps.pool.connect();
     try {
       await client.query("BEGIN");
+      // Lock the reservation row for the duration of the accounting update.
       const r = await client.query(
-        `UPDATE reservations
-         SET status='CONSUMED', consumed_at=now()
-         WHERE id=$1 AND status='ACTIVE'
-         RETURNING account, asset`,
+        `SELECT account, asset, amount, status, consumed_amount
+         FROM reservations WHERE id=$1 FOR UPDATE`,
         [reservationId],
       );
       if (r.rowCount !== 1) {
         await client.query("ROLLBACK");
         return {
           ok: false,
-          code: "RESERVATION_NOT_ACTIVE",
-          reason: "reservation not active",
+          code: "RESERVATION_NOT_FOUND",
+          reason: "reservation not found",
         };
       }
-      const { account, asset } = r.rows[0] as {
+      const row = r.rows[0] as {
         account: string;
         asset: string;
+        amount: string;
+        status: string;
+        consumed_amount: string;
       };
-      await this.deps.balanceStore.consumeFunds(account, asset, filledAmount);
+      if (row.status !== "ACTIVE" && row.status !== "PARTIALLY_CONSUMED") {
+        await client.query("ROLLBACK");
+        return {
+          ok: false,
+          code: "RESERVATION_NOT_ACTIVE",
+          reason: `reservation is ${row.status}`,
+        };
+      }
+      const reserved = BigInt(row.amount);
+      const alreadyConsumed = BigInt(row.consumed_amount ?? "0");
+      const newConsumed = alreadyConsumed + filledAmount;
+      if (newConsumed > reserved) {
+        await client.query("ROLLBACK");
+        return {
+          ok: false,
+          code: "OVER_CONSUME",
+          reason: `consume ${newConsumed} exceeds reserved ${reserved}`,
+        };
+      }
+      const fullyConsumed = newConsumed === reserved;
+      const newStatus = fullyConsumed ? "CONSUMED" : "PARTIALLY_CONSUMED";
+
+      // Balance + reservation update in the SAME transaction.
+      await client.query(
+        `UPDATE balance_entries
+         SET committed_base = committed_base - $3, updated_at = now()
+         WHERE account=$1 AND asset=$2 AND committed_base >= $3`,
+        [row.account, row.asset, filledAmount.toString()],
+      );
+      await client.query(
+        `UPDATE reservations
+         SET consumed_amount=$2,
+             consumed_at = CASE WHEN $3 THEN now() ELSE consumed_at END,
+             status=$4
+         WHERE id=$1`,
+        [reservationId, newConsumed.toString(), fullyConsumed, newStatus],
+      );
       await client.query("COMMIT");
       return { ok: true };
     } catch (err) {
@@ -152,36 +206,80 @@ export class ReservationManager {
     }
   }
 
-  /** Release/rescind reservation funds atomically. */
+  /**
+   * Release remaining/rescind reservation funds atomically.
+   * Runs the balance move and the reservation status update in ONE transaction.
+   */
   async release(
     reservationId: string,
-    _reason: "CANCELLED" | "EXPIRED" | "REJECTED",
+    reason: "CANCELLED" | "EXPIRED" | "REJECTED",
   ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
     if (!this.deps.pool) return { ok: true };
+    const terminalStatus = reason === "EXPIRED" ? "EXPIRED" : "RELEASED";
     const client = await this.deps.pool.connect();
     try {
       await client.query("BEGIN");
       const r = await client.query(
-        `UPDATE reservations
-         SET status='RELEASED', released_at=now()
-         WHERE id=$1 AND status='ACTIVE'
-         RETURNING account, asset, amount`,
+        `SELECT account, asset, amount, consumed_amount, released_amount, status
+         FROM reservations WHERE id=$1 FOR UPDATE`,
         [reservationId],
       );
       if (r.rowCount !== 1) {
         await client.query("ROLLBACK");
         return {
           ok: false,
-          code: "RESERVATION_NOT_ACTIVE",
-          reason: "reservation not active",
+          code: "RESERVATION_NOT_FOUND",
+          reason: "reservation not found",
         };
       }
-      const { account, asset, amount } = r.rows[0] as {
+      const row = r.rows[0] as {
         account: string;
         asset: string;
         amount: string;
+        consumed_amount: string;
+        released_amount: string;
+        status: string;
       };
-      await this.deps.balanceStore.releaseFunds(account, asset, BigInt(amount));
+      if (row.status !== "ACTIVE" && row.status !== "PARTIALLY_CONSUMED") {
+        await client.query("ROLLBACK");
+        return {
+          ok: false,
+          code: "RESERVATION_NOT_ACTIVE",
+          reason: `reservation is ${row.status}`,
+        };
+      }
+      const reserved = BigInt(row.amount);
+      const consumed = BigInt(row.consumed_amount ?? "0");
+      const released = BigInt(row.released_amount ?? "0");
+      // Release only the remaining (unconsumed, unreleased) portion.
+      const remaining = reserved - consumed - released;
+      if (remaining < 0n) {
+        await client.query("ROLLBACK");
+        return {
+          ok: false,
+          code: "ACCOUNTING_INVARIANT_VIOLATED",
+          reason: "negative remaining",
+        };
+      }
+      const newReleased = released + remaining;
+
+      if (remaining > 0n) {
+        await client.query(
+          `UPDATE balance_entries
+           SET available_base = available_base + $3, committed_base = committed_base - $3, updated_at = now()
+           WHERE account=$1 AND asset=$2 AND committed_base >= $3`,
+          [row.account, row.asset, remaining.toString()],
+        );
+      }
+      await client.query(
+        `UPDATE reservations
+         SET released_amount=$2,
+             released_at = CASE WHEN $3 = 'EXPIRED' THEN released_at ELSE now() END,
+             expired_at  = CASE WHEN $3 = 'EXPIRED' THEN now() ELSE expired_at END,
+             status=$3
+         WHERE id=$1`,
+        [reservationId, newReleased.toString(), terminalStatus],
+      );
       await client.query("COMMIT");
       return { ok: true };
     } catch (err) {
@@ -196,7 +294,7 @@ export class ReservationManager {
     }
   }
 
-  /** Expire overdue reservations atomically. */
+  /** Expire an overdue reservation → terminal EXPIRED state (not RELEASED). */
   async expire(
     reservationId: string,
   ): Promise<{ ok: true } | { ok: false; code: string; reason: string }> {
@@ -230,12 +328,15 @@ export class ReservationManager {
     account: string;
     asset: string;
     amount: string | number;
+    consumed_amount?: string | number;
+    released_amount?: string | number;
     currency?: string;
     status: string;
     created_at: Date;
     expires_at: Date;
     consumed_at?: Date | null;
     released_at?: Date | null;
+    expired_at?: Date | null;
     permit_id: string;
   }): Reservation {
     const result: Reservation = {
@@ -245,6 +346,8 @@ export class ReservationManager {
       account: row.account,
       asset: row.asset,
       amount: BigInt(row.amount ?? 0),
+      consumedAmount: BigInt(row.consumed_amount ?? 0),
+      releasedAmount: BigInt(row.released_amount ?? 0),
       currency: row.currency ?? "pUSD",
       status: row.status as ReservationStatus,
       createdAt: row.created_at,
@@ -253,6 +356,7 @@ export class ReservationManager {
     };
     if (row.consumed_at) result.consumedAt = row.consumed_at;
     if (row.released_at) result.releasedAt = row.released_at;
+    if (row.expired_at) result.expiredAt = row.expired_at;
     return result;
   }
 }

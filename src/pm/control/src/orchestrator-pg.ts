@@ -85,17 +85,23 @@ export async function createOrchestratorPg(
   const {
     balanceStore,
     eventSink,
+    authority,
     pool: riskPool,
   }: {
     balanceStore: import("@polyroot/risk").BalanceStore;
     eventSink: import("@polyroot/risk").KernelEventSink;
+    authority: import("@polyroot/risk").MoneyAuthority;
     pool: import("pg").Pool;
   } = createPgStores(deps.pgConfig);
 
+  // The atomic PgMoneyAuthority is the ONLY financial authority in production.
+  // Passing it to the kernel eliminates the non-atomic fallback path
+  // (balance.reserveFunds + sink.push) entirely.
   const kernel = new MoneyKernel({
     balance: balanceStore,
     sink: eventSink,
     chainId: 137,
+    authority,
   });
 
   // ── PostgreSQL-backed Control plane ports ─────────────────────────────────
