@@ -82,7 +82,7 @@ export async function validateAndReserve(
   }
 
   // 3. Order dimensions — convert to exact base-unit integers FIRST so all
-//    downstream exposure arithmetic is integer-only (P0-11: no float money).
+  //    downstream exposure arithmetic is integer-only (P0-11: no float money).
   const price = intent.limit_price ?? intent.price;
   if (price === undefined) {
     return fail("PRICE_REQUIRED", "intent must carry a limit price");
@@ -103,7 +103,8 @@ export async function validateAndReserve(
 
   // 4. Policy percentage limits — exact integer math (percentages are
   //    fractions of commissioned capital in base units).
-  const orderCapBase = (capitalBase * BigInt(Math.round(policy.max_order_pct * 10_000))) / 10_000n;
+  const orderCapBase =
+    (capitalBase * BigInt(Math.round(policy.max_order_pct * 10_000))) / 10_000n;
   if (orderNotionalBase > orderCapBase) {
     return fail(
       "ORDER_PCT_EXCEEDED",
@@ -111,7 +112,9 @@ export async function validateAndReserve(
     );
   }
   const currentMarketBase = decimalToBase(input.currentMarketExposureUsd ?? 0);
-  const marketCapBase = (capitalBase * BigInt(Math.round(policy.max_market_pct * 10_000))) / 10_000n;
+  const marketCapBase =
+    (capitalBase * BigInt(Math.round(policy.max_market_pct * 10_000))) /
+    10_000n;
   const marketExposureBase = currentMarketBase + orderNotionalBase;
   if (marketExposureBase > marketCapBase) {
     return fail(
@@ -119,8 +122,12 @@ export async function validateAndReserve(
       `market exposure ${marketExposureBase} exceeds max_market_pct of capital ${marketCapBase}`,
     );
   }
-  const currentPortfolioBase = decimalToBase(input.currentPortfolioExposureUsd ?? 0);
-  const portfolioCapBase = (capitalBase * BigInt(Math.round(policy.max_portfolio_pct * 10_000))) / 10_000n;
+  const currentPortfolioBase = decimalToBase(
+    input.currentPortfolioExposureUsd ?? 0,
+  );
+  const portfolioCapBase =
+    (capitalBase * BigInt(Math.round(policy.max_portfolio_pct * 10_000))) /
+    10_000n;
   const portfolioExposureBase = currentPortfolioBase + orderNotionalBase;
   if (portfolioExposureBase > portfolioCapBase) {
     return fail(
