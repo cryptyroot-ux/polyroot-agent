@@ -532,6 +532,10 @@ export const ExecutionPermitSchema = z.object({
   reservation_ids: z.array(z.string().min(1)),
   max_qty: z.number().nonnegative(),
   max_cash: z.number().nonnegative(),
+  /** Canonical integer base-unit quantities (P0-15: permit must not depend on
+   *  floating representation for authorization). 1 unit = 1e6 base units. */
+  max_qty_base: z.bigint().nonnegative().optional(),
+  max_cash_base: z.bigint().nonnegative().optional(),
   allowed_order_style: z.array(z.string().min(1)),
   venue_mode: VenueModeSchema,
   issued_at: z.date(),
@@ -551,6 +555,10 @@ export const SignedOrderSchema = z.object({
   side: z.enum(["BUY", "SELL"]),
   price: z.number().min(0).max(1),
   size: z.number().positive(),
+  /** Canonical integer base-unit quantities (P0-13: signer/serialization must
+   *  not round through float). size_base is shares * 1e6, price_base is 1e6. */
+  size_base: z.bigint().positive().optional(),
+  price_base: z.bigint().nonnegative().optional(),
   fee_rate_bps: z.number().int().nonnegative(),
   nonce: z.number().int().nonnegative().optional(),
   expiration: z.number().int().positive().optional(),
