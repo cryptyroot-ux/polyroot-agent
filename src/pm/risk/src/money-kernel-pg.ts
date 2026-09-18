@@ -289,10 +289,12 @@ export class PgMoneyAuthority implements MoneyAuthority {
         [account, asset, cashNeededBase.toString()],
       );
 
-      // 4. Insert reservation row
+      // 4. Insert reservation row (canonical Reservation↔Permit binding: the
+      //    reservation is created in the same transaction and carries the
+      //    permit_id it authorizes, so both directions are durable).
       await client.query(
         `INSERT INTO reservations (id, risk_decision_id, intent_id, account, asset, amount, currency, status, created_at, expires_at, consumed_at, permit_id, payload_hash, decision_id)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pUSD', 'ACTIVE', now(), $7, NULL, NULL, NULL, $8)`,
+         VALUES ($1, $2, $3, $4, $5, $6, 'pUSD', 'ACTIVE', now(), $7, NULL, $8, NULL, $9)`,
         [
           reservationId,
           decisionId,
@@ -301,6 +303,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
           asset,
           cashNeededBase.toString(),
           expiresAt.toISOString(),
+          permitId,
           decisionId,
         ],
       );
