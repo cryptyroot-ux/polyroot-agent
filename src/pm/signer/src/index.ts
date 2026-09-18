@@ -280,6 +280,20 @@ export class SignerVault {
         code: "IDENTITY_CONFLICT",
       };
     }
+    if (request.wallet.signer_address === request.wallet.account_wallet) {
+      return {
+        ok: false,
+        reason: "signer and account must be distinct",
+        code: "IDENTITY_CONFLICT",
+      };
+    }
+    if (request.wallet.account_wallet === request.wallet.funder) {
+      return {
+        ok: false,
+        reason: "account and funder must be distinct",
+        code: "IDENTITY_CONFLICT",
+      };
+    }
 
     // 3. Chain identity — wallet must be on expected chain.
     if (request.wallet.chain_id !== this.expectedChainId) {
@@ -385,16 +399,7 @@ export class SignerVault {
       };
     }
 
-    // 17. Wallet identity — signer, account and funder are distinct (WAL-03).
-    if (request.wallet.signer_address === request.wallet.funder) {
-      return {
-        ok: false,
-        reason: "signer and funder must be distinct",
-        code: "IDENTITY_CONFLICT",
-      };
-    }
-
-    // 18. Action on allowlist.
+    // 17. Action on allowlist.
     if (!SIGNER_ALLOWED_ACTIONS.includes(request.action)) {
       return {
         ok: false,
