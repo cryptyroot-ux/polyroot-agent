@@ -320,6 +320,14 @@ export class Executor {
     const res: SubmitOutcome = await this.deps.adapter.placeOrder(order);
 
     if (!res.ok) {
+      // P0-9: distinguish "definitely not sent" from "submission unknown"
+      if (res.code === "DEFINITELY_NOT_SENT") {
+        // Request never reached the venue → safe to retry, do NOT release lease.
+        return {
+          outcome: "NEEDS_RECONCILIATION",
+          orderId: order.order_id,
+        };
+      }
       if (res.code === "SUBMISSION_UNKNOWN") {
         // Persist SUBMISSION_UNKNOWN for reconciliation. The local seen log
         // must reflect the same state so reconcile() does not read a stale

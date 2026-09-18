@@ -536,6 +536,12 @@ export const ExecutionPermitSchema = z.object({
    *  floating representation for authorization). 1 unit = 1e6 base units. */
   max_qty_base: z.bigint().nonnegative().optional(),
   max_cash_base: z.bigint().nonnegative().optional(),
+  /** P0-7: explicit market/order authorization bounds. A permit must not be a
+   *  blank check — it authorizes a specific market, side, price and style. */
+  market_id: z.string().min(1).optional(),
+  side: z.enum(["BUY", "SELL"]).optional(),
+  price_min_base: z.bigint().nonnegative().optional(),
+  price_max_base: z.bigint().nonnegative().optional(),
   allowed_order_style: z.array(z.string().min(1)),
   venue_mode: VenueModeSchema,
   issued_at: z.date(),

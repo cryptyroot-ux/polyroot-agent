@@ -185,10 +185,26 @@ export class PolymarketVenueAdapter {
             reason: result?.errorMsg ?? "venue rejected order",
           };
     } catch (err) {
+      // P0-9: Distinguish "request never sent" from "request sent, response lost".
+      // A network-level error before the call leaves the request unsent.
+      const msg = err instanceof Error ? err.message : String(err);
+      const isNetwork =
+        /fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|network/i.test(
+          msg,
+        );
+      if (isNetwork) {
+        return {
+          ok: false,
+          code: "DEFINITELY_NOT_SENT",
+          reason: `network error before send: ${msg}`,
+        };
+      }
+      // Any other error after the call → the venue may have accepted it.
+      // Do NOT treat this as a definitive reject.
       return {
         ok: false,
-        code: "VENUE_CALL_FAILED",
-        reason: err instanceof Error ? err.message : String(err),
+        code: "SUBMISSION_UNKNOWN",
+        reason: `venue call error (may have been accepted): ${msg}`,
       };
     }
   }
@@ -215,10 +231,22 @@ export class PolymarketVenueAdapter {
             reason: result?.errorMsg ?? "venue rejected cancel",
           };
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isNetwork =
+        /fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|network/i.test(
+          msg,
+        );
+      if (isNetwork) {
+        return {
+          ok: false,
+          code: "DEFINITELY_NOT_SENT",
+          reason: `network error before cancel send: ${msg}`,
+        };
+      }
       return {
         ok: false,
-        code: "VENUE_CALL_FAILED",
-        reason: err instanceof Error ? err.message : String(err),
+        code: "SUBMISSION_UNKNOWN",
+        reason: `cancel call error (may have been accepted): ${msg}`,
       };
     }
   }
