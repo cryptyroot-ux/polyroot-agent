@@ -146,7 +146,7 @@ export type TrySubmitResult =
   | { outcome: "DUPLICATE"; reason: string; code: string }
   | { outcome: "PERMIT_INVALID"; reason: string; code: string }
   | { outcome: "MODE_FORBIDS"; reason: string; code: string }
-  | { outcome: "NEEDS_RECONCILIATION"; orderId: string };
+  | { outcome: "NEEDS_RECONCILIATION"; orderId: string; ok: true; state: "SUBMISSION_UNKNOWN"; order: import("@polyroot/domain").SignedOrder; permit: import("@polyroot/domain").ExecutionPermit };
 
 /* ── Executor ───────────────────────────────────────────────────────────── */
 
@@ -272,33 +272,32 @@ export class Executor {
     // 6. Persist the permit (idempotent upsert) so atomic claim has a record to lock.
     await this.deps.permitStore.save(permit);
 
-    // 7. ATOMIC PERMIT CLAIM — single-use permit claimed atomically.
-    // This replaces the check-then-act race with a single atomic operation.
-    // Placed AFTER every harmless-rejectable check so a rejected order never
-    // strands money authority.
-    if (permit.single_use) {
-      const claimed = await this.deps.permitStore.claim(
-        permit.permit_id,
-        order.order_id,
+    // 7. ATOMIC PERMIT CLAIM + SUBMISSION RECORDING (P0-8)
+    // Single database transaction: claim permit AND record SUBMITTING state.
+    // This eliminates the crash window between permit claim and recovery ledger write.
+    const claimResult = await this.deps.permitStore.claimPermitAndRecordSubmission(
+      permit.permit_id,
+      order.order_id,
+      undefined, // venueOrderId unknown until ACK
+    );
+    if (!claimResult.ok) {
+      // Release lease since claim failed
+      await this.deps.leaseStore.releaseExecutorLease(
+        this.deps.walletId,
+        this.deps.holder,
       );
-      if (!claimed) {
-        // Release lease since claim failed
-        await this.deps.leaseStore.releaseExecutorLease(
-          this.deps.walletId,
-          this.deps.holder,
-        );
-        return {
-          outcome: "PERMIT_INVALID",
-          code: "PERMIT_USED",
-          reason: "permit already used or expired",
-        };
-      }
+      return {
+        outcome: "PERMIT_INVALID",
+        code: claimResult.code,
+        reason: claimResult.reason,
+      };
     }
 
-    // 8. CRASH WINDOW ELIMINATION: Persist SUBMITTING state to recovery ledger
-    // BEFORE the venue call. This covers all 10 crash windows:
+    // 8. CRASH WINDOW ELIMINATION: SUBMITTING state already recorded atomically
+    // with permit claim in the above single transaction.
+    // This covers all 10 crash windows:
     // 1. Before claim (handled by atomic claim)
-    // 2. After claim before persist (handled by recovery ledger write)
+    // 2. After claim before persist (handled by atomic claim+record)
     // 3. After persist before network (SUBMITTING is durable)
     // 4. Network accepted but response lost (SUBMITTING recorded)
     // 5. Response received but DB update fails (SUBMITTING recorded)
@@ -307,11 +306,6 @@ export class Executor {
     // 8. Duplicate worker executes same permit (atomic claim prevents)
     // 9. Stale worker executes old lease (lease epoch check)
     // 10. Duplicate order ID (idempotency check)
-    await this.deps.recoveryLedger.addSubmittedUnknown(
-      order.order_id,
-      undefined, // venueOrderId unknown until ACK
-      permit.permit_id,
-    );
 
     // Mark in-flight in local seen log (dedupe concurrent submits in same process).
     this.deps.seen.add(order.order_id, "SUBMITTING");
@@ -324,8 +318,12 @@ export class Executor {
       if (res.code === "DEFINITELY_NOT_SENT") {
         // Request never reached the venue → safe to retry, do NOT release lease.
         return {
+          ok: true,
           outcome: "NEEDS_RECONCILIATION",
+          state: "SUBMISSION_UNKNOWN",
           orderId: order.order_id,
+          order: order,
+          permit: permit,
         };
       }
       if (res.code === "SUBMISSION_UNKNOWN") {
@@ -342,7 +340,14 @@ export class Executor {
           this.deps.walletId,
           this.deps.holder,
         );
-        return { outcome: "NEEDS_RECONCILIATION", orderId: order.order_id };
+        return {
+          ok: true,
+          outcome: "NEEDS_RECONCILIATION",
+          state: "SUBMISSION_UNKNOWN",
+          orderId: order.order_id,
+          order: order,
+          permit: permit,
+        };
       }
       const state = orderLifecycleNext("SUBMITTING", "DEFINITIVE_REJECT").state;
       await this.deps.recoveryLedger.updateState(order.order_id, state);

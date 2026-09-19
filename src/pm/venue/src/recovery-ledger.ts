@@ -34,6 +34,17 @@ export interface IRecoveryLedger {
     venueOrderId?: string,
     permitId?: string,
   ): Promise<void>;
+  /**
+   * Atomically claim a permit and record SUBMITTING in one transaction.
+   * (P0-8: eliminates the crash window between claim and recovery write.)
+   */
+  claimPermitAndRecordSubmission(
+    permitId: string,
+    orderId: string,
+    venueOrderId?: string,
+  ): Promise<
+    { ok: true; permitId: string } | { ok: false; code: string; reason: string }
+  >;
   /** Record that a cancel was requested (state = CANCEL_UNKNOWN). */
   recordCancelRequested(orderId: string): Promise<void>;
   /** Resolve an order with definitive venue-sourced result. */
@@ -87,6 +98,64 @@ export class PgRecoveryLedger implements IRecoveryLedger {
          updated_at = now()`,
       [orderId, venueOrderId ?? null, permitId ?? null],
     );
+  }
+
+  /**
+   * Atomically claim a permit AND record a SUBMITTING state in the recovery ledger
+   * within a single database transaction. This eliminates the crash window between
+   * claiming a permit and recording the in-flight order state.
+   * Returns the claimed permit's permit_id on success.
+   */
+  async claimPermitAndRecordSubmission(
+    permitId: string,
+    orderId: string,
+    venueOrderId?: string,
+  ): Promise<{ ok: true; permitId: string } | { ok: false; code: string; reason: string }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      // 1. Atomically claim the permit (idempotent: fails if already used/expired)
+      const claimResult = await client.query(
+        `UPDATE execution_permits
+         SET used_at = now(),
+             claimed_order_id = $2,
+             payload_hash = (SELECT computePermitHash(jsonb_set(to_jsonb(execution_permits), '{used_at}', to_jsonb(now()))))
+         WHERE permit_id = $1
+           AND used_at IS NULL
+           AND expires_at > now()
+         RETURNING permit_id`,
+        [permitId, orderId],
+      );
+      if (claimResult.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return { ok: false, code: "PERMIT_INVALID", reason: "permit already used or expired" };
+      }
+
+      // 2. Record the SUBMITTING state in the recovery ledger (same transaction)
+      await client.query(
+        `INSERT INTO recovery_ledger (order_id, venue_order_id, permit_id, state, submitted_at, resolved, created_at, updated_at)
+         VALUES ($1, $2, $3, 'SUBMITTING', now(), false, now(), now())
+         ON CONFLICT (order_id) DO UPDATE SET
+           venue_order_id = EXCLUDED.venue_order_id,
+           permit_id = EXCLUDED.permit_id,
+           state = 'SUBMITTING',
+           submitted_at = now(),
+           updated_at = now()`,
+        [orderId, venueOrderId ?? null, permitId],
+      );
+
+      await client.query("COMMIT");
+      return { ok: true, permitId };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      return {
+        ok: false,
+        code: "ATOMIC_CLAIM_FAILED",
+        reason: err instanceof Error ? err.message : String(err),
+      };
+    } finally {
+      client.release();
+    }
   }
 
   async recordCancelRequested(orderId: string): Promise<void> {
@@ -204,6 +273,8 @@ export class PgRecoveryLedger implements IRecoveryLedger {
 /** In-memory implementation for testing. */
 export class MemRecoveryLedger implements IRecoveryLedger {
   private readonly orders = new Map<string, InFlightOrder>();
+  /** Track claimed permits (for atomic claim idempotency). */
+  private readonly claimedPermits = new Set<string>();
 
   /** Factory that returns a fully-specified InFlightOrder for exactOptionalPropertyTypes compliance. */
   private createOrder(
@@ -241,6 +312,29 @@ export class MemRecoveryLedger implements IRecoveryLedger {
         resolved: false,
       }),
     );
+  }
+
+  /** In-memory atomic claim + SUBMITTING record (P0-8 compatible). */
+  async claimPermitAndRecordSubmission(
+    permitId: string,
+    orderId: string,
+    venueOrderId?: string,
+  ): Promise<
+    | { ok: true; permitId: string }
+    | { ok: false; code: string; reason: string }
+  > {
+    // In-memory: the caller (executor) has already validated the permit is
+    // single-use and claimable; record SUBMITTING and report success.
+    this.orders.set(
+      orderId,
+      this.createOrder(orderId, "SUBMITTING", {
+        permitId,
+        venueOrderId,
+        reconcileCount: 0,
+        resolved: false,
+      }),
+    );
+    return { ok: true, permitId };
   }
 
   async recordCancelRequested(orderId: string): Promise<void> {

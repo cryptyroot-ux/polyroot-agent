@@ -242,6 +242,49 @@ function makeDeps(
     ...over,
   };
   return { deps, balance };
+function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
+  return {
+    schema_version: "1.1",
+    permit_id: randomUUID(),
+    decision_id: randomUUID(),
+    intent_id: randomUUID(),
+    ledger_version: "0003",
+    policy_version: "v0-bootstrap",
+    policy_hash: "ph_audited",
+    quote_id: "quote_x",
+    lease_epoch: 1,
+    reservation_ids: ["res_1"],
+    max_qty: 100,
+    max_cash: 50,
+    max_qty_base: 100_000_000n,
+    max_cash_base: 50_000_000n,
+    market_id: "mkt_1",
+    side: "BUY",
+    price_min_base: 500_000n,
+    price_max_base: 500_000n,
+    allowed_order_style: ["LIMIT", "POST_ONLY"],
+    venue_mode: "NORMAL",
+    issued_at: new Date("2026-01-01T00:00:00Z"),
+    expires_at: new Date("2026-01-01T00:01:00Z"),
+    single_use: true,
+    used_at: null,
+  };
+}
+
+function makeSignedOrder(id = "ord_1", permitId?: string): SignedOrder {
+  return {
+    schema_version: "1.1",
+    order_id: id,
+    market_id: "mkt_1",
+    side: "BUY",
+    price: 0.5,
+    size: 10,
+    fee_rate_bps: 0,
+    signature: "sig_1",
+    signer: "0xSIGNER",
+    signed_at: new Date("2026-01-01T00:00:30Z"),
+    permit_id: permitId,
+  };
 }
 
 describe("Control — orchestrator (signal → risk → build → submit)", () => {

@@ -80,7 +80,7 @@ function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
 function makeSignedOrder(id = "ord_1", permitId?: string): SignedOrder {
   return {
     schema_version: "1.1",
-    order_id: id,
+    order_id: id || randomUUID(),
     market_id: "mkt_1",
     side: "BUY",
     price: 0.5,

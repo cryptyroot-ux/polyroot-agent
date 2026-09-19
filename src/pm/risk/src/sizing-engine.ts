@@ -155,29 +155,33 @@ export class SizingEngine {
         ? maxPortfolioSize - portfolioExposure
         : 0n;
 
-    // Kelly size = portfolio_value * fractional_kelly.
-    const kellySize = mulScale(portfolioValue, fractionalKelly);
+    // Kelly size = portfolio_value * fractional_kelly (cash allocation).
+    const kellyCash = mulScale(portfolioValue, fractionalKelly);
 
-    // Take the minimum of all constraints.
-    let size = kellySize;
+    // Apply caps in CASH units first; then convert final cash → shares.
+    let cash = kellyCash;
     let capped = false;
     let capReason: SizingResult["capReason"] = undefined;
 
-    if (size > maxOrderSize) {
-      size = maxOrderSize;
+    if (cash > maxOrderSize) {
+      cash = maxOrderSize;
       capped = true;
       capReason = "ORDER_PCT";
     }
-    if (size > remainingMarketCap) {
-      size = remainingMarketCap;
+    if (cash > remainingMarketCap) {
+      cash = remainingMarketCap;
       capped = true;
       capReason = "MARKET_PCT";
     }
-    if (size > remainingPortfolioCap) {
-      size = remainingPortfolioCap;
+    if (cash > remainingPortfolioCap) {
+      cash = remainingPortfolioCap;
       capped = true;
       capReason = "PORTFOLIO_PCT";
     }
+
+    // P0-12 unit proof: convert cash allocation → share quantity.
+    // shareQty = cash / price (price is per-share in base units; SCALE = 1 unit).
+    const size = price > 0n ? (cash * SCALE) / price : 0n;
 
     if (size <= 0n) {
       return {

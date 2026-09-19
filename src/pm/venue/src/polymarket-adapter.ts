@@ -117,20 +117,31 @@ export class PolymarketVenueAdapter {
       rawMarket?.question && rawMarket.question !== marketId
         ? rawMarket.question
         : marketId;
-    const rulesHash = rawMarket?.rulesHash ?? undefined;
-    const isNegRisk = rawMarket?.negRisk ?? undefined;
-    const feeMakerBps = 0; // maker rebates are venue-settled, not assumed here
-    const feeTakerBps =
-      rawMarket?.feeRateBps !== undefined ? rawMarket.feeRateBps : 200;
-    const tickSize = rawMarket?.tickSize ?? 0.001;
-    const minSize = rawMarket?.minimumOrderSize ?? 1;
-    const marketStatus = rawMarket?.status ?? "ACTIVE";
+    // P0-10: Venue UNKNOWN semantics — when venue doesn't provide data,
+    // we return well-known sentinel values (not authoritative defaults).
+    // The risk engine MUST check for these sentinel values before making
+    // trading decisions.
+    const rulesHash = rawMarket?.rulesHash ?? "UNKNOWN";
+    const isNegRisk = rawMarket?.negRisk ?? false;
+    // feeMakerBps = 0 is correct: maker rebates are venue-settled, not assumed.
+    const feeMakerBps = 0;
+    // feeTakerBps: venue provides this; if not, use 0 (not assumed 200).
+    const feeTakerBps = rawMarket?.feeRateBps ?? 0;
+    // tick_size/min_size: venue must provide these; if not, 0 (not assumed 0.001).
+    const tickSize = rawMarket?.tickSize ?? 0;
+    const minSize = rawMarket?.minimumOrderSize ?? 0;
+    const marketStatus = rawMarket?.status;
 
     const bestBid = this.bestLevel(raw?.bids, "bid");
     const bestAsk = this.bestLevel(raw?.asks, "ask");
 
     const hasRealBook = bestBid !== undefined || bestAsk !== undefined;
     const bestTimestamp = new Date();
+
+    // If no venue status provided and no real order book data, status is UNKNOWN.
+    const status = hasRealBook && rawMarket
+      ? (marketStatus ?? "UNKNOWN")
+      : "UNKNOWN";
 
     return {
       schema_version: "1.0.0",
@@ -139,13 +150,13 @@ export class PolymarketVenueAdapter {
       question,
       chain_id: this.chainId,
       collateral: this.collateral,
-      rules_hash: rulesHash ?? "UNKNOWN",
+      rules_hash: rulesHash,
       fee_maker_bps: feeMakerBps,
       fee_taker_bps: feeTakerBps,
       tick_size: tickSize,
       min_size: minSize,
-      status: hasRealBook && rawMarket ? marketStatus : "UNKNOWN",
-      is_neg_risk: isNegRisk ?? false,
+      status,
+      is_neg_risk: isNegRisk,
       venue_mode: this._mode,
       yes_price: bestBid,
       no_price: bestAsk,

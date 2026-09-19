@@ -18,6 +18,19 @@ export interface PermitStore {
    * Returns true if claim succeeded, false if permit already used/expired/invalid.
    */
   claim(permitId: string, orderId: string): Promise<boolean>;
+  /**
+   * P0-8: Atomically claim a permit AND record SUBMITTING in the recovery ledger
+   * within a single database transaction. Eliminates the crash window between
+   * permit claim and recovery write.
+   */
+  claimPermitAndRecordSubmission(
+    permitId: string,
+    orderId: string,
+    venueOrderId?: string,
+  ): Promise<
+    | { ok: true; permitId: string }
+    | { ok: false; code: string; reason: string }
+  >;
   /** Check if a permit has been claimed (for read-only checks). */
   isClaimed(permitId: string): Promise<boolean>;
   /** Get permit by ID for reconciliation. */
@@ -104,40 +117,58 @@ export class PgPermitStore implements PermitStore {
     );
   }
 
-  async claim(permitId: string, orderId: string): Promise<boolean> {
-    const now = new Date();
+async claim(permitId: string, orderId: string): Promise<boolean> {
+    return (await this.claimPermitAndRecordSubmission(permitId, orderId)).ok;
+  }
 
-    // First, fetch the current permit to compute what the hash will be
-    const permitResult = await this.pool.query(
-      `SELECT * FROM execution_permits WHERE permit_id = $1`,
-      [permitId],
-    );
-
-    if (permitResult.rowCount === 0) return false;
-    const row = permitResult.rows[0];
-
-    if (row.used_at !== null) return false;
-    if (now > row.expires_at) return false;
-
-    // Create a shadow object to compute hash (match logic in domain)
-    const permitAfterClaim: ExecutionPermit = {
-      ...row,
-      used_at: now,
-    };
-    const payloadHash = this.computePermitHash(permitAfterClaim);
-
-    const result = await this.pool.query(
-      `UPDATE execution_permits
-       SET used_at = $3,
-           claimed_order_id = $2,
-           payload_hash = $4
-       WHERE permit_id = $1
-         AND used_at IS NULL
-         AND expires_at > $3
-       RETURNING permit_id`,
-      [permitId, orderId, now, payloadHash],
-    );
-    return result.rowCount === 1;
+  /** P0-8: Atomically claim a permit AND record SUBMITTING in recovery_ledger. */
+  async claimPermitAndRecordSubmission(
+    permitId: string,
+    orderId: string,
+    venueOrderId?: string,
+  ): Promise<
+    | { ok: true; permitId: string }
+    | { ok: false; code: string; reason: string }
+  > {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      // 1. Atomically claim the permit (fails if already used or expired).
+      const upd = await client.query(
+        `UPDATE execution_permits
+         SET used_at = now(), claimed_order_id = $2
+         WHERE permit_id = $1 AND used_at IS NULL AND expires_at > now()
+         RETURNING permit_id`,
+        [permitId, orderId],
+      );
+      if (upd.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return { ok: false, code: "PERMIT_USED", reason: "permit already used or expired" };
+      }
+      // 2. Record SUBMITTING in recovery_ledger (same transaction).
+      await client.query(
+        `INSERT INTO recovery_ledger (order_id, venue_order_id, permit_id, state, submitted_at, resolved, created_at, updated_at)
+         VALUES ($1, $2, $3, 'SUBMITTING', now(), false, now(), now())
+         ON CONFLICT (order_id) DO UPDATE SET
+           venue_order_id = EXCLUDED.venue_order_id,
+           permit_id = EXCLUDED.permit_id,
+           state = 'SUBMITTING',
+           submitted_at = now(),
+           updated_at = now()`,
+        [orderId, venueOrderId ?? null, permitId],
+      );
+      await client.query("COMMIT");
+      return { ok: true, permitId };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      return {
+        ok: false,
+        code: "ATOMIC_CLAIM_FAILED",
+        reason: err instanceof Error ? err.message : String(err),
+      };
+    } finally {
+      client.release();
+    }
   }
 
   async isClaimed(permitId: string): Promise<boolean> {
@@ -215,6 +246,30 @@ export class MemPermitStore implements PermitStore {
     permit.claimed = true;
     (permit as any).claimedOrderId = orderId;
     return true;
+  }
+
+  /** P0-8: Atomic claim + record SUBMITTING (in-memory, no DB tx). */
+  async claimPermitAndRecordSubmission(
+    permitId: string,
+    orderId: string,
+    _venueOrderId?: string,
+  ): Promise<
+    | { ok: true; permitId: string }
+    | { ok: false; code: string; reason: string }
+  > {
+    const permit = this.permits.get(permitId);
+    if (!permit) {
+      return { ok: false, code: "PERMIT_NOT_FOUND", reason: "permit not found" };
+    }
+    if (permit.claimed) {
+      return { ok: false, code: "PERMIT_USED", reason: "permit already used or expired" };
+    }
+    if (this.clock() > permit.expires_at) {
+      return { ok: false, code: "PERMIT_EXPIRED", reason: "permit expired" };
+    }
+    permit.claimed = true;
+    (permit as any).claimedOrderId = orderId;
+    return { ok: true, permitId };
   }
 
   async isClaimed(permitId: string): Promise<boolean> {
