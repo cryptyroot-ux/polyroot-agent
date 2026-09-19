@@ -172,10 +172,10 @@ export class PgKernelEventSink implements KernelEventSink {
  * operation is ROLLBACKed.  No intermediate partial state survives.
  */
 export class PgMoneyAuthority implements MoneyAuthority {
-  private readonly pool: Pool;
+private readonly pool: Pool;
   private readonly maxOpenReservations: number;
 
-  constructor(config: PoolConfig | string | Pool | PgBalanceStoreConfig) {
+  constructor(config: PoolConfig | string | Pool | PgBalanceStoreConfig | { pool?: Pool }) {
     if (config instanceof Pool) {
       this.pool = config;
     } else if (
@@ -187,7 +187,9 @@ export class PgMoneyAuthority implements MoneyAuthority {
       this.pool = config.pool;
     } else {
       this.pool = new Pool(
-        typeof config === "string" ? { connectionString: config } : config,
+        typeof config === "string"
+          ? { connectionString: config }
+          : (config as PoolConfig),
       );
     }
     this.maxOpenReservations = 16;
@@ -207,6 +209,14 @@ export class PgMoneyAuthority implements MoneyAuthority {
     policyHash?: string,
     /** Authoritative quote id for the permit. */
     quoteId?: string,
+    /** Risk decision columns for atomic risk_decisions insertion. */
+    riskDecisionCols?: {
+      schema_version: string;
+      policy_version: string;
+      ledger_version: string;
+      allowed_order_style: string[];
+      venue_mode: string;
+    },
   ): Promise<import("./money-kernel.js").MoneyAuthorityResult> {
     const reservationId = randomUUID();
     const permitId = randomUUID();
@@ -289,9 +299,41 @@ export class PgMoneyAuthority implements MoneyAuthority {
         [account, asset, cashNeededBase.toString()],
       );
 
-      // 4. Insert reservation row (canonical Reservation↔Permit binding: the
-      //    reservation is created in the same transaction and carries the
-      //    permit_id it authorizes, so both directions are durable).
+      // 4. Insert risk_decisions row atomically (P0: RISK DECISION IDENTITY)
+      //    Must exist before reservation and execution_permits reference it.
+      const riskDecisionSchemaVersion = riskDecisionCols?.schema_version ?? "1.1";
+      const riskDecisionPolicyVersion = riskDecisionCols?.policy_version ?? "v0-bootstrap";
+      const riskDecisionLedgerVersion = riskDecisionCols?.ledger_version ?? "0003";
+      const riskDecisionAllowedOrderStyle = riskDecisionCols?.allowed_order_style ?? ["LIMIT", "POST_ONLY"];
+      const riskDecisionVenueMode = riskDecisionCols?.venue_mode ?? "NORMAL";
+
+      await client.query(
+        `INSERT INTO risk_decisions (
+          id, intent_id, status, decision_id, reservation_ids,
+          max_qty, max_cash, allowed_order_style, venue_mode,
+          ledger_version, policy_version, quote_version, lease_version,
+          reason_codes, schema_version, decided_at
+        ) VALUES (
+          $1, $2, 'ACCEPTED', $1, $3,
+          0, 0, $4, $5,
+          $6, $7, $8, $9,
+          '{}', $10, now()
+        )`,
+        [
+          decisionId,
+          intentId,
+          [reservationId],
+          riskDecisionAllowedOrderStyle,
+          riskDecisionVenueMode,
+          riskDecisionLedgerVersion,
+          riskDecisionPolicyVersion,
+          riskDecisionPolicyVersion, // quote_version
+          riskDecisionPolicyVersion, // lease_version
+          riskDecisionSchemaVersion,
+        ],
+      );
+
+      // 5. Insert reservation row (canonical Reservation↔Permit binding)
       await client.query(
         `INSERT INTO reservations (id, risk_decision_id, intent_id, account, asset, amount, currency, status, created_at, expires_at, consumed_at, permit_id, payload_hash, decision_id)
          VALUES ($1, $2, $3, $4, $5, $6, 'pUSD', 'ACTIVE', now(), $7, NULL, $8, NULL, $9)`,
@@ -308,7 +350,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
         ],
       );
 
-      // 5. Fetch risk_decision for required execution_permits fields
+      // 6. Fetch risk_decision for required execution_permits fields
       const rd = await client.query(
         `SELECT ledger_version, policy_version, allowed_order_style, venue_mode, schema_version
          FROM risk_decisions WHERE id = $1`,
@@ -324,7 +366,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
       }
       const riskDecision = rd.rows[0];
 
-      // 5. Insert execution permit row
+      // 7. Insert execution permit row
       await client.query(
         `INSERT INTO execution_permits (permit_id, decision_id, intent_id, ledger_version, policy_version, policy_hash, quote_id, lease_epoch, reservation_ids, max_qty, max_cash, allowed_order_style, venue_mode, issued_at, expires_at, single_use, used_at, schema_version)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), $14, true, NULL, $15)`,
@@ -347,8 +389,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
         ],
       );
 
-      // 6. Insert kernel event (audit trail) — schema has NO payload_hash col,
-      //    store hash inside metadata JSONB instead.
+      // 8. Insert kernel event (audit trail)
       const eventPayload = JSON.stringify({
         reservationId,
         permitId,
@@ -369,7 +410,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
         JSON.stringify({ payloadHash, leaseEpoch }),
       ]);
 
-      // 7. Commit — all-or-nothing
+      // 9. Commit — all-or-nothing
       await client.query("COMMIT");
       return { ok: true, reservationId, permitId };
     } catch (err) {

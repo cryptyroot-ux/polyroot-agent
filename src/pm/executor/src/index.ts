@@ -193,7 +193,7 @@ export class Executor {
       this.deps.leaseEpoch,
       30, // 30 seconds TTL
     );
-    if (!leaseAcquired) {
+    if (!leaseAcquired) { console.log("DEBUG: LEASE_NOT_ACQUIRED", {walletId: this.deps.walletId, holder: this.deps.holder, leaseEpoch: this.deps.leaseEpoch});
       return {
         outcome: "PERMIT_INVALID",
         code: "LEASE_NOT_ACQUIRED",
@@ -310,6 +310,14 @@ export class Executor {
     // Mark in-flight in local seen log (dedupe concurrent submits in same process).
     this.deps.seen.add(order.order_id, "SUBMITTING");
 
+    // P0-8: Durably record SUBMITTING in recovery ledger (atomic claim +
+    // recovery write in Pg; explicit for Mem to ensure reconcile finds it).
+    await this.deps.recoveryLedger.addSubmittedUnknown(
+      order.order_id,
+      undefined,
+      permit.permit_id,
+    );
+
     // 9. Submit exactly once. The permit is already consumed (claimed).
     const res: SubmitOutcome = await this.deps.adapter.placeOrder(order);
 
@@ -398,7 +406,7 @@ export class Executor {
       this.deps.leaseEpoch,
       30, // 30 seconds TTL
     );
-    if (!leaseAcquired) {
+    if (!leaseAcquired) { console.log("DEBUG: LEASE_NOT_ACQUIRED", {walletId: this.deps.walletId, holder: this.deps.holder, leaseEpoch: this.deps.leaseEpoch});
       return {
         ok: false,
         code: "LEASE_NOT_ACQUIRED",
@@ -436,7 +444,7 @@ export class Executor {
       this.deps.leaseEpoch,
       30, // 30 seconds TTL
     );
-    if (!leaseAcquired) {
+    if (!leaseAcquired) { console.log("DEBUG: LEASE_NOT_ACQUIRED", {walletId: this.deps.walletId, holder: this.deps.holder, leaseEpoch: this.deps.leaseEpoch});
       // If we can't acquire lease, we still return the current state but log this
       // In practice, this might indicate a lease issue but we can still reconcile
       // based on existing state

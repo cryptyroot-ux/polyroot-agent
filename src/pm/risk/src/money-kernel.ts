@@ -92,6 +92,14 @@ export interface MoneyAuthority {
     policyHash?: string,
     /** Authoritative quote id for the permit (NOT empty string). */
     quoteId?: string,
+    /** Risk decision columns for atomic risk_decisions insertion. */
+    riskDecision?: {
+      schema_version: string;
+      policy_version: string;
+      ledger_version: string;
+      allowed_order_style: string[];
+      venue_mode: string;
+    },
   ): Promise<MoneyAuthorityResult>;
 }
 
@@ -142,6 +150,14 @@ export interface ReserveRequest {
   /** P0-7: market/order authorization context bound into the permit. */
   marketId?: string;
   side?: "BUY" | "SELL";
+  /** Risk decision columns for atomic risk_decisions insertion. */
+  riskDecision?: {
+    schema_version: string;
+    policy_version: string;
+    ledger_version: string;
+    allowed_order_style: string[];
+    venue_mode: string;
+  };
 }
 
 export type ReserveResult =
@@ -301,6 +317,7 @@ export class MoneyKernel {
           req.amountSharesBase,
           req.policyHash,
           authoritativeQuoteId,
+          req.riskDecision,
         );
         if (res.ok || res.code !== "SERIALIZATION_CONFLICT") break;
         // Back off briefly before re-reading authoritative state.

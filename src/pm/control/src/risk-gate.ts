@@ -153,6 +153,13 @@ export async function validateAndReserve(
     venueMode: input.venueMode,
     leaseEpoch: input.leaseEpoch,
     now: input.now,
+    riskDecision: {
+      schema_version: "1.1",
+      policy_version: policy.policy_version,
+      ledger_version: "1.0.0",
+      allowed_order_style: ["LIMIT", "POST_ONLY"],
+      venue_mode: input.venueMode,
+    },
   });
 
   if (!reserved.ok) {

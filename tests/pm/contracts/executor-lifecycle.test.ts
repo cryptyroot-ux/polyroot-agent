@@ -67,6 +67,12 @@ function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
     reservation_ids: ["res_1"],
     max_qty: 100,
     max_cash: 50,
+    max_qty_base: 100_000_000n,
+    max_cash_base: 50_000_000n,
+    market_id: "mkt_1",
+    side: "BUY",
+    price_min_base: 500_000n,
+    price_max_base: 500_000n,
     allowed_order_style: ["LIMIT", "POST_ONLY"],
     venue_mode: "NORMAL",
     issued_at: new Date("2026-01-01T00:00:00Z"),
@@ -80,7 +86,7 @@ function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
 function makeSignedOrder(id = "ord_1", permitId?: string): SignedOrder {
   return {
     schema_version: "1.1",
-    order_id: id || randomUUID(),
+    order_id: id,
     market_id: "mkt_1",
     side: "BUY",
     price: 0.5,
@@ -119,7 +125,7 @@ function makeDeps(
     leaseEpoch: 1,
     walletId: "0xWALLET",
     holder: "0xHOLDER",
-    leaseStore: new MemLeaseStore(),
+    leaseStore: new MemLeaseStore({ clock: () => now }),
   };
   return { deps, permitStore, recoveryLedger, seen };
 }

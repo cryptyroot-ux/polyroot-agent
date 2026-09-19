@@ -215,7 +215,7 @@ function makeDeps(
     permitStore: new MemPermitStore({ clock: () => NOW }),
     walletId: "0xWALLET",
     holder: "0xHOLDER",
-    leaseStore: new MemLeaseStore(),
+    leaseStore: new MemLeaseStore({ clock: () => NOW }),
     recoveryLedger: new MemRecoveryLedger(),
     leaseEpoch: 1,
   });
@@ -242,6 +242,7 @@ function makeDeps(
     ...over,
   };
   return { deps, balance };
+}
 function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
   return {
     schema_version: "1.1",
@@ -271,10 +272,10 @@ function makePermit(over: Partial<ExecutionPermit> = {}): ExecutionPermit {
   };
 }
 
-function makeSignedOrder(id = "ord_1", permitId?: string): SignedOrder {
+function makeSignedOrder(id?: string, permitId?: string): SignedOrder {
   return {
     schema_version: "1.1",
-    order_id: id,
+    order_id: id || "ord_1",
     market_id: "mkt_1",
     side: "BUY",
     price: 0.5,

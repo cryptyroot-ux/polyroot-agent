@@ -7,6 +7,7 @@ import { Pool, type PoolConfig } from "pg";
 import type { Persistence, OrchestrateResult } from "./index.js";
 import { Reconciler } from "./reconciler.js";
 import { Supervisor } from "./supervisor.js";
+import type { RiskDecision } from "@polyroot/domain";
 
 /**
  * PostgreSQL Persistence implementation.
@@ -53,6 +54,42 @@ export class PgPersistence implements Persistence {
       `SELECT order_id FROM recovery_ledger WHERE state = 'SUBMISSION_UNKNOWN'`,
     );
     return result.rows.map((r) => r.order_id);
+  }
+
+  async saveRiskDecision(decision: RiskDecision): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO risk_decisions (
+        id, intent_id, status, decision_id, reservation_ids,
+        max_qty, max_cash, allowed_order_style, venue_mode,
+        ledger_version, policy_version, quote_version, lease_version,
+        reason_codes, schema_version, decided_at
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9,
+        $10, $11, $12, $13,
+        $14, $15, now()
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        status = EXCLUDED.status,
+        decided_at = now()`,
+      [
+        decision.decision_id,
+        decision.intent_id,
+        decision.status,
+        decision.decision_id,
+        decision.reservation_ids,
+        decision.max_qty ?? 0,
+        decision.max_cash ?? 0,
+        decision.allowed_order_style,
+        decision.venue_mode,
+        decision.ledger_version ?? "1.0.0",
+        decision.policy_version ?? "1.0.0",
+        decision.policy_version ?? "1.0.0",
+        decision.policy_version ?? "1.0.0",
+        decision.reason_codes ?? [],
+        decision.schema_version ?? "1.1",
+      ],
+    );
   }
 
   async close(): Promise<void> {

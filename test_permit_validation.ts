@@ -28,7 +28,7 @@ const permit = {
   used_at: null,
 };
 
-const result = ExecutionPermitSchema.safeParse({
+const result1 = ExecutionPermitSchema.safeParse({
   schema_version: "1.1",
   permit_id: "123e4567-e89b-12d3-a456-426614174000",
   decision_id: "123e4567-e89b-12d3-a456-426614174000",
@@ -55,7 +55,7 @@ const result = ExecutionPermitSchema.safeParse({
   used_at: null,
 });
 
-const result = ExecutionPermitSchema.safeParse({
+const result2 = ExecutionPermitSchema.safeParse({
   schema_version: "1.1",
   permit_id: "123e4567-e89b-12d3-a456-426614174000",
   decision_id: "123e4567-e89b-12d3-a456-426614174000",
@@ -82,7 +82,11 @@ const result = ExecutionPermitSchema.safeParse({
   used_at: null,
 });
 
-console.log("Success:", result.success);
-if (!result.success) {
+console.log("Success 1:", result1.success);
+if (!result1.success) {
+  console.log(JSON.stringify(result1.error, null, 2));
+}
+console.log("Success 2:", result2.success);
+if (!result2.success) {
   console.log(JSON.stringify(result.error, null, 2));
 }
