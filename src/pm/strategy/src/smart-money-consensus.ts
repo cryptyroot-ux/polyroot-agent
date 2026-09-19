@@ -252,7 +252,7 @@ export function scoreWallet(
   ) * (1 - turnover_penalty);
 
   return {
-    wallet_address: "",
+    wallet_address: wallet,
     score: Math.max(-1, Math.min(1, raw_score)),
     trade_count: activities.length,
     win_rate,
