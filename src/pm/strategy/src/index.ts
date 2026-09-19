@@ -1,6 +1,7 @@
 /**
- * @polyroot/strategy — Strategy logic and intent generation (PM-STR-01..06).
- * Pure primitives: forecast-to-intent mapping, quote adjustment, sizing.
+ * @polyroot/strategy — Strategy logic and intent generation (PM-STR-01..08).
+ * Pure primitives: forecast-to-intent mapping, quote adjustment, sizing,
+ * adaptive parameter tuning (PR-AUT-07), smart money consensus (PR-STR-05).
  * No I/O.
  */
 import {
@@ -8,6 +9,35 @@ import {
   type TradeIntent,
   type AssetIdentity,
 } from "@polyroot/domain";
+
+export {
+  type ParameterEnvelope,
+  type ParameterState,
+  type AdaptationProposal,
+  type AdaptationAuditEntry,
+  type AdaptiveTunerConfig,
+  type AdaptationResult,
+  proposeAdaptation,
+  applyAdaptation,
+  bootstrapParameterState,
+  createStandardEnvelope,
+  DEFAULT_ADAPTIVE_TUNER_CONFIG,
+} from "./adaptive-tuner.js";
+
+export {
+  type WalletActivity,
+  type WalletScore,
+  type WalletScoringParams,
+  type SmartMoneySignal,
+  type WalletSelectionCriteria,
+  DEFAULT_SELECTION_CRITERIA,
+  DEFAULT_SCORING_PARAMS,
+  selectQualifyingWallets,
+  scoreWallet,
+  generateConsensus,
+  signalToIntent,
+  runSmartMoneyPipeline,
+} from "./smart-money-consensus.js";
 
 /* ─── PM-STR-01: forecast-to-intent mapping ──────────────────────────── */
 
