@@ -573,6 +573,8 @@ export const SignedOrderSchema = z.object({
   signed_at: z.date(),
   decision_id: z.string().min(1).optional(),
   permit_id: z.string().min(1).optional(),
+  /** Order style bound by the permit's allowed_order_style (P0 style gate). */
+  order_type: z.enum(["LIMIT", "POST_ONLY", "FOK", "IOC"]).optional(),
   /** Backwards-compatible alias. */
   risk_decision_id: z.string().optional(),
 });

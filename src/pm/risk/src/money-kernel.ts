@@ -398,6 +398,14 @@ export class MoneyKernel {
       reservation_ids: [reservationId],
       max_qty: Number(req.amountSharesBase) / 1_000_000,
       max_cash: Number(req.maxCashBase) / 1_000_000,
+      // P0-7: base-unit quantities
+      max_qty_base: req.amountSharesBase,
+      max_cash_base: req.maxCashBase,
+      // P0-7: explicit market/side/price authorization bounds
+      market_id: req.marketId,
+      side: req.side,
+      price_min_base: req.perSharePriceBase,
+      price_max_base: req.perSharePriceBase,
       allowed_order_style: ["LIMIT", "POST_ONLY"],
       venue_mode: req.venueMode,
       issued_at: req.now,

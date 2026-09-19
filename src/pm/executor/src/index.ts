@@ -243,7 +243,65 @@ export class Executor {
       };
     }
 
+    // 3b. P0-7: Permit must authorize this specific side, market, style.
+    if (permit.side && order.side !== permit.side) {
+      return {
+        outcome: "PERMIT_INVALID",
+        code: "SIDE_MISMATCH",
+        reason: `order side ${order.side} not authorized by permit side ${permit.side}`,
+      };
+    }
+    if (permit.market_id && order.market_id !== permit.market_id) {
+      return {
+        outcome: "PERMIT_INVALID",
+        code: "MARKET_MISMATCH",
+        reason: `order market ${order.market_id} not authorized by permit market ${permit.market_id}`,
+      };
+    }
+    if (
+      order.order_type &&
+      permit.allowed_order_style.length > 0 &&
+      !permit.allowed_order_style.includes(order.order_type)
+    ) {
+      return {
+        outcome: "PERMIT_INVALID",
+        code: "STYLE_NOT_ALLOWED",
+        reason: `order type ${order.order_type} not in permit allowed styles`,
+      };
+    }
+
     // 4. The order must stay within the permit's reservation (share quota and
+    //    cash ceiling). A signed order that exceeds its permit is refused —
+    //    this is the reserve-then-spend enforcement, never loosened by a tier.
+    if (!this.permitCoversOrder(order, permit)) {
+      return {
+        outcome: "PERMIT_INVALID",
+        code: "AMOUNT_EXCEEDS_PERMIT",
+        reason: "order exceeds permit reservation",
+      };
+    }
+
+    // 4b. Price bounds (run after cash ceiling so test semantics match).
+    if (permit.price_min_base !== undefined && permit.price_min_base !== null) {
+      const priceBase = decimalToBase(order.price);
+      if (priceBase < permit.price_min_base) {
+        return {
+          outcome: "PERMIT_INVALID",
+          code: "PRICE_BELOW_MIN",
+          reason: `order price ${order.price} below permit min ${permit.price_min_base}`,
+        };
+      }
+    }
+    if (permit.price_max_base !== undefined && permit.price_max_base !== null) {
+      const priceBase = decimalToBase(order.price);
+      if (priceBase > permit.price_max_base) {
+        return {
+          outcome: "PERMIT_INVALID",
+          code: "PRICE_ABOVE_MAX",
+          reason: `order price ${order.price} above permit max ${permit.price_max_base}`,
+        };
+      }
+    }
     //    cash ceiling). A signed order that exceeds its permit is refused —
     //    this is the reserve-then-spend enforcement, never loosened by a tier.
     if (!this.permitCoversOrder(order, permit)) {

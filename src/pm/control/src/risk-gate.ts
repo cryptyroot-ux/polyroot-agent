@@ -153,6 +153,8 @@ export async function validateAndReserve(
     venueMode: input.venueMode,
     leaseEpoch: input.leaseEpoch,
     now: input.now,
+    marketId: intent.market_id,
+    side: intent.side === "SELL" ? "SELL" : "BUY",
     riskDecision: {
       schema_version: "1.1",
       policy_version: policy.policy_version,

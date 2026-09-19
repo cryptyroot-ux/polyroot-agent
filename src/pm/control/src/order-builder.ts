@@ -60,8 +60,50 @@ export async function buildSignedOrder(
     return fail("SIZE_REQUIRED", "intent must carry a size or a notional");
   }
 
-  // 2. Clamp inside the permit reservation, in exact base units.
+  // 2. Permit binding — fail closed if intent conflicts with permit (P0-7).
+  const side: "BUY" | "SELL" = intent.side === "SELL" ? "SELL" : "BUY";
+  if (permit.side && permit.side !== side) {
+    return fail(
+      "SIDE_MISMATCH",
+      `intent side ${side} conflicts with permit side ${permit.side}`,
+    );
+  }
   const priceBase = decimalToBase(price);
+  if (
+    (permit.price_min_base !== undefined &&
+      permit.price_min_base !== null &&
+      priceBase < permit.price_min_base) ||
+    (permit.price_max_base !== undefined &&
+      permit.price_max_base !== null &&
+      priceBase > permit.price_max_base)
+  ) {
+    return fail(
+      "PRICE_OUT_OF_BOUNDS",
+      `price ${price} outside permit bounds [${permit.price_min_base}, ${permit.price_max_base}]`,
+    );
+  }
+  if (permit.market_id && permit.market_id !== intent.market_id) {
+    return fail(
+      "MARKET_MISMATCH",
+      `intent market ${intent.market_id} conflicts with permit market ${permit.market_id}`,
+    );
+  }
+  const orderType = (intent.order_type ?? "LIMIT") as
+    | "LIMIT"
+    | "POST_ONLY"
+    | "FOK"
+    | "IOC";
+  if (
+    permit.allowed_order_style.length > 0 &&
+    !permit.allowed_order_style.includes(orderType)
+  ) {
+    return fail(
+      "STYLE_NOT_ALLOWED",
+      `order type ${orderType} not in permit allowed styles: ${permit.allowed_order_style.join(",")}`,
+    );
+  }
+
+  // 3. Clamp inside the permit reservation, in exact base units.
   let sizeBase = decimalToBase(size);
   const maxQtyBase = decimalToBase(permit.max_qty);
   if (sizeBase > maxQtyBase) sizeBase = maxQtyBase;
@@ -76,9 +118,6 @@ export async function buildSignedOrder(
   if (sizeBase <= 0n) {
     return fail("SIZE_ZERO", "clamped order size collapsed to zero");
   }
-
-  // 3. Venue side: SELL intents stay SELL; YES/NO/BUY buy the quoted token.
-  const side: "BUY" | "SELL" = intent.side === "SELL" ? "SELL" : "BUY";
 
   // 4. Sign the canonical action with the exact clamped amount.
   const orderId = randomUUID();
@@ -138,6 +177,7 @@ export async function buildSignedOrder(
     signed_at: signed.signed_at,
     decision_id: permit.decision_id,
     permit_id: permit.permit_id,
+    order_type: orderType,
   };
   const parsed = SignedOrderSchema.safeParse(order);
   if (!parsed.success) {
