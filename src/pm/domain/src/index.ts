@@ -1,5 +1,5 @@
 /**
- * @polyroot/domain — Canonical domain contracts — v1.1
+ * PolyRoot canonical domain contracts — v1.1
  * Sources: PRD v1.1 P8/P9 (96 requirements), Blueprint v1.1 B4 (canonical contracts)
  *
  * Serialization rule (B4): every persisted/exchanged object carries
@@ -11,20 +11,49 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 
 /**
- * In-memory stubs used by the Intelligence plane interfaces (PM-INTEL-02/08).
- * These classes provide the interface contract expected by
- * @polyroot/intelligence‑pg while keeping the domain module independent of
- * PG‑specific implementations. Runtime implementations (PgSourceRegistry,
- * PgCatalystBus) satisfy these interfaces via inheritance.
+ * Result of enqueueing a catalyst event (PM-INTEL-08).
+ */
+export type DurableOutboxResult =
+  | { ok: true; event: CatalystEvent }
+  | { ok: false; code: "DUPLICATE_EVENT"; eventId: string };
+
+/**
+ * Interface for source registry (PM-INTEL-02).
+ */
+export interface SourceRegistryInterface {
+  register(record: SourceRecord): Promise<string>;
+  family(url: string): Promise<string | undefined>;
+  independentFamilies(urls: string[]): Promise<Set<string>>;
+}
+
+/**
+ * Interface for catalyst bus with durable outbox + watermark (PM-INTEL-08).
+ */
+export interface CatalystBusInterface {
+  enqueue(event: CatalystEvent): Promise<DurableOutboxResult>;
+  replay(consumer: string, fromEventId: string): Promise<CatalystEvent[]>;
+  advanceWatermark(consumer: string, eventId: string): Promise<void>;
+  pendingCount(): number;
+}
+
+/**
+ * Interface for research budget tracking (PM-AI-05).
+ */
+export interface ResearchBudgetInterface {
+  charge(tokens: number, costUsdFrac: number): Promise<void>;
+  check(tokensNeeded: number): Promise<{ ok: boolean; remainingTokens?: bigint; code?: string; reason?: string }>;
+  reset(): Promise<void>;
+}
+
+/**
+ * Interface definitions for Intelligence plane components (PM-INTEL-02, PM-INTEL-08).
  */
 export class SourceRegistry {
   // Stub used for the SourceRegistryInterface (PM-INTEL-02)
-  // Actual implementations live in @polyroot/strategy/src (PgSourceRegistry)
 }
 
 export class CatalystBus {
   // Stub used for the CatalystBusInterface (PM-INTEL-08)
-  // Actual implementations live in @polyroot/strategy/src (PgCatalystBus)
 }
 
 /** Current canonical schema version for all domain objects. */

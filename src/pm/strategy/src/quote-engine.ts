@@ -38,11 +38,11 @@ export class QuoteEngine {
     const { price, size, side } = intent;
     const isBuy = side === "BUY" || side === "YES";
     const bookPrice = isBuy ? book.no_price ?? 0 : book.yes_price ?? 0;
-    const depth = book.depth ?? 0;
-
     // Ensure price and size are defined
     const intentPrice = price ?? 0;
     const intentSize = size ?? 0;
+
+    const depth = book.depth ?? 0;
 
     if (!bookPrice || bookPrice <= 0) {
       return {

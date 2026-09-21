@@ -9,8 +9,10 @@ import {
   type DataQualityFlags,
   type EvidenceItem,
   type MarketFeeSettings,
+  type MarketSnapshot,
   type OrderBookFrame,
   type SettlementRule,
+  type VenueMode,
 } from "@polyroot/domain";
 
 /* ─── PM-DATA-01: typed asset identity ───────────────────────────────── */
@@ -341,7 +343,6 @@ export class UniverseDecider {
 /* ─── PM-DATA-07: market/event graph ─────────────────────────────────── */
 
 export * from "./graph.js";
-
 /** Append-only log of every market considered (selection-bias audit). */
 export class UniverseLog {
   private decisions: MarketDecision[] = [];
@@ -381,3 +382,9 @@ export class UniverseLog {
     });
   }
 }
+
+/* ─── Exports for live-feed ────────────────────────────────────────── */
+
+export * from "@polyroot/domain";
+export * from "./live-feed.js";
+export * from "./graph.js";
