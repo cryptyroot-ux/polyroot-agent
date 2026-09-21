@@ -218,10 +218,11 @@ export async function executeG4Step(
     bid,
     ask,
     forecastOverride,
-    forecastObj,
+    forecastObj: _forecastObj,
     currentMarketExposureUsd,
     currentPortfolioExposureUsd,
   } = input;
+  void _forecastObj;
   const { config, deps } = core;
 
   // 1. Check financial gate
