@@ -9,10 +9,10 @@ import {
   type DataQualityFlags,
   type EvidenceItem,
   type MarketFeeSettings,
-  type MarketSnapshot,
   type OrderBookFrame,
-  type SettlementRule,
+  type MarketSnapshot,
   type VenueMode,
+  type SettlementRule,
 } from "@polyroot/domain";
 
 /* ─── PM-DATA-01: typed asset identity ───────────────────────────────── */

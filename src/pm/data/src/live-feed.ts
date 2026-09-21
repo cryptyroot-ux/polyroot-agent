@@ -5,6 +5,8 @@ import type {
   OrderBookFrame,
   SettlementRule,
   VenueMode,
+} from "./index.js";
+import {
   OrderBook,
   FeeGate,
   SettlementRulesRegistry,

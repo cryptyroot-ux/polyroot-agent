@@ -15,11 +15,7 @@
 import type { PoolConfig } from "pg";
 import type { ExecutionPermit } from "@polyroot/domain";
 import { createPgStores, MoneyKernel } from "@polyroot/risk";
-import {
-  createPgControlStores,
-  PgReconciler,
-  PgSupervisor,
-} from "@polyroot/control";
+import { createPgControlStores } from "@polyroot/control";
 import { Executor } from "@polyroot/executor";
 import type { VenueAdapter } from "@polyroot/venue";
 import { evaluateEdge } from "./signal.js";
