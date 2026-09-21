@@ -1,0 +1,18 @@
+{
+  "charter_id": "39734e00-9bc1-4837-9ac2-55f9783e5f0b",
+  "wallet_id": "0x1234567890abcdef1234567890abcdef12345678",
+  "capital_usd_cap": 500,
+  "daily_loss_stop_pct": 0.05,
+  "qualified_strategy_ids": [
+    "strat_momentum_v1",
+    "strat_arb_v1"
+  ],
+  "market_class_allowlist": [
+    "binary",
+    "crypto",
+    "sports"
+  ],
+  "expires_at": "2027-09-21T20:30:41.543Z",
+  "release_ref": "v0.1.0-stable",
+  "commissioned_at": "2026-09-21T20:30:41.545Z"
+}

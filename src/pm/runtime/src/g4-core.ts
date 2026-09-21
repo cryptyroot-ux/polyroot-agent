@@ -65,6 +65,8 @@ export interface G4CoreDeps {
   now: () => Date;
   /** Wallet for simulator fills. */
   paperWallet?: WalletIdentity;
+  /** Observability hooks for metrics and logging */
+  observability?: G4CoreObservability;
 }
 
 export interface G4CoreInput {
@@ -103,15 +105,13 @@ export interface G4CoreResult {
   size?: number | undefined;
 }
 
-export interface G4CoreMetrics {
-  totalOrders: number;
-  filledOrders: number;
-  totalPnl: number;
-  totalFees: number;
-  maxDrawdown: number;
-  fillRatio: number;
-  currentExposureUsd: number;
-  maxExposureUsd: number;
+export interface G4CoreObservability {
+  emitStepStart?(input: G4CoreInput, mode: G4Mode): void;
+  emitStepComplete?(input: G4CoreInput, result: G4CoreResult): void;
+  emitFinancialGate?(gate: "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED", mode: G4Mode, venue: VenueMode): void;
+  emitError?(error: Error, context: any): void;
+  emitMetrics?(metrics: G4CoreMetrics): void;
+  emitModeTransition?(from: G4Mode, to: G4Mode, reason: string): void;
 }
 
 export interface CreateG4CoreOptions {
@@ -232,6 +232,7 @@ export async function executeG4Step(
     config.minEdgeAfterCost,
   );
   if (gate !== "ALLOW") {
+    core.deps.observability?.emitFinancialGate?.(gate, config.mode, deps.venueMode());
     return {
       market_id,
       decision: "NO_TRADE",
