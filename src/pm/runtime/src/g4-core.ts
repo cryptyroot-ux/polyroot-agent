@@ -8,7 +8,7 @@ import type {
   WalletIdentity,
 } from "@polyroot/domain";
 import { simulateFill } from "./paper-engine.js";
-import { evaluateEdge, validateAndReserve, buildSignedOrder, computeGate } from "@polyroot/control";
+import { evaluateEdge, validateAndReserve, buildSignedOrder } from "@polyroot/control";
 
 /* ─── Core G4 Types ──────────────────────────────────────────────────────── */
 
@@ -218,10 +218,11 @@ export async function executeG4Step(
     bid,
     ask,
     forecastOverride,
-    forecastObj,
+    forecastObj: _forecastObj,
     currentMarketExposureUsd,
     currentPortfolioExposureUsd,
   } = input;
+  void _forecastObj;
   const { config, deps } = core;
 
   // 1. Check financial gate

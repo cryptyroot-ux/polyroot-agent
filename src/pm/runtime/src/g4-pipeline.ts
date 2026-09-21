@@ -21,8 +21,7 @@ import type {
   G4CoreMetrics,
   CreateG4CoreOptions,
 } from "./g4-core.js";
-import { G4_MODE_TRANSITIONS, isValidModeTransition, getDefaultModeConfig, computeFinancialGate, executeG4Step, createG4Core } from "./g4-core.js";
-import { simulateFill } from "./paper-engine.js";
+import { isValidModeTransition, getDefaultModeConfig, computeFinancialGate, executeG4Step, createG4Core } from "./g4-core.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
