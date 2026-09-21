@@ -201,7 +201,10 @@ export class Executor {
       };
     }
 
-    // 0b. Lease epoch fencing for permit — permit MUST match current authoritative lease epoch.
+    // 0b. Save permit to store (idempotent) before validation.
+    await this.deps.permitStore.save(permit);
+
+    // 0c. Lease epoch fencing for permit — permit MUST match current authoritative lease epoch.
     const permitValid = await this.deps.permitStore.validatePermit(
       permit.permit_id,
       this.deps.leaseEpoch,
@@ -248,6 +251,18 @@ export class Executor {
         code: "PERMIT_EXPIRED",
         reason: "permit expired at submit",
       };
+    }
+
+    // 2b. Single-use permit already claimed check — check store for claimed status.
+    if (permit.single_use) {
+      const alreadyClaimed = await this.deps.permitStore.isClaimed(permit.permit_id);
+      if (alreadyClaimed) {
+        return {
+          outcome: "PERMIT_INVALID",
+          code: "PERMIT_REUSED",
+          reason: "single-use permit already claimed",
+        };
+      }
     }
 
     // 3. Permit–order binding: when the signed order carries a permit_id it

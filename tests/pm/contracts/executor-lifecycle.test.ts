@@ -133,9 +133,10 @@ function makeDeps(
 describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..06)", () => {
   it("submits a fresh order exactly once and moves to ACKNOWLEDGED", async () => {
     const adapter = new FakeAdapter();
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
-    const res = await ex.submit(makeSignedOrder(), makePermit());
+    const permit = makePermit();
+    const res = await ex.submit(makeSignedOrder(), permit);
     assert.equal(res.outcome, "SUBMITTED");
     // A second submit of the same order id is refused as a duplicate.
     const dup = await ex.submit(makeSignedOrder(), makePermit());
@@ -149,9 +150,10 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
       code: "SUBMISSION_UNKNOWN",
       reason: "outcome unknown",
     });
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
-    const res = await ex.submit(makeSignedOrder(), makePermit());
+    const permit = makePermit();
+    const res = await ex.submit(makeSignedOrder(), permit);
     assert.equal(res.outcome, "NEEDS_RECONCILIATION");
     const state = await ex.reconcile("ord_1");
     // Reconciliation must NOT turn it back into a live submit.
@@ -163,7 +165,8 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
     const late = new Date("2026-01-01T00:02:00Z");
     const { deps } = makeDeps(adapter, late);
     const ex = new Executor(deps);
-    const res = await ex.submit(makeSignedOrder(), makePermit());
+    const permit = makePermit();
+    const res = await ex.submit(makeSignedOrder(), permit);
     assert.equal(res.outcome, "PERMIT_INVALID");
     if (res.outcome === "PERMIT_INVALID")
       assert.equal(res.code, "PERMIT_EXPIRED");
@@ -175,7 +178,6 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
     const ex = new Executor(deps);
     // Simulate a prior successful use by claiming the fresh permit in the store.
     const permit = makePermit();
-    await permitStore.save(permit);
     await permitStore.claim(permit.permit_id, "ord_1");
     const res = await ex.submit(makeSignedOrder(), permit);
     assert.equal(res.outcome, "PERMIT_INVALID");
@@ -185,7 +187,7 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
   it("fails closed when the venue is in CANCEL_ONLY (submit blocked, cancel allowed)", async () => {
     const adapter = new FakeAdapter();
     adapter.setMode("CANCEL_ONLY");
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
     const s = await ex.submit(makeSignedOrder(), makePermit());
     assert.equal(s.outcome, "MODE_FORBIDS");
@@ -196,7 +198,7 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
   it("fails closed for cancels when the venue is UNAVAILABLE", async () => {
     const adapter = new FakeAdapter();
     adapter.setMode("UNAVAILABLE");
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
     const c = await ex.cancel("ven_1");
     assert.equal(c.ok, false);
@@ -278,7 +280,7 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
 
   it("allows order without permit_id for backwards compatibility", async () => {
     const adapter = new FakeAdapter();
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
     // No permit_id set — the binding check is skipped.
     const order = makeSignedOrder("ord_nopermit");
@@ -294,7 +296,7 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
       code: "SUBMISSION_UNKNOWN",
       reason: "outcome unknown",
     });
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
     const res = await ex.submit(makeSignedOrder("ord_r1"), makePermit());
     assert.equal(res.outcome, "NEEDS_RECONCILIATION");
@@ -316,7 +318,7 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
       code: "SUBMISSION_UNKNOWN",
       reason: "outcome unknown",
     });
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
     await ex.submit(makeSignedOrder("ord_r2"), makePermit());
     // Venue reports the order was canceled.
@@ -337,7 +339,7 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
       code: "SUBMISSION_UNKNOWN",
       reason: "outcome unknown",
     });
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
     await ex.submit(makeSignedOrder("ord_r3"), makePermit());
     // Venue still has no record — getOrderStatusFn defaults to null.
@@ -352,7 +354,7 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
       queried = true;
       return null;
     };
-    const { deps } = makeDeps(adapter);
+    const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
     // Submit successfully → state becomes ACKNOWLEDGED.
     await ex.submit(makeSignedOrder("ord_r4"), makePermit());
