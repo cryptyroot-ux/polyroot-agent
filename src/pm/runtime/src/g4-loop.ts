@@ -14,120 +14,24 @@
  * - LIVE: full autonomy (requires Autonomy Charter gate)
  */
 
-import type {
-  Forecast,
-  RiskPolicy,
-  VenueMode,
-  WalletIdentity,
-} from "@polyroot/domain";
 import {
-  simulateFill,
-} from "./paper-engine.js";
-import { evaluateEdge, validateAndReserve, buildSignedOrder, computeGate } from "@polyroot/control";
+  G4_MODE_TRANSITIONS,
+  isValidModeTransition,
+  getDefaultModeConfig,
+  computeFinancialGate,
+  executeG4Step,
+  createG4Core,
+} from "./g4-core.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
-export type G4Mode = "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+export type G4Mode = G4PipelineMode;
 
-export interface G4LoopConfig {
-  mode: G4Mode;
-  /** Explicit capital cap for MICRO_LIVE (USD). Required for MICRO_LIVE. */
-  microLiveCapUsd?: number;
-  /** SHADOW baseline criteria (minimum days & resolved clusters). */
-  shadowCriteria?: { minDays: number; minResolvedClusters: number };
-  /** PAPER simulator configuration. */
-  paperFillConfig?: {
-    cancelProbability: number;
-    partialFraction: number;
-    latencyMs: number;
-  };
-  /** Microlive explicit cap (base units). */
-  microLiveCapBase?: bigint;
-  /** Minimum edge after costs for entry. */
-  minEdgeAfterCost?: number;
-  /** Paper simulator configuration. */
-  paperConfig?: {
-    cancelProbability: number;
-    partialFraction: number;
-    latencyMs: number;
-    makerFeeBps: number;
-    takerFeeBps: number;
-  };
-}
-
-export interface G4LoopDeps {
-  /** Intelligence: produces forecast from market data. */
-  forecast: (market: { market_id: string; bid: number; ask: number }) => Promise<number | null>;
-  /** Strategy: produces intent from forecast + market. */
-  sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number;
-  /** Money Kernel for reservations & permits. */
-  kernel: any;
-  /** Signer Vault for signing orders. */
-  signer: any;
-  /** Executor for submitting orders. */
-  executor: any;
-  /** Wallet identity for financial operations. */
-  wallet: WalletIdentity;
-  /** Risk policy with caps & limits. */
-  policy: RiskPolicy;
-  /** Policy hash for permit binding. */
-  policyHash: string;
-  /** Current venue mode. */
-  venueMode: () => VenueMode;
-  /** Current lease epoch for permit binding. */
-  leaseEpoch: () => number;
-  /** Clock for TTL checks. */
-  now: () => Date;
-  /** Wallet for simulator fills. */
-  paperWallet?: WalletIdentity;
-}
-
-export interface G4LoopInput {
-  market_id: string;
-  bid: number;
-  ask: number;
-  /** Optional forecast override (for testing/overrides). */
-  forecastOverride?: number | null;
-  /** Optional forecast object (for metadata). */
-  forecastObj?: Forecast | null;
-  /** Current market exposure in USD. */
-  currentMarketExposureUsd?: number;
-  /** Current portfolio exposure in USD. */
-  currentPortfolioExposureUsd?: number;
-}
-
-export interface G4LoopResult {
-  market_id: string;
-  decision: "NO_TRADE" | "BUY" | "SELL";
-  reason: string | undefined;
-  /** For simulated/real fills. */
-  fill?: {
-    status: "FILLED" | "PARTIAL" | "CANCELLED";
-    filledSize: number;
-    fillPrice: number;
-    makerFee: number;
-    takerFee: number;
-    latencyMs: number;
-  } | undefined;
-  pnl?: number;
-  /** For real execution. */
-  orderId?: string | undefined;
-  permitId?: string | undefined;
-  outcome?: "SUBMITTED" | "NEEDS_RECONCILIATION" | undefined;
-  p?: number | undefined;
-  size?: number | undefined;
-}
-
-export interface G4LoopMetrics {
-  totalOrders: number;
-  filledOrders: number;
-  totalPnl: number;
-  totalFees: number;
-  maxDrawdown: number;
-  fillRatio: number;
-  currentExposureUsd: number;
-  maxExposureUsd: number;
-}
+export interface G4LoopConfig extends G4CoreConfig {}
+export interface G4LoopDeps extends G4CoreDeps {}
+export interface G4LoopInput extends G4CoreInput {}
+export interface G4LoopResult extends G4CoreResult {}
+export interface G4LoopMetrics extends G4CoreMetrics {}
 
 /* ─── G4 Autonomous Loop ─────────────────────────────────────────────────── */
 
@@ -158,27 +62,8 @@ export class G4AutonomousLoop {
   };
 
   constructor(config: G4LoopConfig, deps: G4LoopDeps) {
-    // Default config with sensible defaults
-    this.config = {
-      mode: config.mode ?? "PAPER",
-      microLiveCapUsd: config.microLiveCapUsd ?? 500,
-      shadowCriteria: config.shadowCriteria ?? { minDays: 30, minResolvedClusters: 100 },
-      paperFillConfig: config.paperFillConfig ?? {
-        cancelProbability: 0.05,
-        partialFraction: 0.8,
-        latencyMs: 50,
-      },
-      microLiveCapBase: config.microLiveCapBase ?? 100_000_000n,
-      minEdgeAfterCost: config.minEdgeAfterCost ?? 0.03,
-      paperConfig: config.paperConfig ?? {
-        cancelProbability: 0.05,
-        partialFraction: 0.8,
-        latencyMs: 50,
-        makerFeeBps: 0,
-        takerFeeBps: 200,
-      },
-    };
-
+    const defaults = getDefaultModeConfig(config.mode, config);
+    this.config = defaults as Required<G4LoopConfig>;
     this.deps = deps;
     this.metrics = {
       totalOrders: 0,
@@ -207,13 +92,7 @@ export class G4AutonomousLoop {
 
   /** Set mode (validates transitions). */
   setMode(mode: G4Mode): void {
-    const validTransitions: Record<G4Mode, G4Mode[]> = {
-      PAPER: ["SHADOW"],
-      SHADOW: ["MICRO_LIVE", "PAPER"],
-      MICRO_LIVE: ["LIVE", "SHADOW"],
-      LIVE: ["SHADOW"],
-    };
-    if (!validTransitions[this.config.mode].includes(mode)) {
+    if (!isValidModeTransition(this.config.mode, mode)) {
       throw new Error(`Invalid mode transition: ${this.config.mode} -> ${mode}`);
     }
     this.config.mode = mode;
@@ -226,243 +105,19 @@ export class G4AutonomousLoop {
 
   /** Run one iteration of the autonomous loop for a single market. */
   async step(input: G4LoopInput): Promise<G4LoopResult> {
-    const { market_id, bid, ask, forecastOverride } = input;
-    void forecastOverride;
-    void input.forecastObj;
-    void input.currentMarketExposureUsd;
-    void input.currentPortfolioExposureUsd;
-
-    // 1. Check financial gate (mode, health, venue)
-    const gate = computeGate(
-      this.config.mode === "LIVE" ? "LIVE" : "PAPER",
-      "ACTIVE",
-      this.deps.venueMode(),
-    );
-    if (gate !== "ALLOW") {
-      return {
-        market_id,
-        decision: "NO_TRADE",
-        reason: `Financial gate: ${gate}`,
-      };
-    }
-
-    // 2. Get forecast (or use override)
-    let p: number | null;
-    if (forecastOverride !== undefined) {
-      p = forecastOverride;
-    } else {
-      p = await this.deps.forecast({ market_id, bid, ask });
-    }
-    if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02) {
-      return {
-        market_id,
-        decision: "NO_TRADE",
-        reason: "forecast uncertain or unavailable",
-      };
-    }
-
-    // 3. Edge evaluation
-    const edge = evaluateEdge(
-      {
-        forecast: {
-          p_calibrated: p,
-          confidence: 0.8,
-          horizon_sec: 3600,
-          valid_until: new Date(Date.now() + 3600_000),
-          created_at: new Date(),
-          forecast_id: "",
-          market_id,
-          schema_version: "1.1",
-          evidence_ids: [],
-          counterevidence_ids: [],
-          assumptions: [],
-          invalidators: [],
-        },
-        book: {
-          yes_price: bid,
-          no_price: ask,
-          market_id,
-          event_id: "",
-          question: "",
-          chain_id: 137,
-          collateral: "",
-          rules_hash: "",
-          fee_maker_bps: 0,
-          fee_taker_bps: 200,
-          tick_size: 0.01,
-          min_size: 1,
-          status: "ACTIVE",
-          is_neg_risk: false,
-          venue_mode: "NORMAL" as VenueMode,
-          source_at: new Date(),
-          received_at: new Date(),
-          schema_version: "1.1",
-        },
-      },
-      { minEdge: this.config.minEdgeAfterCost ?? 0.03 }
-    );
-    if (edge.action === "NO_TRADE") {
-      return {
-        market_id,
-        decision: "NO_TRADE",
-        reason: edge.code ?? "MIN_EDGE_UNMET",
-      };
-    }
-
-    // 4. Build intent from edge
-    const intentSide = edge.side === "YES" ? "BUY" : "SELL";
-    const size = this.deps.sizeIntent({ market_id, bid, ask }, p);
-    if (size <= 0) {
-      return {
-        market_id,
-        decision: "NO_TRADE",
-        reason: "sizing returned zero",
-      };
-    }
-
-    // 5. Risk gate + reservation
-    const now = this.deps.now();
-    const gateResult = await validateAndReserve({
-intent: {
-        schema_version: "1.1",
-        intent_id: crypto.randomUUID(),
-        dedupe_key: `${market_id}_${Date.now()}`,
-        purpose: "ENTRY",
-        market_id,
-        side: intentSide,
-        desired_qty: size,
-        limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
-        created_at: now,
-        evidence_ids: [],
-        forecast_refs: [],
-        status: "CREATED",
-        expiration_sec: 300,
-      },
-
-      policy: this.deps.policy,
-      wallet: this.deps.wallet,
-      venueMode: this.deps.venueMode(),
-      leaseEpoch: this.deps.leaseEpoch(),
-      now,
-      policyHash: this.deps.policyHash,
-      currentMarketExposureUsd: 0,
-      currentPortfolioExposureUsd: 0,
-    }, this.deps.kernel);
-
-    if (!gateResult.ok) {
-      return {
-        market_id,
-        decision: "NO_TRADE",
-        reason: gateResult.reason ?? gateResult.code,
-      };
-    }
-
-    // 6. Build signed order
-    const built = await buildSignedOrder({
-      intent: {
-        schema_version: "1.1",
-        intent_id: crypto.randomUUID(),
-        dedupe_key: `${market_id}_${Date.now()}`,
-        purpose: "ENTRY",
-        market_id,
-        side: intentSide,
-        desired_qty: size,
-        limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
-        created_at: now,
-        evidence_ids: [],
-        forecast_refs: [],
-        status: "CREATED",
-        expiration_sec: 300,
-      },
-      permit: gateResult.permit,
-      wallet: this.deps.wallet,
-      venueMode: this.deps.venueMode(),
-      now,
-    }, this.deps.signer);
-
-    if (!built.ok) {
-      return {
-        market_id,
-        decision: "NO_TRADE",
-        reason: built.reason ?? built.code,
-      };
-    }
-
-    // 7. Execute based on mode
-    let fill: G4LoopResult["fill"] | undefined;
-    let orderId: string | undefined;
-    let permitId: string | undefined;
-    let outcome: "SUBMITTED" | "NEEDS_RECONCILIATION" | undefined;
-
-    if (this.config.mode === "PAPER" || this.config.mode === "SHADOW") {
-      // Simulate fill
-      const fillResult = simulateFill({
-        size,
-        bid,
-        ask,
-        depth: 1000,
-        taker: true,
-        makerFeeBps: this.paperFillConfig.makerFeeBps,
-        takerFeeBps: this.paperFillConfig.takerFeeBps,
-        latencyMs: this.paperFillConfig.latencyMs,
-        cancelProbability: this.paperFillConfig.cancelProbability,
-        partialFraction: this.paperFillConfig.partialFraction,
-      });
-      fill = {
-        status: fillResult.status,
-        filledSize: fillResult.filledSize,
-        fillPrice: fillResult.fillPrice,
-        makerFee: fillResult.makerFee,
-        takerFee: fillResult.takerFee,
-        latencyMs: fillResult.latencyMs,
-      };
-    } else if (this.config.mode === "MICRO_LIVE" || this.config.mode === "LIVE") {
-      // Submit to executor
-      const submitted = await this.deps.executor.submit(built.order, gateResult.permit);
-      if (submitted.outcome === "SUBMITTED") {
-        orderId = built.order.order_id;
-        permitId = gateResult.permit.permit_id;
-        outcome = "SUBMITTED";
-      } else if (submitted.outcome === "NEEDS_RECONCILIATION") {
-        outcome = "NEEDS_RECONCILIATION";
-      } else {
-        return {
-          market_id,
-          decision: "NO_TRADE",
-          reason: `Executor: ${submitted.reason ?? submitted.code}`,
-        };
-      }
-    }
-
-    // Calculate PnL
-    const pnl = fill
-      ? (fill.status === "FILLED" || fill.status === "PARTIAL")
-        ? (fill.filledSize * (p - 0.5) - (fill.makerFee + fill.takerFee))
-        : 0
-      : 0;
+    const result = await executeG4Step(input, { config: this.config, deps: this.deps }, this.paperFillConfig);
 
     // Update metrics
     this.metrics.totalOrders++;
-    if (fill && (fill.status === "FILLED" || fill.status === "PARTIAL")) {
+    if (result.fill && (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")) {
       this.metrics.filledOrders++;
     }
-    this.metrics.totalPnl += pnl ?? 0;
-    if (fill) {
-      this.metrics.totalFees += fill.makerFee + fill.takerFee;
+    this.metrics.totalPnl += result.pnl ?? 0;
+    if (result.fill) {
+      this.metrics.totalFees += result.fill.makerFee + result.fill.takerFee;
     }
 
-    return {
-      market_id,
-      decision: fill ? (p > 0.5 ? "BUY" : "SELL") : "NO_TRADE",
-      reason: fill ? undefined : "execution failed",
-      fill,
-      pnl,
-      orderId,
-      permitId,
-      outcome,
-      p,
-      size,
-    };
+    return result;
   }
 
   /** Run a full pass over multiple markets. */
@@ -477,46 +132,21 @@ intent: {
 
   /** Get current financial gate status. */
   getFinancialGate(): "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED" {
-    return computeGate(
-      this.config.mode === "LIVE" ? "LIVE" : "PAPER",
-      "ACTIVE",
-      this.deps.venueMode(),
+    return computeFinancialGate(
+      this.config.mode,
+      this.deps.venueMode,
+      this.config.minEdgeAfterCost,
     );
   }
 }
 
 /* ─── Factory for creating G4 loop with all dependencies ─────────────────── */
 
-export interface CreateG4LoopOptions {
-  config: G4LoopConfig;
-  kernel: any;
-  signer: any;
-  executor: any;
-  wallet: WalletIdentity;
-  policy: RiskPolicy;
-  policyHash: string;
-  venueMode: () => VenueMode;
-  leaseEpoch: () => number;
-  now: () => Date;
-  forecast: (market: { market_id: string; bid: number; ask: number }) => Promise<number | null>;
-  sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number;
-}
+export interface CreateG4LoopOptions extends CreateG4CoreOptions {}
 
-export function createG4Loop(options: { config: G4LoopConfig; kernel: any; signer: any; executor: any; wallet: WalletIdentity; policy: RiskPolicy; policyHash: string; venueMode: () => VenueMode; leaseEpoch: () => number; now: () => Date; forecast: (market: { market_id: string; bid: number; ask: number }) => Promise<number | null>; sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number }) {
-  const deps: any = {
-    forecast: options.forecast,
-    sizeIntent: options.sizeIntent,
-    kernel: options.kernel,
-    signer: options.signer,
-    executor: options.executor,
-    wallet: options.wallet,
-    policy: options.policy,
-    policyHash: options.policyHash,
-    venueMode: options.venueMode,
-    leaseEpoch: options.leaseEpoch,
-    now: options.now,
-  };
-  return new G4AutonomousLoop(options.config, deps);
+export function createG4Loop(options: CreateG4LoopOptions) {
+  const { config, deps } = createG4Core(options);
+  return new G4AutonomousLoop(config, deps);
 }
 
 /* ─── Exports ─────────────────────────────────────────────────────────────── */

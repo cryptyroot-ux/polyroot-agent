@@ -251,10 +251,228 @@ export class PgShadowBaseline {
   }
 }
 
+/**
+ * PostgreSQL-backed SHADOW decision log (G5).
+ * Mirrors paper_log but for SHADOW mode (live data, no financial I/O).
+ * No fill simulation — records actual market decisions without execution.
+ */
+export interface ShadowLogRow {
+  market_id: string;
+  action: "BUY" | "SELL" | "NO_TRADE" | "ABSTAIN";
+  forecastP: number | null;
+  size: number;
+  uncertainty: number;
+  experimentId: string | null;
+  loopEpoch: number;
+}
+
+export class PgShadowLog {
+  private readonly pool: Pool;
+
+  constructor(config: PoolConfig | string | Pool) {
+    this.pool =
+      config instanceof Pool
+        ? config
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
+  }
+
+  async insert(row: ShadowLogRow): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO shadow_log
+         (market_id, action, forecast_p, size, fill_status, filled_size, fill_price,
+          maker_fee, taker_fee, pnl_latency_ms, uncertainty, experiment_id, loop_epoch, created_at)
+       VALUES ($1,$2,$3,$4,'NONE',0,NULL,0,0,0,$5,$6,$7,now())`,
+      [
+        row.market_id,
+        row.action,
+        row.forecastP,
+        row.size,
+        row.uncertainty,
+        row.experimentId,
+        row.loopEpoch,
+      ],
+    );
+  }
+
+  async count(): Promise<number> {
+    const r = await this.pool.query("SELECT COUNT(*)::int AS c FROM shadow_log");
+    return r.rows[0].c as number;
+  }
+
+  async countByAction(): Promise<Record<string, number>> {
+    const r = await this.pool.query(
+      "SELECT action, COUNT(*)::int AS c FROM shadow_log GROUP BY action",
+    );
+    const out: Record<string, number> = {};
+    for (const row of r.rows) out[row.action] = row.c;
+    return out;
+  }
+}
+
+/**
+ * PostgreSQL-backed resolved cluster tracker (G5).
+ * Tracks resolved independent event clusters for the 100-cluster requirement.
+ */
+export interface ResolvedClusterRow {
+  clusterId: string;
+  eventId: string;
+  marketIds: string[];
+  resolutionOutcome: string;
+  resolvedAt: Date;
+  isIndependent: boolean;
+  clusterHash: string;
+}
+
+export class PgResolvedClusters {
+  private readonly pool: Pool;
+
+  constructor(config: PoolConfig | string | Pool) {
+    this.pool =
+      config instanceof Pool
+        ? config
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
+  }
+
+  async insert(row: ResolvedClusterRow): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO resolved_clusters
+         (cluster_id, event_id, market_ids, resolution_outcome, resolved_at, is_independent, cluster_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (cluster_hash) DO NOTHING`,
+      [
+        row.clusterId,
+        row.eventId,
+        row.marketIds,
+        row.resolutionOutcome,
+        row.resolvedAt,
+        row.isIndependent,
+        row.clusterHash,
+      ],
+    );
+  }
+
+  async count(): Promise<number> {
+    const r = await this.pool.query(
+      "SELECT COUNT(*)::int AS c FROM resolved_clusters WHERE is_independent = TRUE",
+    );
+    return r.rows[0].c as number;
+  }
+
+  async getByHash(hash: string): Promise<ResolvedClusterRow | undefined> {
+    const r = await this.pool.query(
+      "SELECT * FROM resolved_clusters WHERE cluster_hash = $1",
+      [hash],
+    );
+    if (r.rows.length === 0) return undefined;
+    return this.mapRow(r.rows[0]);
+  }
+
+  async listRecent(limit = 100): Promise<ResolvedClusterRow[]> {
+    const r = await this.pool.query(
+      "SELECT * FROM resolved_clusters WHERE is_independent = TRUE ORDER BY resolved_at DESC LIMIT $1",
+      [limit],
+    );
+    return r.rows.map((row) => this.mapRow(row));
+  }
+
+  private mapRow(row: Record<string, unknown>): ResolvedClusterRow {
+    return {
+      clusterId: String(row["cluster_id"]),
+      eventId: String(row["event_id"]),
+      marketIds: row["market_ids"] as string[],
+      resolutionOutcome: String(row["resolution_outcome"]),
+      resolvedAt: new Date(row["resolved_at"] as string),
+      isIndependent: Boolean(row["is_independent"]),
+      clusterHash: String(row["cluster_hash"]),
+    };
+  }
+}
+
+/**
+ * PostgreSQL-backed SHADOW gate evaluation log.
+ * Records each G5 gate evaluation attempt for audit trail.
+ */
+export interface ShadowGateEvaluationRow {
+  evaluatedAt: Date;
+  observedDays: number;
+  resolvedClusters: number;
+  gatePassed: boolean;
+  snapshot: Record<string, unknown>;
+  account: string;
+}
+
+export class PgShadowGateEvaluation {
+  private readonly pool: Pool;
+
+  constructor(config: PoolConfig | string | Pool) {
+    this.pool =
+      config instanceof Pool
+        ? config
+        : new Pool(
+            typeof config === "string" ? { connectionString: config } : config,
+          );
+  }
+
+  async insert(row: ShadowGateEvaluationRow): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO shadow_gate_evaluations
+         (evaluated_at, observed_days, resolved_clusters, gate_passed, snapshot, account)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [
+        row.evaluatedAt,
+        row.observedDays,
+        row.resolvedClusters,
+        row.gatePassed,
+        JSON.stringify(row.snapshot),
+        row.account,
+      ],
+    );
+  }
+
+  async getLatest(account = "default"): Promise<ShadowGateEvaluationRow | undefined> {
+    const r = await this.pool.query(
+      `SELECT * FROM shadow_gate_evaluations WHERE account = $1 ORDER BY evaluated_at DESC LIMIT 1`,
+      [account],
+    );
+    if (r.rows.length === 0) return undefined;
+    const row = r.rows[0];
+    return {
+      evaluatedAt: new Date(row.evaluated_at as string),
+      observedDays: Number(row.observed_days),
+      resolvedClusters: Number(row.resolved_clusters),
+      gatePassed: Boolean(row.gate_passed),
+      snapshot: row.snapshot as Record<string, unknown>,
+      account: String(row.account),
+    };
+  }
+
+  async list(account = "default", limit = 50): Promise<ShadowGateEvaluationRow[]> {
+    const r = await this.pool.query(
+      `SELECT * FROM shadow_gate_evaluations WHERE account = $1 ORDER BY evaluated_at DESC LIMIT $2`,
+      [account, limit],
+    );
+    return r.rows.map((row) => ({
+      evaluatedAt: new Date(row.evaluated_at as string),
+      observedDays: Number(row.observed_days),
+      resolvedClusters: Number(row.resolved_clusters),
+      gatePassed: Boolean(row.gate_passed),
+      snapshot: row.snapshot as Record<string, unknown>,
+      account: String(row.account),
+    }));
+  }
+}
+
 export function createPgRuntimeStores(config: PoolConfig | string): {
   paperLog: PgPaperLog;
+  shadowLog: PgShadowLog;
   experiments: PgExperimentRegistry;
   shadow: PgShadowBaseline;
+  resolvedClusters: PgResolvedClusters;
+  shadowGate: PgShadowGateEvaluation;
   pool: Pool;
 } {
   const pool = new Pool(
@@ -262,8 +480,11 @@ export function createPgRuntimeStores(config: PoolConfig | string): {
   );
   return {
     paperLog: new PgPaperLog(pool),
+    shadowLog: new PgShadowLog(pool),
     experiments: new PgExperimentRegistry(pool),
     shadow: new PgShadowBaseline(pool),
+    resolvedClusters: new PgResolvedClusters(pool),
+    shadowGate: new PgShadowGateEvaluation(pool),
     pool,
   };
 }
