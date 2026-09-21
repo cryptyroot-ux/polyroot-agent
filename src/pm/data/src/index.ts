@@ -338,6 +338,10 @@ export class UniverseDecider {
   }
 }
 
+/* ─── PM-DATA-07: market/event graph ─────────────────────────────────── */
+
+export * from "./graph.js";
+
 /** Append-only log of every market considered (selection-bias audit). */
 export class UniverseLog {
   private decisions: MarketDecision[] = [];
