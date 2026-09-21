@@ -1,7 +1,7 @@
 /**
  * @polyroot/strategy — StrategyRegistry implementation for managing qualified strategies.
  */
-import type { StrategyProposal, TradeIntent } from "@polyroot/domain";
+import type { StrategyProposal } from "@polyroot/domain";
 
 export interface StrategyDefinition {
   name: string;

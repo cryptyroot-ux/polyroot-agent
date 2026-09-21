@@ -4,10 +4,10 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
-import type { Persistence, OrchestrateResult } from "./index.js";
-import { Reconciler } from "./reconciler.js";
-import { Supervisor } from "./supervisor.js";
+import type { Persistence } from "./index.js";
 import type { RiskDecision } from "@polyroot/domain";
+import type { OrchestrateResult } from "./orchestrator.js";
+import type { Executor } from "@polyroot/executor";
 
 /**
  * PostgreSQL Persistence implementation.
@@ -101,11 +101,17 @@ export class PgPersistence implements Persistence {
  * PostgreSQL Reconciler implementation.
  * Uses the Executor's reconcile method and updates recovery_ledger.
  */
-export class PgReconciler extends Reconciler {
+export interface ReconcilerLike {
+  reconcileAll(): Promise<void>;
+  close(): Promise<void>;
+}
+
+export class PgReconciler implements ReconcilerLike {
   private readonly pool: Pool;
+  private readonly executor: Executor;
 
   constructor(
-    executor: import("@polyroot/executor").Executor,
+    executor: Executor,
     config: PoolConfig | string | Pool,
   ) {
     const pool =
@@ -114,23 +120,14 @@ export class PgReconciler extends Reconciler {
         : new Pool(
             typeof config === "string" ? { connectionString: config } : config,
           );
-    const persistence = new PgPersistence(pool);
-
-    // Call parent constructor with required dependencies
-    super(executor, persistence);
-
-    this.pool =
-      config instanceof Pool
-        ? config
-        : new Pool(
-            typeof config === "string" ? { connectionString: config } : config,
-          );
+    this.pool = pool;
+    this.executor = executor;
   }
 
   /**
    * Override reconcileAll to use PostgreSQL for querying unknown orders.
    */
-  override async reconcileAll(): Promise<void> {
+  async reconcileAll(): Promise<void> {
     const unknownIds = await this.pool.query(
       `SELECT order_id FROM recovery_ledger WHERE state = 'SUBMISSION_UNKNOWN'`,
     );
@@ -164,11 +161,27 @@ export class PgReconciler extends Reconciler {
  * PostgreSQL Supervisor implementation.
  * Persists health counters and reconciliation state.
  */
-export class PgSupervisor extends Supervisor {
+export interface SupervisorLike {
+  startPeriodicReconciliation(intervalMs?: number): () => void;
+  runReconciliation(): Promise<void>;
+  getHealthReport(): Promise<{
+    timestamp: Date;
+    unknownOrderCount: number;
+    totalOrderCount: number;
+    unresolvedIntents: number;
+  }>;
+  onOrchestrateResult(res: import("./orchestrator.js").OrchestrateResult): Promise<void>;
+  close(): Promise<void>;
+}
+
+export class PgSupervisor implements SupervisorLike {
   private readonly pool: Pool;
+  private readonly reconciler: ReconcilerLike;
+  private readonly policy: import("@polyroot/domain").RiskPolicy;
+  private stopReconciliation?: () => void;
 
   constructor(
-    reconciler: Reconciler,
+    reconciler: ReconcilerLike,
     config: PoolConfig | string | Pool,
     policy: import("@polyroot/domain").RiskPolicy,
   ) {
@@ -178,20 +191,12 @@ export class PgSupervisor extends Supervisor {
         : new Pool(
             typeof config === "string" ? { connectionString: config } : config,
           );
-    const persistence = new PgPersistence(pool);
-
-    // Call parent constructor with required dependencies
-    super({
-      reconciler,
-      persistence,
-      policy,
-      now: () => new Date(),
-    });
-
     this.pool = pool;
+    this.reconciler = reconciler;
+    this.policy = policy;
   }
 
-  override async onOrchestrateResult(res: OrchestrateResult): Promise<void> {
+  async onOrchestrateResult(res: import("./orchestrator.js").OrchestrateResult): Promise<void> {
     if (!res.ok) return;
     // State is already set by Executor via recovery_ledger
     // Just update supervisor counters
@@ -204,16 +209,53 @@ export class PgSupervisor extends Supervisor {
     );
   }
 
-  override async runReconciliation(): Promise<void> {
-    await this.deps.reconciler.reconcileAll();
+  async runReconciliation(): Promise<void> {
+    await this.reconciler.reconcileAll();
     await this.pool.query(
       `UPDATE supervisor_state SET last_reconcile_run = now(), last_reconcile_count = last_reconcile_count + 1 WHERE id = '00000000-0000-0000-0000-000000000001'::uuid`,
     );
   }
 
-  override async getHealthReport(): Promise<
-    import("./supervisor.js").HealthReport
-  > {
+  startPeriodicReconciliation(intervalMs?: number): () => void {
+    const interval =
+      intervalMs ?? (this.policy.reconcile_interval_s ?? 15) * 1000;
+    let running = false;
+    let stopped = false;
+
+    const timer = setInterval(async () => {
+      if (running || stopped) return;
+      running = true;
+      try {
+        await this.runReconciliation();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await this.pool.query(
+          `UPDATE supervisor_state SET total_order_count = total_order_count + 1,
+                                           unknown_order_count = (SELECT COUNT(*) FROM recovery_ledger WHERE state = 'SUBMISSION_UNKNOWN'),
+                                           unresolved_intent_count = (SELECT COUNT(*) FROM recovery_ledger WHERE state = 'SUBMISSION_UNKNOWN'),
+                                           updated_at = now()
+            WHERE id = '00000000-0000-0000-0000-000000000001'::uuid`,
+        );
+        console.error(`[supervisor] periodic reconciliation failed: ${msg}`);
+      } finally {
+        running = false;
+      }
+    }, interval);
+
+    timer.unref();
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }
+
+  async getHealthReport(): Promise<{
+    timestamp: Date;
+    unknownOrderCount: number;
+    totalOrderCount: number;
+    unresolvedIntents: number;
+  }> {
     const result = await this.pool.query(
       `SELECT total_order_count, unknown_order_count, unresolved_intent_count, last_reconcile_run
        FROM supervisor_state WHERE id = '00000000-0000-0000-0000-000000000001'::uuid`,
@@ -244,11 +286,11 @@ export class PgSupervisor extends Supervisor {
 export function createPgControlStores(
   config: PoolConfig | string | Pool,
   executor: import("@polyroot/executor").Executor,
-  _policy: import("@polyroot/domain").RiskPolicy,
+  policy: import("@polyroot/domain").RiskPolicy,
 ): {
   persistence: PgPersistence;
-  reconciler: PgReconciler;
-  supervisor: PgSupervisor;
+  reconciler: ReconcilerLike;
+  supervisor: SupervisorLike;
   pool: Pool;
 } {
   const pool =
@@ -260,11 +302,7 @@ export function createPgControlStores(
 
   const persistence = new PgPersistence(pool);
   const reconciler = new PgReconciler(executor, pool);
-  const supervisor = new PgSupervisor(
-    reconciler,
-    pool,
-    {} as import("@polyroot/domain").RiskPolicy,
-  );
+  const supervisor = new PgSupervisor(reconciler, pool, policy);
 
   return { persistence, reconciler, supervisor, pool };
 }
