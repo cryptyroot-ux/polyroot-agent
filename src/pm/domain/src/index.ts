@@ -1,5 +1,5 @@
 /**
- * PolyRoot canonical domain contracts — v1.1
+ * @polyroot/domain — Canonical domain contracts — v1.1
  * Sources: PRD v1.1 P8/P9 (96 requirements), Blueprint v1.1 B4 (canonical contracts)
  *
  * Serialization rule (B4): every persisted/exchanged object carries
@@ -9,6 +9,23 @@
  */
 import { z } from "zod";
 import { randomUUID } from "crypto";
+
+/**
+ * In-memory stubs used by the Intelligence plane interfaces (PM-INTEL-02/08).
+ * These classes provide the interface contract expected by
+ * @polyroot/intelligence‑pg while keeping the domain module independent of
+ * PG‑specific implementations. Runtime implementations (PgSourceRegistry,
+ * PgCatalystBus) satisfy these interfaces via inheritance.
+ */
+export class SourceRegistry {
+  // Stub used for the SourceRegistryInterface (PM-INTEL-02)
+  // Actual implementations live in @polyroot/strategy/src (PgSourceRegistry)
+}
+
+export class CatalystBus {
+  // Stub used for the CatalystBusInterface (PM-INTEL-08)
+  // Actual implementations live in @polyroot/strategy/src (PgCatalystBus)
+}
 
 /** Current canonical schema version for all domain objects. */
 export const SCHEMA_VERSION = "1.0.0" as const;
