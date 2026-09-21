@@ -15,6 +15,12 @@
  */
 
 import {
+  type G4CoreConfig,
+  type G4CoreDeps,
+  type G4CoreInput,
+  type G4CoreResult,
+  type G4CoreMetrics,
+  type CreateG4CoreOptions,
   G4_MODE_TRANSITIONS,
   isValidModeTransition,
   getDefaultModeConfig,
@@ -22,16 +28,19 @@ import {
   executeG4Step,
   createG4Core,
 } from "./g4-core.js";
+import { type G4PipelineMode } from "./g4-pipeline.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
 export type G4Mode = G4PipelineMode;
 
-export interface G4LoopConfig extends G4CoreConfig {}
-export interface G4LoopDeps extends G4CoreDeps {}
-export interface G4LoopInput extends G4CoreInput {}
-export interface G4LoopResult extends G4CoreResult {}
-export interface G4LoopMetrics extends G4CoreMetrics {}
+export interface G4LoopConfig extends G4CoreConfig {
+  mode: G4Mode;
+}
+export type G4LoopDeps = G4CoreDeps;
+export type G4LoopInput = G4CoreInput;
+export type G4LoopResult = G4CoreResult;
+export type G4LoopMetrics = G4CoreMetrics;
 
 /* ─── G4 Autonomous Loop ─────────────────────────────────────────────────── */
 
