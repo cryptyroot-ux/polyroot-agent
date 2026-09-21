@@ -391,6 +391,223 @@ export class ResearchBudget {
   }
 }
 
+/* ─── PM-INTEL-02: PostgreSQL Source Registry ─────────────────────────── */
+
+type SourceRecordRow = {
+  url: string;
+  syndication_parent: string | null;
+};
+
+export class PgSourceRegistry {
+  constructor(
+    private pool: {
+      query: (text: string, params?: unknown[]) => Promise<{ rows: SourceRecordRow[] }>;
+    },
+  ) {}
+
+  async register(record: SourceRecord): Promise<string> {
+    const syndParent = record.syndication_parent;
+    const key =
+      syndParent ??
+      record.url
+        .replace(/^\w+:\/\//, "")
+        .replace(/^www\./, "")
+        .split("?")[0] ??
+      record.url;
+
+    let family = key;
+    if (syndParent) {
+      family = syndParent;
+    }
+
+    await this.pool.query(
+      `INSERT INTO source_records (
+        source_id, url, epistemic_class, domain, source_class,
+        reliability_score, reliability_sample_count, reliability_window,
+        correction_history, syndication_parent, latency_sec, specialization, registered_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13)
+      ON CONFLICT (url) DO UPDATE SET
+        epistemic_class = EXCLUDED.epistemic_class,
+        domain = EXCLUDED.domain,
+        source_class = EXCLUDED.source_class,
+        reliability_score = EXCLUDED.reliability_score,
+        reliability_sample_count = EXCLUDED.reliability_sample_count,
+        reliability_window = EXCLUDED.reliability_window,
+        correction_history = EXCLUDED.correction_history,
+        syndication_parent = EXCLUDED.syndication_parent,
+        latency_sec = EXCLUDED.latency_sec,
+        specialization = EXCLUDED.specialization`,
+      [
+        record.source_id,
+        record.url,
+        record.epistemic_class,
+        record.domain,
+        record.source_class,
+        record.reliability.score,
+        record.reliability.sample_count,
+        record.reliability.window,
+        JSON.stringify(record.correction_history ?? []),
+        record.syndication_parent ?? null,
+        record.latency_sec ?? null,
+        record.specialization ?? null,
+        record.registered_at,
+      ]
+    );
+
+    return family;
+  }
+
+  async family(url: string): Promise<string | undefined> {
+    const res = await this.pool.query(
+      `SELECT url, syndication_parent FROM source_records WHERE url = $1`,
+      [url]
+    );
+    if (res.rows.length === 0) return undefined;
+    const row = res.rows[0];
+    if (!row) return undefined;
+    if (row.syndication_parent) return row.syndication_parent;
+    const u = row.url;
+    return (
+      u.replace(/^\w+:\/\//, "")
+        .replace(/^www\./, "")
+        .split("?")[0] ?? u
+    );
+  }
+
+  async independentFamilies(urls: string[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (urls.length === 0) return out;
+    const res = await this.pool.query(
+      `SELECT url, syndication_parent FROM source_records WHERE url = ANY($1::text[])`,
+      [urls]
+    );
+    const map = new Map<string, SourceRecordRow>();
+    for (const r of res.rows) {
+      map.set(r.url, r);
+    }
+    for (const u of urls) {
+      const hit = map.get(u);
+      if (hit && hit.syndication_parent) {
+        out.add(hit.syndication_parent);
+      } else {
+        const key = u
+          .replace(/^\w+:\/\//, "")
+          .replace(/^www\./, "")
+          .split("?")[0] ?? u;
+        out.add(hit ? key : u);
+      }
+    }
+    return out;
+  }
+}
+
+/* ─── PM-INTEL-08: catalyst bus (durable outbox + watermark) ──────────── */
+
+/**
+ * Durable catalyst bus with watermark (PM-INTEL-08): PostgreSQL-backed
+ * implementation that persists events and watermarks for replay across restarts.
+ */
+export class PgCatalystBus {
+  constructor(
+    private pool: {
+      query: (text: string, params?: unknown[]) => Promise<{ rowCount: number; rows?: unknown[] }>;
+    },
+  ) {}
+
+  async enqueue(event: CatalystEvent): Promise<DurableOutboxResult> {
+    const insertResult = await this.pool.query(
+      `INSERT INTO catalyst_outbox (
+        event_id, category, subject, payload_version, event_at, received_at, dedupe_key, payload
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+      ON CONFLICT (dedupe_key) DO NOTHING
+      RETURNING event_id`,
+      [
+        event.event_id,
+        event.category,
+        event.subject,
+        event.payload_version,
+        event.event_at,
+        event.received_at,
+        event.dedupe_key,
+        JSON.stringify(event.payload)
+      ]
+    );
+
+    if (insertResult.rowCount && insertResult.rowCount > 0) {
+      return { ok: true, event };
+    } else {
+      return { ok: false, code: "DUPLICATE_EVENT", eventId: event.event_id };
+    }
+  }
+
+  async replay(consumer: string, fromEventId: string): Promise<CatalystEvent[]> {
+    const watermarkResult = await this.pool.query(
+      `SELECT last_event_id FROM catalyst_watermarks WHERE consumer = $1`,
+      [consumer]
+    );
+
+    let lastEventId: string | null = null;
+    if (watermarkResult.rowCount && watermarkResult.rowCount > 0 && watermarkResult.rows) {
+      const row = watermarkResult.rows[0] as { last_event_id: string } | undefined;
+      if (row) lastEventId = row.last_event_id;
+    }
+
+    if (!lastEventId) {
+      const result = await this.pool.query(
+        `SELECT event_id, category, subject, payload_version, event_at, received_at, dedupe_key, payload 
+         FROM catalyst_outbox 
+         WHERE event_id >= $1 
+         ORDER BY event_id`,
+        [fromEventId]
+      );
+      
+      if (!result.rows) return [];
+      
+      return result.rows.map((row: any) => ({
+        event_id: row.event_id,
+        category: row.category,
+        subject: row.subject,
+        payload_version: row.payload_version,
+        event_at: new Date(row.event_at),
+        received_at: new Date(row.received_at),
+        dedupe_key: row.dedupe_key,
+        payload: row.payload,
+      })) as CatalystEvent[];
+    } else {
+      const result = await this.pool.query(
+        `SELECT event_id, category, subject, payload_version, event_at, received_at, dedupe_key, payload 
+         FROM catalyst_outbox 
+         WHERE event_id > $1 
+         ORDER BY event_id`,
+        [lastEventId]
+      );
+      
+      if (!result.rows) return [];
+      
+      return result.rows.map((row: any) => ({
+        event_id: row.event_id,
+        category: row.category,
+        subject: row.subject,
+        payload_version: row.payload_version,
+        event_at: new Date(row.event_at),
+        received_at: new Date(row.received_at),
+        dedupe_key: row.dedupe_key,
+        payload: row.payload,
+      })) as CatalystEvent[];
+    }
+  }
+
+  async advanceWatermark(consumer: string, eventId: string): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO catalyst_watermarks (consumer, last_event_id, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (consumer) 
+       DO UPDATE SET last_event_id = EXCLUDED.last_event_id, updated_at = EXCLUDED.updated_at`,
+      [consumer, eventId]
+    );
+  }
+}
+
 /* ─── minor re-exports ───────────────────────────────────────────────── */
 
 export type {

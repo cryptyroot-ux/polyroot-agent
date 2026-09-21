@@ -909,6 +909,7 @@ export const CatalystEventSchema = z.object({
   event_at: z.date(),
   received_at: z.date(),
   dedupe_key: z.string().min(1),
+  payload: z.unknown(),
 });
 export type CatalystEvent = z.infer<typeof CatalystEventSchema>;
 
