@@ -40,16 +40,11 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
     const decisionId = randomUUID();
     const intentId = randomUUID();
 
-    // Create required FK rows
+    // Create required FK row (trade_intents) - risk_decisions is created by reserve()
     await pool.query(
       `INSERT INTO trade_intents (id, market_id, side, price, size, order_type, expiration_sec, strategy, status)
        VALUES ($1, 'test_market', 'YES', 0.5, 100, 'LIMIT', 3600, 'test_strategy', 'PROPOSED')`,
       [intentId],
-    );
-    await pool.query(
-      `INSERT INTO risk_decisions (id, intent_id, status, decision_id, decided_at, reason_codes)
-       VALUES ($1, $2, 'ACCEPTED', $1, now(), ARRAY[]::text[])`,
-      [decisionId, intentId],
     );
 
     // Seed balance 10,000,000
@@ -120,16 +115,11 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
     const decisionId = randomUUID();
     const intentId = randomUUID();
 
-    // Create required FK rows
+    // Create required FK row (trade_intents) - risk_decisions is created by reserve()
     await pool.query(
       `INSERT INTO trade_intents (id, market_id, side, price, size, order_type, expiration_sec, strategy, status)
        VALUES ($1, 'test_market', 'YES', 0.5, 100, 'LIMIT', 3600, 'test_strategy', 'PROPOSED')`,
       [intentId],
-    );
-    await pool.query(
-      `INSERT INTO risk_decisions (id, intent_id, status, decision_id, decided_at, reason_codes)
-       VALUES ($1, $2, 'ACCEPTED', $1, now(), ARRAY[]::text[])`,
-      [decisionId, intentId],
     );
 
     const before = (
@@ -194,28 +184,26 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
       [acct],
     );
 
-    // Create required FK rows
-    const intentId = randomUUID();
+    // Two concurrent reserves of 5M each against 6M total with UNIQUE intent_ids → at most one succeeds.
+    const intentId1 = randomUUID();
+    const intentId2 = randomUUID();
     await pool.query(
       `INSERT INTO trade_intents (id, market_id, side, price, size, order_type, expiration_sec, strategy, status)
-       VALUES ($1, 'test_market', 'YES', 0.5, 100, 'LIMIT', 3600, 'test_strategy', 'PROPOSED')`,
-      [intentId],
+       VALUES ($1, 'test_market', 'YES', 0.5, 100, 'LIMIT', 3600, 'test_strategy', 'PROPOSED'),
+              ($2, 'test_market', 'YES', 0.5, 100, 'LIMIT', 3600, 'test_strategy', 'PROPOSED')`,
+      [intentId1, intentId2],
     );
-    const decisionId = randomUUID();
-    await pool.query(
-      `INSERT INTO risk_decisions (id, intent_id, status, decision_id, decided_at, reason_codes)
-       VALUES ($1, $2, 'ACCEPTED', $1, now(), ARRAY[]::text[])`,
-      [decisionId, intentId],
-    );
+    const decisionId1 = randomUUID();
+    const decisionId2 = randomUUID();
+    // Do not pre-insert risk_decisions rows as reserve() inserts them atomically with decisionId!
 
-    // Two concurrent reserves of 5M each against 6M total → at most one succeeds.
     const [a, b] = await Promise.all([
       auth.reserve(
         acct,
         "pUSD",
         5_000_000n,
-        decisionId,
-        intentId,
+        decisionId1,
+        intentId1,
         1,
         new Date(),
         5_000_000n,
@@ -226,8 +214,8 @@ describe("PgMoneyAuthority atomic authorization", { skip: !DB_OK }, () => {
         acct,
         "pUSD",
         5_000_000n,
-        decisionId,
-        intentId,
+        decisionId2,
+        intentId2,
         1,
         new Date(),
         5_000_000n,

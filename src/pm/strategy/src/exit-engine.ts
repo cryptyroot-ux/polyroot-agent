@@ -53,7 +53,7 @@ export class ExitEngine {
     const p = this.getConservativeProbability(forecast, position.side);
     const currentPrice = this.getCurrentPrice(book, position.side);
     const size = Math.abs(position.size);
-    const avgPrice = position.avg_price ?? currentPrice;
+    const _avgPrice = position.avg_price ?? currentPrice;
 
     // Calculate hold EV
     // Expected value of holding: p * payoff_if_resolves_yes + (1-p) * payoff_if_resolves_no

@@ -434,7 +434,9 @@ describe("FT-08 — Partial batch failure: per-order results", () => {
           }
         : { ok: false, code: "DEFINITIVE_REJECT", reason: "offside" };
     const { ex } = makeExecutor(adapter);
-    const a = await ex.submit(makeSignedOrder("ok_1"), makePermit());
+    const permit = makePermit();
+    const order = makeSignedOrder("ok_1", permit.permit_id);
+    const a = await ex.submit(order, permit);
     assert.equal(a.outcome, "SUBMITTED");
     const b = await ex.submit(makeSignedOrder("bad_1"), makePermit());
     assert.equal(b.outcome, "PERMIT_INVALID");

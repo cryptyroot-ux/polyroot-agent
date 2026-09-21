@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from "crypto";
-import type { Pool, QueryResult } from "pg";
+import type { Pool, QueryResult } from "pg"; // eslint-disable-line @typescript-eslint/no-unused-vars
 import type { ParameterEnvelope } from "./adaptive-tuner.js";
 
 export interface ExperimentSpec {

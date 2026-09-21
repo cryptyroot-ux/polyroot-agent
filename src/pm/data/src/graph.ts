@@ -201,7 +201,7 @@ export class GraphBuilder {
    * Returns inferred edges but does not persist them.
    * Caller decides which to upsert.
    */
-  async inferEdges(markets: MarketSnapshot[]): Promise<GraphEdge[]> {
+  async inferEdges(_markets: MarketSnapshot[]): Promise<GraphEdge[]> {
     const edges: GraphEdge[] = [];
 
     // COMPLEMENT: sum of outcome probabilities ≈ 1 (YES + NO prices)

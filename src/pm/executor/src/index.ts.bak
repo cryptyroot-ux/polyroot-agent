@@ -201,24 +201,6 @@ export class Executor {
       };
     }
 
-    // Check for duplicate order ID (idempotency) FIRST — before any permit checks.
-    // This ensures resubmitting the exact same order_id returns DUPLICATE
-    // rather than PERMIT_REUSED when the permit was already claimed by a
-    // previous successful submit of the same order.
-    const priorOrder = this.deps.seen.get(order.order_id);
-    if (priorOrder && priorOrder !== "DEFINITIVE_REJECT") {
-      // Release lease since we're not proceeding (duplicate order)
-      await this.deps.leaseStore.releaseExecutorLease(
-        this.deps.walletId,
-        this.deps.holder,
-      );
-      return {
-        outcome: "DUPLICATE",
-        code: "ALREADY_SEEN",
-        reason: `order ${order.order_id} already ${priorOrder}`,
-      };
-    }
-
     // 0b. Single-use permit already claimed check — check store for claimed status BEFORE saving.
     // This must happen BEFORE save to avoid overwriting the claimed status in the store.
     if (permit.single_use) {
@@ -253,19 +235,19 @@ export class Executor {
       };
     }
 
-    // If we've reached here, it's a fresh order. Check if the permit was already claimed
-    // by a previous successful submit (i.e., same permit, different order_id).
-    // This should be checked AFTER the duplicate order_id check so that resubmitting
-    // the exact same order returns DUPLICATE rather than PERMIT_REUSED.
-    if (permit.single_use) {
-      const alreadyClaimed = await this.deps.permitStore.isClaimed(permit.permit_id);
-      if (alreadyClaimed) {
-        return {
-          outcome: "PERMIT_INVALID",
-          code: "PERMIT_REUSED",
-          reason: "single-use permit already claimed",
-        };
-      }
+    // Check for duplicate order ID (idempotency)
+    const prior = this.deps.seen.get(order.order_id);
+    if (prior && prior !== "DEFINITIVE_REJECT") {
+      // Release lease since we're not proceeding (duplicate order)
+      await this.deps.leaseStore.releaseExecutorLease(
+        this.deps.walletId,
+        this.deps.holder,
+      );
+      return {
+        outcome: "DUPLICATE",
+        code: "ALREADY_SEEN",
+        reason: `order ${order.order_id} already ${prior}`,
+      };
     }
 
     // 2. Permit validity — recheck schema, expiry and single-use against clock.
@@ -288,11 +270,6 @@ export class Executor {
     //    MUST match the presented permit exactly. This prevents a permit issued for
     //    market A from being used to submit an order bound to market B.
     if (order.permit_id && order.permit_id !== permit.permit_id) {
-      // Release lease since we're not proceeding
-      await this.deps.leaseStore.releaseExecutorLease(
-        this.deps.walletId,
-        this.deps.holder,
-      );
       return {
         outcome: "PERMIT_INVALID",
         code: "PERMIT_MISMATCH",

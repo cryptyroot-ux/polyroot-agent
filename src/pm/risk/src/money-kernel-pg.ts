@@ -307,6 +307,9 @@ private readonly pool: Pool;
       const riskDecisionAllowedOrderStyle = riskDecisionCols?.allowed_order_style ?? ["LIMIT", "POST_ONLY"];
       const riskDecisionVenueMode = riskDecisionCols?.venue_mode ?? "NORMAL";
 
+      const maxQtyBase = (amountSharesBase ?? cashNeededBase).toString();
+      const maxCashBase = cashNeededBase.toString();
+
       await client.query(
         `INSERT INTO risk_decisions (
           id, intent_id, status, decision_id, reservation_ids,
@@ -315,14 +318,16 @@ private readonly pool: Pool;
           reason_codes, schema_version, decided_at
         ) VALUES (
           $1, $2, 'ACCEPTED', $1, $3,
-          0, 0, $4, $5,
-          $6, $7, $8, $9,
-          '{}', $10, now()
+          $4, $5, $6, $7,
+          $8, $9, $10, $11,
+          '{}', $12, now()
         )`,
         [
           decisionId,
           intentId,
           [reservationId],
+          maxQtyBase,
+          maxCashBase,
           riskDecisionAllowedOrderStyle,
           riskDecisionVenueMode,
           riskDecisionLedgerVersion,

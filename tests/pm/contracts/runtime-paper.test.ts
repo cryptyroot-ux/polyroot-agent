@@ -203,7 +203,7 @@ describe("PR-VAL-07: economic metrics", () => {
     assert.ok(concentrationIndex([5, 5]) < 1);
   });
 
-  it("computeEconomicMetrics returns net PnL after fees", () => {
+  it("computeEconomicMetrics returns net PnL after fees and correct fill ratio", () => {
     const m = computeEconomicMetrics({
       equityCurve: [1000, 1050],
       initialEquity: 1000,
@@ -212,9 +212,12 @@ describe("PR-VAL-07: economic metrics", () => {
       turnover: 800,
       capacityUsd: 10_000,
       perMarketPnl: [50, -10, 20],
+      totalSubmittedQty: 100,
+      totalFilledQty: 80,
     });
     assert.equal(m.netPnl, 100);
     assert.equal(m.maxDrawdownPct, 0);
+    assert.equal(m.fillRatio, 0.8);
     assert.ok(m.capacityUtilizationPct > 0);
     assert.ok(m.concentration < 1);
   });

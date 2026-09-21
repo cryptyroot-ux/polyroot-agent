@@ -304,6 +304,10 @@ export interface EconomicInput {
   capacityUsd: number;
   /** Per-market PnL for concentration (Herfindahl). */
   perMarketPnl: number[];
+  /** Total submitted quantity across all orders. */
+  totalSubmittedQty: number;
+  /** Total filled quantity across all orders. */
+  totalFilledQty: number;
 }
 
 export interface EconomicMetrics {
@@ -352,8 +356,8 @@ export function computeEconomicMetrics(input: EconomicInput): EconomicMetrics {
     netPnl,
     maxDrawdownPct: maxDrawdown(input.equityCurve),
     fillRatio:
-      input.turnover > 0
-        ? Math.max(0, 1 - input.totalFees / Math.max(input.grossPnl, 1e-9))
+      input.totalSubmittedQty > 0
+        ? input.totalFilledQty / input.totalSubmittedQty
         : 0,
     turnover: input.turnover,
     capacityUtilizationPct:
@@ -486,6 +490,8 @@ export function runPaperLoop(
   let totalFees = 0;
   let grossPnl = 0;
   let turnover = 0;
+  let totalSubmittedQty = 0;
+  let totalFilledQty = 0;
 
   for (const m of markets) {
     const p = deps.forecast(m);
@@ -498,7 +504,9 @@ export function runPaperLoop(
       continue;
     }
     const size = deps.sizeIntent(m, p);
+    totalSubmittedQty += size;
     const fill = simulateFill({ ...feeInput, size, bid: m.bid, ask: m.ask });
+    totalFilledQty += fill.filledSize;
     const pnl =
       fill.status === "CANCELLED"
         ? 0
@@ -532,6 +540,8 @@ export function runPaperLoop(
     turnover,
     capacityUsd: 10_000,
     perMarketPnl,
+    totalSubmittedQty,
+    totalFilledQty,
   });
 
   const probQuality = computeProbQuality({
@@ -602,6 +612,8 @@ export async function runPaperLoopWithOrchestrator(
   let totalFees = 0;
   let grossPnl = 0;
   let turnover = 0;
+  let totalSubmittedQty = 0;
+  let totalFilledQty = 0;
 
   for (const m of params.markets) {
     const p = params.forecast(m);
@@ -611,6 +623,7 @@ export async function runPaperLoopWithOrchestrator(
     params.onEntry(m);
     if (gate !== "ALLOW") continue; // entry or financially blocked -> no new order
     const size = params.sizeIntent(m, p);
+    totalSubmittedQty += size;
     try {
       await params.orchestrate({ ...m, p, size });
     } catch {
@@ -624,6 +637,7 @@ export async function runPaperLoopWithOrchestrator(
       bid: m.bid,
       ask: m.ask,
     });
+    totalFilledQty += fill.filledSize;
     const pnl =
       fill.status === "CANCELLED"
         ? 0
@@ -652,6 +666,8 @@ export async function runPaperLoopWithOrchestrator(
     turnover,
     capacityUsd: 10_000,
     perMarketPnl,
+    totalSubmittedQty,
+    totalFilledQty,
   });
 
   return { decisions, economic };
