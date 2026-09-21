@@ -391,6 +391,47 @@ export class ResearchBudget {
   }
 }
 
+/* ─── PG-AI-05: PostgreSQL Research Budget ─────────────────────────── */
+
+export class PgResearchBudget {
+  constructor(
+    private pool: {
+      query: (text: string, params?: unknown[]) => Promise<{ rowCount: number; rows?: unknown[] }>;
+    },
+    private quota: ResearchQuota
+  ) {}
+
+  async charge(tokens: number, costUsdFrac: number): Promise<void> {
+    await this.pool.query(
+      `UPDATE research_budget SET tokens_used = tokens_used + $1, cost_used_usd_micro = cost_used_usd_micro + $2`,
+      [tokens, Math.round(costUsdFrac * 1e6)]
+    );
+  }
+
+  async check(tokensNeeded: number): Promise<QuotaCheck> {
+    const result = await this.pool.query(`SELECT tokens_used, cost_used_usd_micro FROM research_budget LIMIT 1`);
+    const row = result.rows && result.rows[0] as { tokens_used: string | number, cost_used_usd_micro: string | number } | undefined;
+    const tokensUsed = row ? BigInt(row.tokens_used) : 0n;
+    
+    const quotaTokens = BigInt(this.quota.max_tokens.toString(10));
+    if (
+      tokensUsed + BigInt(Math.round(tokensNeeded)) >
+      quotaTokens
+    ) {
+      return {
+        ok: false,
+        code: "BUDGET_EXHAUSTED",
+        reason: "token_quota_exceeded",
+      };
+    }
+    return { ok: true, remainingTokens: quotaTokens - tokensUsed };
+  }
+
+  async reset(): Promise<void> {
+    await this.pool.query(`UPDATE research_budget SET tokens_used = 0, cost_used_usd_micro = 0, last_reset = now()`);
+  }
+}
+
 /* ─── PM-INTEL-02: PostgreSQL Source Registry ─────────────────────────── */
 
 type SourceRecordRow = {
