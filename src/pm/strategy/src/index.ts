@@ -1,7 +1,8 @@
 /**
  * @polyroot/strategy — Strategy logic and intent generation (PM-STR-01..08).
  * Pure primitives: forecast-to-intent mapping, quote adjustment, sizing,
- * adaptive parameter tuning (PR-AUT-07), smart money consensus (PR-STR-05).
+ * adaptive parameter tuning (PR-AUT-07), smart money consensus (PR-STR-05),
+ * strategy arbitration/deduplication (PM-STR-06).
  * No I/O.
  */
 import {
@@ -38,6 +39,11 @@ export {
   signalToIntent,
   runSmartMoneyPipeline,
 } from "./smart-money-consensus.js";
+
+export {
+  type StrategyArbiterConfig,
+  StrategyArbiter,
+} from "./arbiter.js";
 
 /* ─── PM-STR-01: forecast-to-intent mapping ──────────────────────────── */
 
