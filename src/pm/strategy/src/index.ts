@@ -45,6 +45,31 @@ export {
   StrategyArbiter,
 } from "./arbiter.js";
 
+export {
+  type ExitEngineConfig,
+  ExitEngine,
+} from "./exit-engine.js";
+
+export {
+  type ExperimentSpec,
+  type GateResult,
+  type GateReport,
+  type ExperimentStatus,
+  type ExperimentRecord,
+  ExperimentRegistry,
+  EXPERIMENTS_SCHEMA,
+} from "./experiment-registry.js";
+
+export {
+  type EvidenceDirectionalV2Config,
+  EvidenceDirectionalV2,
+} from "./evidence-directional-v2.js";
+
+export {
+  type MarketGraphRelativeValueV1Config,
+  MarketGraphRelativeValueV1,
+} from "./market-graph-relative-value-v1.js";
+
 /* ─── PM-STR-01: forecast-to-intent mapping ──────────────────────────── */
 
 /**
