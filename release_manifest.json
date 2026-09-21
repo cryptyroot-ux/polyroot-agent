@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0.0",
-  "release_id": "0e0c2735-4497-85fa-9d72-1a8e2dd01712",
-  "timestamp_utc": "2026-09-14T07:14:10.765Z",
+  "release_id": "ff8f9d98-e5cb-0767-c4f7-40dabd26f88d",
+  "timestamp_utc": "2026-09-21T12:37:57.478Z",
   "git": {
     "repo": "https://github.com/cryptyroot-ux/polyroot-agent.git",
-    "branch": "feature/phase13-security-deployment",
-    "commit_sha": "0e0c2735449785fa9d721a8e2dd01712fc77a41a",
+    "branch": "main",
+    "commit_sha": "ff8f9d98e5cb0767c4f740dabd26f88d1ddeee60",
     "tag": "safety-pre-finalization",
     "dirty": true
   },
@@ -19,7 +19,7 @@
     "node_version": "24.18.0",
     "node_engine_range": ">=24.0.0",
     "npm_version": "11.16.0",
-    "lockfile_sha256": "fd10702da8375b42fa5f4c7dc8a277851ec793a3218edb3d5d13f97603472c52"
+    "lockfile_sha256": "0cc68ffd08f95a3645b97c7114e833eda71371437fe7811426a1e8d59b9a6c5a"
   },
   "dependencies": {
     "@polymarket/client": "TBD-pinned-at-G0",
@@ -28,7 +28,7 @@
   "image": {
     "repository": "polyroot/trader",
     "tag": "safety-pre-finalization",
-    "digest": "sha256:cfdeadca5f0503bda13de7d0e1a542991cd4c3eca56935f35ae121d4c40b1e2a"
+    "digest": "sha256:095af0ca8a0ca9282e9f8d4ac81e5febde75a2485f1667dad28acdf538a1a112"
   },
   "sdk": {
     "package": "@polymarket/client",
@@ -49,7 +49,17 @@
       "0006_paper_shadow_runtime.sql",
       "0007_permit_order_binding.sql",
       "0008_permit_payload_hash.sql",
-      "0009_recovery_ledger_fix.sql"
+      "0009_recovery_ledger_fix.sql",
+      "0010_durable_reservations.sql",
+      "0011_kernel_events_decision_id.sql",
+      "0012_reservations_active_intent_unique.sql",
+      "0013_reservation_lifecycle_accounting.sql",
+      "0014_risk_decision_extra_fields.sql",
+      "0015_market_event_graph.sql",
+      "0016_source_records.sql",
+      "0017_catalyst_bus.sql",
+      "0018_calibration_ensemble.sql",
+      "0019_research_budget.sql"
     ]
   },
   "strategies": {},
@@ -61,6 +71,6 @@
   "fork_disposition": "docs/ARTEFAK/fork_disposition.csv (TBD — required before G1)",
   "sbom": {
     "format": "spdx-json",
-    "sha256": "4e0e96674a2340e6c9db789fec5a5d456082b2faff4630e6655151ad14b43ada"
+    "sha256": "0b347ba907318d48389de9cad9b768cb7f2d6d13c7abe231c91e5d4b1f0a375b"
   }
 }

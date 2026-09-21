@@ -10,13 +10,13 @@
  * but persist state across restarts.
  */
 
-import { Pool, type PoolConfig } from "pg";
-import {
+import { type SourceRecord, Pool, type PoolConfig } from "pg";
+import { type SourceRecord,
   type SourceRecord,
   type CatalystEvent,
   type ResearchQuota,
 } from "@polyroot/domain";
-import {
+import { type SourceRecord,
   type DurableOutboxResult,
 } from "./index.js";
 
