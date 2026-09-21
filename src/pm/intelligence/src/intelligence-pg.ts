@@ -11,6 +11,17 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
+import {
+  type SourceRecord,
+  type CatalystEvent,
+  type ResearchQuota,
+} from "@polyroot/domain";
+import {
+  type SourceRegistryInterface,
+  type CatalystBusInterface,
+  type ResearchBudgetInterface,
+  type DurableOutboxResult,
+} from "./index.js";
 
 /**
  * PostgreSQL-backed Intelligence plane wiring.
@@ -20,15 +31,11 @@ export type IntelligencePgDeps = {
   pgConfig: PoolConfig | string;
 };
 
-export interface IntelligencePgStores {
-  sourceRegistry: SourceRegistry;
-  catalystBus: CatalystBus;
-  researchBudget: {
-    charge: (tokens: number, costUsdFrac: number) => Promise<void>;
-    check: (tokensNeeded: number) => Promise<{ ok: boolean; remainingTokens?: bigint; code?: string; reason?: string }>;
-    reset: () => Promise<void>;
-  };
-}
+export type IntelligencePgStores = {
+  sourceRegistry: SourceRegistryInterface;
+  catalystBus: CatalystBusInterface;
+  researchBudget: ResearchBudgetInterface;
+};
 
 /**
  * Create all PG-backed Intelligence stores from a single connection pool.
@@ -57,14 +64,3 @@ export async function createIntelligencePgStores(
     researchBudget,
   };
 }
-
-/* ─── Exports ─────────────────────────────────────────────────────────────── */
-
-export type {
-  IntelligencePgDeps,
-  IntelligencePgStores,
-} from "./intelligence-pg.js";
-
-export {
-  createIntelligencePgStores,
-} from "./intelligence-pg.js";
