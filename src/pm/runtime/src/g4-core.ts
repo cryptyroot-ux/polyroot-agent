@@ -8,7 +8,7 @@ import type {
   WalletIdentity,
 } from "@polyroot/domain";
 import { simulateFill } from "./paper-engine.js";
-import { evaluateEdge, validateAndReserve, buildSignedOrder, computeGate } from "@polyroot/control";
+import { evaluateEdge, validateAndReserve, buildSignedOrder } from "@polyroot/control";
 
 /* ─── Core G4 Types ──────────────────────────────────────────────────────── */
 

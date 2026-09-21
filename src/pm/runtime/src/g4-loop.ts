@@ -14,25 +14,26 @@
  * - LIVE: full autonomy (requires Autonomy Charter gate)
  */
 
+import type {
+  G4Mode,
+  G4CoreConfig,
+  G4CoreDeps,
+  G4CoreInput,
+  G4CoreResult,
+  G4CoreMetrics,
+  CreateG4CoreOptions,
+} from "./g4-core.js";
 import {
-  type G4CoreConfig,
-  type G4CoreDeps,
-  type G4CoreInput,
-  type G4CoreResult,
-  type G4CoreMetrics,
-  type CreateG4CoreOptions,
-  G4_MODE_TRANSITIONS,
   isValidModeTransition,
   getDefaultModeConfig,
   computeFinancialGate,
   executeG4Step,
   createG4Core,
 } from "./g4-core.js";
-import { type G4PipelineMode } from "./g4-pipeline.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
-export type G4Mode = G4PipelineMode;
+export type { G4Mode };
 
 export interface G4LoopConfig extends G4CoreConfig {
   mode: G4Mode;
