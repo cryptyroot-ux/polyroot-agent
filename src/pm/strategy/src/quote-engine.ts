@@ -42,7 +42,7 @@ export class QuoteEngine {
     const intentPrice = price ?? 0;
     const intentSize = size ?? 0;
 
-    const depth = book.depth ?? 0;
+    const _depth = book.depth ?? 0;
 
     if (!bookPrice || bookPrice <= 0) {
       return {

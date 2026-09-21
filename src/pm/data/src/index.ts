@@ -10,8 +10,6 @@ import {
   type EvidenceItem,
   type MarketFeeSettings,
   type OrderBookFrame,
-  type MarketSnapshot,
-  type VenueMode,
   type SettlementRule,
 } from "@polyroot/domain";
 
