@@ -33,6 +33,8 @@ export interface PermitStore {
   >;
   /** Check if a permit has been claimed (for read-only checks). */
   isClaimed(permitId: string): Promise<boolean>;
+  /** Validate permit against current lease epoch for fencing. */
+  validatePermit(permitId: string, expectedLeaseEpoch: number): Promise<boolean>;
   /** Get permit by ID for reconciliation. */
   get(permitId: string): Promise<ExecutionPermit | null>;
   /** Close underlying resources. */
@@ -211,6 +213,15 @@ async claim(permitId: string, orderId: string): Promise<boolean> {
   async close(): Promise<void> {
     await this.pool.end();
   }
+
+  async validatePermit(permitId: string, expectedLeaseEpoch: number): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT lease_epoch FROM execution_permits WHERE permit_id = $1`,
+      [permitId]
+    );
+    if (result.rowCount === 0) return false;
+    return result.rows[0].lease_epoch === expectedLeaseEpoch;
+  }
 }
 
 /** In-memory implementation for testing (uses atomic operations via Map). */
@@ -287,5 +298,11 @@ export class MemPermitStore implements PermitStore {
 
   async close(): Promise<void> {
     // No-op
+  }
+
+  async validatePermit(permitId: string, expectedLeaseEpoch: number): Promise<boolean> {
+    const permit = this.permits.get(permitId);
+    if (!permit) return false;
+    return permit.lease_epoch === expectedLeaseEpoch;
   }
 }

@@ -193,11 +193,29 @@ export class Executor {
       this.deps.leaseEpoch,
       30, // 30 seconds TTL
     );
-    if (!leaseAcquired) { console.log("DEBUG: LEASE_NOT_ACQUIRED", {walletId: this.deps.walletId, holder: this.deps.holder, leaseEpoch: this.deps.leaseEpoch});
+    if (!leaseAcquired) {
       return {
         outcome: "PERMIT_INVALID",
         code: "LEASE_NOT_ACQUIRED",
         reason: "executor lease not acquired",
+      };
+    }
+
+    // 0b. Lease epoch fencing for permit — permit MUST match current authoritative lease epoch.
+    const permitValid = await this.deps.permitStore.validatePermit(
+      permit.permit_id,
+      this.deps.leaseEpoch,
+    );
+    if (!permitValid) {
+      // Release lease since we're not proceeding
+      await this.deps.leaseStore.releaseExecutorLease(
+        this.deps.walletId,
+        this.deps.holder,
+      );
+      return {
+        outcome: "PERMIT_INVALID",
+        code: "LEASE_EPOCH_MISMATCH",
+        reason: "permit lease epoch does not match current executor lease epoch",
       };
     }
 

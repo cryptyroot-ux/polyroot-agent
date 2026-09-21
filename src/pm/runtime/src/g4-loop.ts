@@ -1,16 +1,17 @@
 /**
- * @polyroot/runtime — G4 Pipeline (PAPER → SHADOW → MICRO-LIVE → LIVE).
+ * @polyroot/runtime — G4 Autonomous Runtime Loop.
  *
- * The G4 pipeline orchestrates the complete autonomous trading flow:
- *   INTELLIGENCE → STRATEGY → ORCHESTRATOR → EXECUTOR → VENUE
+ * Implements the G4 autonomous loop per Blueprint B17.3:
+ * PAPER → SHADOW → MICRO_LIVE → autonomous-LIVE
+ *
+ * The loop integrates: Intelligence → Strategy → Risk Gate → Order Builder →
+ * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.
  *
  * Modes:
- * - PAPER: Zero financial I/O, simulator fills, no venue I/O
- * - SHADOW: Live data, no financial I/O, no order submission
- * - MICRO_LIVE: Real wallet, explicit cap, real fills
- * - LIVE: Full autonomy (requires Autonomy Charter gate)
- *
- * The pipeline enforces the financial gate at every step (PR-GOV-06, PR-EXE-01).
+ * - PAPER: zero financial I/O, simulator fills
+ * - SHADOW: live data, no financial I/O
+ * - MICRO-LIVE: real wallet, explicit cap, real fills
+ * - LIVE: full autonomy (requires Autonomy Charter gate)
  */
 
 import type {
@@ -19,15 +20,17 @@ import type {
   VenueMode,
   WalletIdentity,
 } from "@polyroot/domain";
+import {
+  simulateFill,
+} from "./paper-engine.js";
 import { evaluateEdge, validateAndReserve, buildSignedOrder, computeGate } from "@polyroot/control";
-import { simulateFill } from "./paper-engine.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
-export type G4PipelineMode = "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+export type G4Mode = "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
 
-export interface G4PipelineConfig {
-  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+export interface G4LoopConfig {
+  mode: G4Mode;
   /** Explicit capital cap for MICRO_LIVE (USD). Required for MICRO_LIVE. */
   microLiveCapUsd?: number;
   /** SHADOW baseline criteria (minimum days & resolved clusters). */
@@ -52,7 +55,7 @@ export interface G4PipelineConfig {
   };
 }
 
-export interface G4PipelineDeps {
+export interface G4LoopDeps {
   /** Intelligence: produces forecast from market data. */
   forecast: (market: { market_id: string; bid: number; ask: number }) => Promise<number | null>;
   /** Strategy: produces intent from forecast + market. */
@@ -79,7 +82,7 @@ export interface G4PipelineDeps {
   paperWallet?: WalletIdentity;
 }
 
-export interface G4PipelineInput {
+export interface G4LoopInput {
   market_id: string;
   bid: number;
   ask: number;
@@ -93,10 +96,10 @@ export interface G4PipelineInput {
   currentPortfolioExposureUsd?: number;
 }
 
-export interface G4PipelineResult {
+export interface G4LoopResult {
   market_id: string;
   decision: "NO_TRADE" | "BUY" | "SELL";
-  reason?: string;
+  reason: string | undefined;
   /** For simulated/real fills. */
   fill?: {
     status: "FILLED" | "PARTIAL" | "CANCELLED";
@@ -115,7 +118,7 @@ export interface G4PipelineResult {
   size?: number | undefined;
 }
 
-export interface G4PipelineMetrics {
+export interface G4LoopMetrics {
   totalOrders: number;
   filledOrders: number;
   totalPnl: number;
@@ -126,12 +129,12 @@ export interface G4PipelineMetrics {
   maxExposureUsd: number;
 }
 
-/* ─── G4 Pipeline ─────────────────────────────────────────────────── */
+/* ─── G4 Autonomous Loop ─────────────────────────────────────────────────── */
 
 /**
- * G4 Pipeline — implements PAPER → SHADOW → MICRO_LIVE → LIVE sequence.
+ * G4 Autonomous Loop — implements PAPER → SHADOW → MICRO_LIVE → LIVE sequence.
  *
- * The pipeline integrates: Intelligence → Strategy → Risk Gate → Order Builder →
+ * The loop integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.
  *
  * Modes:
@@ -140,19 +143,10 @@ export interface G4PipelineMetrics {
  * - MICRO-LIVE: real wallet, explicit cap, real fills
  * - LIVE: full autonomy (requires Autonomy Charter gate)
  */
-export class G4Pipeline {
-  private readonly config: Required<G4PipelineConfig>;
-  private readonly deps: G4PipelineDeps;
-  private readonly metrics: {
-    totalOrders: number;
-    filledOrders: number;
-    totalPnl: number;
-    totalFees: number;
-    maxDrawdown: number;
-    fillRatio: number;
-    currentExposureUsd: number;
-    maxExposureUsd: number;
-  };
+export class G4AutonomousLoop {
+  private readonly config: Required<G4LoopConfig>;
+  private readonly deps: G4LoopDeps;
+  private readonly metrics: G4LoopMetrics;
   private running = false;
   private stopFn?: () => void;
   private readonly paperFillConfig: {
@@ -163,7 +157,7 @@ export class G4Pipeline {
     takerFeeBps: number;
   };
 
-  constructor(config: G4PipelineConfig, deps: any) {
+  constructor(config: G4LoopConfig, deps: G4LoopDeps) {
     // Default config with sensible defaults
     this.config = {
       mode: config.mode ?? "PAPER",
@@ -207,13 +201,13 @@ export class G4Pipeline {
   }
 
   /** Get current mode. */
-  getMode(): "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" {
+  getMode(): G4Mode {
     return this.config.mode;
   }
 
   /** Set mode (validates transitions). */
-  setMode(mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE"): void {
-    const validTransitions: Record<"PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE", string[]> = {
+  setMode(mode: G4Mode): void {
+    const validTransitions: Record<G4Mode, G4Mode[]> = {
       PAPER: ["SHADOW"],
       SHADOW: ["MICRO_LIVE", "PAPER"],
       MICRO_LIVE: ["LIVE", "SHADOW"],
@@ -226,32 +220,13 @@ export class G4Pipeline {
   }
 
   /** Get current metrics. */
-  getMetrics(): { totalOrders: number; filledOrders: number; totalPnl: number; totalFees: number; maxDrawdown: number; fillRatio: number; currentExposureUsd: number; maxExposureUsd: number } {
+  getMetrics(): G4LoopMetrics {
     return { ...this.metrics };
   }
 
-  /** Run one iteration of the pipeline for a single market. */
-  async processMarket(input: {
-    market_id: string;
-    bid: number;
-    ask: number;
-    forecastOverride?: number | null;
-    forecastObj?: any;
-    currentMarketExposureUsd?: number;
-    currentPortfolioExposureUsd?: number;
-  }): Promise<{
-    market_id: string;
-    decision: "NO_TRADE" | "BUY" | "SELL";
-    reason?: string;
-    fill?: { status: "FILLED" | "PARTIAL" | "CANCELLED"; filledSize: number; fillPrice: number; makerFee: number; takerFee: number; latencyMs: number } | undefined;
-    pnl?: number;
-    orderId?: string | undefined;
-    permitId?: string | undefined;
-    outcome?: "SUBMITTED" | "NEEDS_RECONCILIATION" | undefined;
-    p?: number | undefined;
-    size?: number | undefined;
-  }> {
-    const { bid, ask, forecastOverride } = input;
+  /** Run one iteration of the autonomous loop for a single market. */
+  async step(input: G4LoopInput): Promise<G4LoopResult> {
+    const { market_id, bid, ask, forecastOverride } = input;
     void forecastOverride;
     void input.forecastObj;
     void input.currentMarketExposureUsd;
@@ -265,7 +240,7 @@ export class G4Pipeline {
     );
     if (gate !== "ALLOW") {
       return {
-        market_id: input.market_id,
+        market_id,
         decision: "NO_TRADE",
         reason: `Financial gate: ${gate}`,
       };
@@ -276,11 +251,11 @@ export class G4Pipeline {
     if (forecastOverride !== undefined) {
       p = forecastOverride;
     } else {
-      p = await this.deps.forecast({ market_id: input.market_id, bid, ask });
+      p = await this.deps.forecast({ market_id, bid, ask });
     }
     if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02) {
       return {
-        market_id: input.market_id,
+        market_id,
         decision: "NO_TRADE",
         reason: "forecast uncertain or unavailable",
       };
@@ -296,7 +271,7 @@ export class G4Pipeline {
           valid_until: new Date(Date.now() + 3600_000),
           created_at: new Date(),
           forecast_id: "",
-          market_id: input.market_id,
+          market_id,
           schema_version: "1.1",
           evidence_ids: [],
           counterevidence_ids: [],
@@ -306,7 +281,7 @@ export class G4Pipeline {
         book: {
           yes_price: bid,
           no_price: ask,
-          market_id: input.market_id,
+          market_id,
           event_id: "",
           question: "",
           chain_id: 137,
@@ -318,7 +293,7 @@ export class G4Pipeline {
           min_size: 1,
           status: "ACTIVE",
           is_neg_risk: false,
-          venue_mode: "NORMAL",
+          venue_mode: "NORMAL" as VenueMode,
           source_at: new Date(),
           received_at: new Date(),
           schema_version: "1.1",
@@ -328,7 +303,7 @@ export class G4Pipeline {
     );
     if (edge.action === "NO_TRADE") {
       return {
-        market_id: input.market_id,
+        market_id,
         decision: "NO_TRADE",
         reason: edge.code ?? "MIN_EDGE_UNMET",
       };
@@ -336,10 +311,10 @@ export class G4Pipeline {
 
     // 4. Build intent from edge
     const intentSide = edge.side === "YES" ? "BUY" : "SELL";
-    const size = this.deps.sizeIntent({ market_id: input.market_id, bid, ask }, p);
+    const size = this.deps.sizeIntent({ market_id, bid, ask }, p);
     if (size <= 0) {
       return {
-        market_id: input.market_id,
+        market_id,
         decision: "NO_TRADE",
         reason: "sizing returned zero",
       };
@@ -351,9 +326,9 @@ export class G4Pipeline {
 intent: {
         schema_version: "1.1",
         intent_id: crypto.randomUUID(),
-        dedupe_key: `${input.market_id}_${Date.now()}`,
+        dedupe_key: `${market_id}_${Date.now()}`,
         purpose: "ENTRY",
-        market_id: input.market_id,
+        market_id,
         side: intentSide,
         desired_qty: size,
         limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
@@ -363,19 +338,20 @@ intent: {
         status: "CREATED",
         expiration_sec: 300,
       },
+
       policy: this.deps.policy,
       wallet: this.deps.wallet,
       venueMode: this.deps.venueMode(),
       leaseEpoch: this.deps.leaseEpoch(),
-      now: this.deps.now(),
+      now,
       policyHash: this.deps.policyHash,
-      currentMarketExposureUsd: input.currentMarketExposureUsd ?? 0,
-      currentPortfolioExposureUsd: input.currentPortfolioExposureUsd ?? 0,
+      currentMarketExposureUsd: 0,
+      currentPortfolioExposureUsd: 0,
     }, this.deps.kernel);
 
     if (!gateResult.ok) {
       return {
-        market_id: input.market_id,
+        market_id,
         decision: "NO_TRADE",
         reason: gateResult.reason ?? gateResult.code,
       };
@@ -386,34 +362,34 @@ intent: {
       intent: {
         schema_version: "1.1",
         intent_id: crypto.randomUUID(),
-        dedupe_key: `${input.market_id}_${Date.now()}`,
+        dedupe_key: `${market_id}_${Date.now()}`,
         purpose: "ENTRY",
-        market_id: input.market_id,
+        market_id,
         side: intentSide,
         desired_qty: size,
         limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
         created_at: now,
-        status: "CREATED",
         evidence_ids: [],
         forecast_refs: [],
+        status: "CREATED",
         expiration_sec: 300,
       },
       permit: gateResult.permit,
       wallet: this.deps.wallet,
       venueMode: this.deps.venueMode(),
-      now: this.deps.now(),
+      now,
     }, this.deps.signer);
 
     if (!built.ok) {
       return {
-        market_id: input.market_id,
+        market_id,
         decision: "NO_TRADE",
         reason: built.reason ?? built.code,
       };
     }
 
     // 7. Execute based on mode
-    let fill: { status: "FILLED" | "PARTIAL" | "CANCELLED"; filledSize: number; fillPrice: number; makerFee: number; takerFee: number; latencyMs: number } | undefined;
+    let fill: G4LoopResult["fill"] | undefined;
     let orderId: string | undefined;
     let permitId: string | undefined;
     let outcome: "SUBMITTED" | "NEEDS_RECONCILIATION" | undefined;
@@ -421,7 +397,7 @@ intent: {
     if (this.config.mode === "PAPER" || this.config.mode === "SHADOW") {
       // Simulate fill
       const fillResult = simulateFill({
-        size: this.deps.sizeIntent({ market_id: input.market_id, bid, ask }, p),
+        size,
         bid,
         ask,
         depth: 1000,
@@ -451,7 +427,7 @@ intent: {
         outcome = "NEEDS_RECONCILIATION";
       } else {
         return {
-          market_id: input.market_id,
+          market_id,
           decision: "NO_TRADE",
           reason: `Executor: ${submitted.reason ?? submitted.code}`,
         };
@@ -459,7 +435,6 @@ intent: {
     }
 
     // Calculate PnL
-    void intentSide;
     const pnl = fill
       ? (fill.status === "FILLED" || fill.status === "PARTIAL")
         ? (fill.filledSize * (p - 0.5) - (fill.makerFee + fill.takerFee))
@@ -476,28 +451,25 @@ intent: {
       this.metrics.totalFees += fill.makerFee + fill.takerFee;
     }
 
-    const result: G4PipelineResult = {
-      market_id: input.market_id,
+    return {
+      market_id,
       decision: fill ? (p > 0.5 ? "BUY" : "SELL") : "NO_TRADE",
+      reason: fill ? undefined : "execution failed",
       fill,
       pnl,
       orderId,
       permitId,
       outcome,
-      p: p ?? undefined,
+      p,
       size,
     };
-    if (!fill) {
-      result.reason = "execution failed";
-    }
-    return result;
   }
 
   /** Run a full pass over multiple markets. */
-  async processMarkets(inputs: { market_id: string; bid: number; ask: number; forecastOverride?: number | null; forecastObj?: any; currentMarketExposureUsd?: number; currentPortfolioExposureUsd?: number }[]): Promise<any[]> {
-    const results: any[] = [];
+  async runPass(inputs: G4LoopInput[]): Promise<G4LoopResult[]> {
+    const results: G4LoopResult[] = [];
     for (const input of inputs) {
-      const result = await this.processMarket(input);
+      const result = await this.step(input);
       results.push(result);
     }
     return results;
@@ -513,24 +485,24 @@ intent: {
   }
 }
 
-/* ─── Factory for creating pipeline with all dependencies ─────────────────── */
+/* ─── Factory for creating G4 loop with all dependencies ─────────────────── */
 
-export interface CreateG4PipelineOptions {
-  config: any; // G4PipelineConfig
+export interface CreateG4LoopOptions {
+  config: G4LoopConfig;
   kernel: any;
   signer: any;
   executor: any;
-  wallet: any;
-  policy: any;
+  wallet: WalletIdentity;
+  policy: RiskPolicy;
   policyHash: string;
-  venueMode: () => any;
+  venueMode: () => VenueMode;
   leaseEpoch: () => number;
   now: () => Date;
   forecast: (market: { market_id: string; bid: number; ask: number }) => Promise<number | null>;
   sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number;
 }
 
-export function createG4Pipeline(options: any) {
+export function createG4Loop(options: { config: G4LoopConfig; kernel: any; signer: any; executor: any; wallet: WalletIdentity; policy: RiskPolicy; policyHash: string; venueMode: () => VenueMode; leaseEpoch: () => number; now: () => Date; forecast: (market: { market_id: string; bid: number; ask: number }) => Promise<number | null>; sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number }) {
   const deps: any = {
     forecast: options.forecast,
     sizeIntent: options.sizeIntent,
@@ -544,7 +516,7 @@ export function createG4Pipeline(options: any) {
     leaseEpoch: options.leaseEpoch,
     now: options.now,
   };
-  return new G4Pipeline(options.config, deps);
+  return new G4AutonomousLoop(options.config, deps);
 }
 
 /* ─── Exports ─────────────────────────────────────────────────────────────── */

@@ -23,6 +23,7 @@ export type VenueMode =
   | "NORMAL"
   | "POST_ONLY"
   | "CANCEL_ONLY"
+  | "READ_ONLY"
   | "RESTARTING"
   | "UNAVAILABLE"
   | "UNKNOWN";
