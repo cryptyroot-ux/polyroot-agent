@@ -17,6 +17,30 @@ import {
   type SourceRecord,
 } from "@polyroot/domain";
 
+/* ─── Shared interfaces for Intelligence components ─────────────────────
+ * Both in-memory and PG implementations satisfy these interfaces.
+ * This allows dependency injection and testing with either implementation.
+ */
+
+export interface SourceRegistryInterface {
+  register(record: SourceRecord): Promise<string>;
+  family(url: string): Promise<string | undefined>;
+  independentFamilies(urls: string[]): Promise<Set<string>>;
+}
+
+export interface CatalystBusInterface {
+  enqueue(event: CatalystEvent): Promise<DurableOutboxResult>;
+  replay(consumer: string, fromEventId: string): Promise<CatalystEvent[]>;
+  advanceWatermark(consumer: string, eventId: string): Promise<void>;
+  pendingCount(): number;
+}
+
+export interface ResearchBudgetInterface {
+  charge(tokens: number, costUsdFrac: number): Promise<void>;
+  check(tokensNeeded: number): Promise<{ ok: boolean; remainingTokens?: bigint; code?: string; reason?: string }>;
+  reset(): Promise<void>;
+}
+
 /* ─── PM-INTEL-02: source registry + syndication ────────────────────── */
 
 /**
@@ -24,12 +48,12 @@ import {
  * originating article collapse to ONE independent evidence family. Family key
  * is derived from the syndication_parent when present, else the URL host+path.
  */
-export class SourceRegistry {
+export class SourceRegistry implements SourceRegistryInterface {
   private readonly byUrl = new Map<string, SourceRecord>();
   private readonly familyOf = new Map<string, string>();
 
   /** Fold a record: assigns a stable family id. Returns the family id. */
-  register(record: SourceRecord): string {
+  async register(record: SourceRecord): Promise<string> {
     this.byUrl.set(record.url, record);
     const syndParent = record.syndication_parent;
     const key =
@@ -50,11 +74,11 @@ export class SourceRegistry {
     return family as string;
   }
 
-  family(url: string): string | undefined {
+  async family(url: string): Promise<string | undefined> {
     return this.familyOf.get(url);
   }
 
-  independentFamilies(urls: string[]): Set<string> {
+  async independentFamilies(urls: string[]): Promise<Set<string>> {
     const out = new Set<string>();
     for (const u of urls) {
       const hit = this.byUrl.get(u);
@@ -686,6 +710,12 @@ export class PgCatalystBus {
        DO UPDATE SET last_event_id = EXCLUDED.last_event_id, updated_at = EXCLUDED.updated_at`,
       [consumer, eventId]
     );
+  }
+
+  pendingCount(): number {
+    // For PG implementation, we don't track in-memory outbox count
+    // This is a stub - in production you might query the DB
+    return 0;
   }
 }
 

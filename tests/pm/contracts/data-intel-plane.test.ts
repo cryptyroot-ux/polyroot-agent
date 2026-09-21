@@ -273,26 +273,26 @@ describe("PM-INTEL-02 — source registry & syndication", () => {
     registered_at: t0,
   });
 
-  it("two wire-copy URLs resolve to one independent family", () => {
+  it("two wire-copy URLs resolve to one independent family", async () => {
     const reg = new SourceRegistry();
-    reg.register(wire("https://news.example/a/1", "family_x"));
-    reg.register(wire("https://reblog.example/a/repost", "family_x"));
-    const families = reg.independentFamilies([
+    await reg.register(wire("https://news.example/a/1", "family_x"));
+    await reg.register(wire("https://reblog.example/a/repost", "family_x"));
+    const families = await reg.independentFamilies([
       "https://news.example/a/1",
       "https://reblog.example/a/repost",
     ]);
     assert.equal(families.size, 1);
   });
 
-  it("unrelated URLs are independent families", () => {
+  it("unrelated URLs are independent families", async () => {
     const reg = new SourceRegistry();
-    reg.register(wire("https://news.example/a/1"));
-    reg.register(wire("https://wire.example/b/2"));
+    await reg.register(wire("https://news.example/a/1"));
+    await reg.register(wire("https://wire.example/b/2"));
     assert.equal(
-      reg.independentFamilies([
+      (await reg.independentFamilies([
         "https://news.example/a/1",
         "https://wire.example/b/2",
-      ]).size,
+      ])).size,
       2,
     );
   });

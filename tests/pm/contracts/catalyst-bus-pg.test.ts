@@ -7,7 +7,7 @@ import type { CatalystEvent } from "@polyroot/domain";
 const pgConfig = {
   user: 'postgres',
   host: 'localhost',
-  database: 'postgres',
+  database: 'polyroot_test',
   password: 'postgres',
   port: 5432,
 };
