@@ -104,10 +104,6 @@ export async function createOrchestratorPg(
     authority,
   });
 
-  // ── PostgreSQL-backed Control plane ports ─────────────────────────────────
-  const stores = createPgControlStores(deps.pgConfig, null as any, deps.policy);
-  const persistence = stores.persistence;
-
   // ── PostgreSQL-backed Permit Store & Recovery Ledger ──────────────────────
   const permitStore = new (await import("@polyroot/venue")).PgPermitStore(
     deps.pgConfig,
@@ -152,9 +148,14 @@ export async function createOrchestratorPg(
     leaseEpoch: deps.leaseEpoch(),
   });
 
-  // ── PostgreSQL-backed Reconciler + Supervisor ─────────────────────────────
-  const reconciler = new PgReconciler(executor, deps.pgConfig);
-  const supervisor = new PgSupervisor(reconciler, deps.pgConfig, deps.policy);
+  // ── PostgreSQL-backed Control plane ports (with executor for reconciler) ──
+  const stores = createPgControlStores(deps.pgConfig, executor, deps.policy);
+  const persistence = stores.persistence;
+  const reconciler = stores.reconciler;
+  const supervisor = stores.supervisor;
+
+  // Start periodic reconciliation (PR-AUT-03, PR-OPS-05)
+  const stopReconciliation = supervisor.startPeriodicReconciliation();
 
   // ── Orchestration pipeline ────────────────────────────────────────────────
   async function orchestrate(
@@ -254,8 +255,10 @@ export async function createOrchestratorPg(
 
   // ── Shutdown ──────────────────────────────────────────────────────────────
   async function shutdown(): Promise<void> {
+    stopReconciliation();
     await Promise.all([
       riskPool.end(),
+      stores.pool.end(),
       (await import("@polyroot/venue")).PgPermitStore.prototype.close?.call(
         permitStore,
       ),
