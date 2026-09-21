@@ -352,6 +352,46 @@ export const UNTRUSTED_CONTENT_BOUNDARY = {
   },
 };
 
+export const PRIVILEGED_ACTIONS: PrivilegedAction[] = PRIVILEGED;
+
+/**
+ * Runtime enforcement boundary for untrusted content (PM-AI-04).
+ * Throws on violations rather than returning boolean, for fail-closed behavior
+ * in the LLM tool-call pipeline.
+ */
+export class UntrustedContentBoundary {
+  /**
+   * Enforce that untrusted evidence cannot perform privileged actions.
+   * Throws if the evidence is untrusted and the action is privileged.
+   */
+  enforce(
+    evidence: Pick<EvidenceItem, "untrusted">,
+    action: PrivilegedAction,
+  ): void {
+    if (evidence.untrusted && PRIVILEGED_ACTIONS.includes(action)) {
+      throw new Error(
+        `UNTRUSTED_ACTION_BLOCKED: ${action} from untrusted evidence`,
+      );
+    }
+  }
+
+  /**
+   * Wrap a tool to inject untrusted content boundary checks.
+   * Every tool call checks the boundary before execution.
+   */
+  wrapTool<T extends (...args: unknown[]) => unknown>(
+    tool: T,
+    getEvidence: () => Pick<EvidenceItem, "untrusted">,
+    action: PrivilegedAction,
+  ): T {
+    return ((...args: unknown[]) => {
+      const evidence = getEvidence();
+      this.enforce(evidence, action);
+      return tool(...args);
+    }) as T;
+  }
+}
+
 /* ─── PM-AI-05: research quota ───────────────────────────────────────── */
 
 export type QuotaCheck =
