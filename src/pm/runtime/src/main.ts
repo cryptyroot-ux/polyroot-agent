@@ -19,7 +19,7 @@ export async function bootstrapAgent(connectionString: string) {
   const pool = new Pool({ connectionString });
   
   // 1. Initialize PostgreSQL-backed persistence stores
-  const stores = createPgStores({ connectionString });
+  const stores = createPgStores(connectionString);
   
   // 2. Initialize Money Kernel with authoritative PG persistence
   // FIND-003 remediation: authority is now REQUIRED - no non-authoritative fallback
