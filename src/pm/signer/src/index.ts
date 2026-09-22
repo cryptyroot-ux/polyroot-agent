@@ -432,3 +432,11 @@ export function decimalToBase(value: number, decimals = 6): bigint {
 /** Export the venue-mode ref so consumers share one source of truth. */
 export { VenueModeSchema };
 export type { ExecutionPermit, WalletIdentity };
+
+// Production crypto signer exports
+export {
+  createProductionCryptoSigner,
+  createSignerFromEnv,
+  createSignerFromHex,
+  type ProdSignerConfig,
+} from "./crypto-signer-prod.js";

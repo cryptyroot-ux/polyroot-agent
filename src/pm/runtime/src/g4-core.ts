@@ -114,6 +114,17 @@ export interface G4CoreObservability {
   emitModeTransition?(from: G4Mode, to: G4Mode, reason: string): void;
 }
 
+export interface G4CoreMetrics {
+  totalOrders: number;
+  filledOrders: number;
+  totalPnl: number;
+  totalFees: number;
+  maxDrawdown: number;
+  fillRatio: number;
+  currentExposureUsd: number;
+  maxExposureUsd: number;
+}
+
 export interface CreateG4CoreOptions {
   config: G4CoreConfig;
   kernel: any;
