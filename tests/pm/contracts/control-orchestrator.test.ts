@@ -6,6 +6,8 @@ import {
   MoneyKernel,
   type BalanceStore,
   type KernelEventSink,
+  type MoneyAuthority,
+  type MoneyAuthorityResult,
 } from "@polyroot/risk";
 import { SignerVault } from "@polyroot/signer";
 import {
@@ -26,6 +28,42 @@ import {
   type WalletIdentity,
 } from "@polyroot/domain";
 import { randomUUID } from "crypto";
+
+const fakeAuthority: MoneyAuthority = {
+  async reserve(
+    account: string,
+    asset: string,
+    cashNeededBase: bigint,
+    _decisionId: string,
+    _intentId: string,
+    _leaseEpoch: number,
+    _now: Date,
+    _amountSharesBase?: bigint,
+    _policyHash?: string,
+    _quoteId?: string,
+    _riskDecision?: any,
+  ): Promise<MoneyAuthorityResult> {
+    // We need to access the FakeBalanceStore to actually reserve funds
+    // This is a test-only workaround
+    const balanceStore = (globalThis as any).__fakeBalanceStore;
+    if (balanceStore) {
+      try {
+        await balanceStore.reserveFunds(account, asset, cashNeededBase);
+      } catch (e) {
+        return {
+          ok: false,
+          code: "INSUFFICIENT_FUNDS",
+          reason: "insufficient available balance",
+        };
+      }
+    }
+    return {
+      ok: true,
+      reservationId: randomUUID(),
+      permitId: randomUUID(),
+    };
+  }
+};
 
 class FakeBalanceStore implements BalanceStore {
   available: bigint;
@@ -220,9 +258,11 @@ function makeDeps(
     leaseEpoch: 1,
   });
   const balance = new FakeBalanceStore(1_000_000_000n);
+  (globalThis as any).__fakeBalanceStore = balance;
   const kernel = new MoneyKernel({
     balance,
     sink: new FakeSink(),
+    authority: fakeAuthority,
     chainId: 137,
     permitTtlMs: 60_000,
   });

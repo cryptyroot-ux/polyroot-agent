@@ -116,8 +116,8 @@ export interface MoneyKernelOpts {
   maxOpenReservations?: number;
   /** Chain id enforced for identity (matches permit lease/wallet). */
   chainId: number;
-  /** Authority for atomic reservation and permit creation. */
-  authority?: MoneyAuthority;
+  /** Authority for atomic reservation and permit creation. REQUIRED. */
+  authority: MoneyAuthority;
 }
 
 /** Resolved options with defaults applied. */
@@ -129,7 +129,7 @@ interface ResolvedMoneyKernelOpts {
   balance: BalanceStore;
   sink: KernelEventSink;
   chainId: number;
-  authority: MoneyAuthority | undefined;
+  authority: MoneyAuthority;
 }
 
 export interface ReserveRequest {
@@ -177,7 +177,7 @@ export function cashNeededFor(
 
 export class MoneyKernel {
   private readonly opts: ResolvedMoneyKernelOpts;
-  private readonly authority: MoneyAuthority | undefined;
+  private readonly authority: MoneyAuthority;
 
   constructor(opts: MoneyKernelOpts) {
     this.opts = {
@@ -295,105 +295,60 @@ export class MoneyKernel {
       };
     }
 
-    // Use authority if available for atomic reservation and permit creation.
-    if (this.authority) {
-      const authoritativeQuoteId = `quote_${randomUUID()}`;
+    // Atomic reservation and permit creation via authoritative MoneyAuthority.
+    // Authority is now REQUIRED — no fallback path.
+    const authoritativeQuoteId = `quote_${randomUUID()}`;
 
-      // Bounded retry for transient PostgreSQL serialization conflicts (40001)
-      // and deadlocks (40P01). A conflict is NOT a fatal money error: the
-      // authoritative re-read (lock + duplicate-intent guard inside the retry)
-      // prevents double-allocation, so a bounded retry is safe.
-      const MAX_SERIALIZATION_RETRIES = 2;
-      let res: MoneyAuthorityResult | undefined;
-      for (let attempt = 0; attempt <= MAX_SERIALIZATION_RETRIES; attempt++) {
-        res = await this.authority.reserve(
-          req.account,
-          req.asset,
-          cashNeeded,
-          req.decisionId,
-          req.intentId,
-          req.leaseEpoch,
-          req.now,
-          req.amountSharesBase,
-          req.policyHash,
-          authoritativeQuoteId,
-          req.riskDecision,
-        );
-        if (res.ok || res.code !== "SERIALIZATION_CONFLICT") break;
-        // Back off briefly before re-reading authoritative state.
-        await new Promise((r) => setTimeout(r, 10 * (attempt + 1)));
-      }
-      if (!res || !res.ok) {
-        if (res) {
-          return {
-            ok: false,
-            code: res.code,
-            reason: res.reason,
-          };
-        }
-        return {
-          ok: false,
-          code: "MONEY_AUTHORITY_FAILED",
-          reason: "unreachable: reserve returned undefined",
-        };
-      }
-      const { reservationId, permitId } = res;
-
-      // Build the permit (single-use, versioned, TTL-bound) using the SAME authoritative quoteId
-      const permit: ExecutionPermit = {
-        schema_version: "1.1",
-        permit_id: permitId,
-        decision_id: req.decisionId,
-        intent_id: req.intentId,
-        ledger_version: "0003",
-        policy_version: req.policy.policy_version,
-        policy_hash: req.policyHash,
-        quote_id: authoritativeQuoteId,
-        lease_epoch: req.leaseEpoch,
-        reservation_ids: [reservationId],
-        max_qty: Number(req.amountSharesBase) / 1_000_000,
-        max_cash: Number(req.maxCashBase) / 1_000_000,
-        // P0-7: base-unit quantities
-        max_qty_base: req.amountSharesBase,
-        max_cash_base: req.maxCashBase,
-        // P0-7: explicit market/side/price authorization bounds
-        market_id: req.marketId,
-        side: req.side,
-        price_min_base: req.perSharePriceBase,
-        price_max_base: req.perSharePriceBase,
-        allowed_order_style: ["LIMIT", "POST_ONLY"],
-        venue_mode: req.venueMode,
-        issued_at: req.now,
-        expires_at: new Date(req.now.getTime() + this.opts.permitTtlMs),
-        single_use: true,
-        used_at: null,
-      };
-
-      // Validate the permit we are about to persist.
-      const parsed = ExecutionPermitSchema.safeParse(permit);
-      if (!parsed.success) {
-        // This should not happen if we built it correctly, but just in case.
-        return {
-          ok: false,
-          code: "PERMIT_INVALID",
-          reason: parsed.error.message,
-        };
-      }
-
-      return { ok: true, permit, reservationId };
+    // Bounded retry for transient PostgreSQL serialization conflicts (40001)
+    // and deadlocks (40P01). A conflict is NOT a fatal money error: the
+    // authoritative re-read (lock + duplicate-intent guard inside the retry)
+    // prevents double-allocation, so a bounded retry is safe.
+    const MAX_SERIALIZATION_RETRIES = 2;
+    let res: MoneyAuthorityResult | undefined;
+    for (let attempt = 0; attempt <= MAX_SERIALIZATION_RETRIES; attempt++) {
+      res = await this.authority.reserve(
+        req.account,
+        req.asset,
+        cashNeeded,
+        req.decisionId,
+        req.intentId,
+        req.leaseEpoch,
+        req.now,
+        req.amountSharesBase,
+        req.policyHash,
+        authoritativeQuoteId,
+        req.riskDecision,
+      );
+      if (res.ok || res.code !== "SERIALIZATION_CONFLICT") break;
+      // Back off briefly before re-reading authoritative state.
+      await new Promise((r) => setTimeout(r, 10 * (attempt + 1)));
     }
+    if (!res || !res.ok) {
+      if (res) {
+        return {
+          ok: false,
+          code: res.code,
+          reason: res.reason,
+        };
+      }
+      return {
+        ok: false,
+        code: "MONEY_AUTHORITY_FAILED",
+        reason: "unreachable: reserve returned undefined",
+      };
+    }
+    const { reservationId, permitId } = res;
 
-    // ── Build the permit (single-use, versioned, TTL-bound) ──
-    const reservationId = randomUUID();
+    // Build the permit (single-use, versioned, TTL-bound) using the SAME authoritative quoteId
     const permit: ExecutionPermit = {
       schema_version: "1.1",
-      permit_id: randomUUID(),
+      permit_id: permitId,
       decision_id: req.decisionId,
       intent_id: req.intentId,
       ledger_version: "0003",
       policy_version: req.policy.policy_version,
       policy_hash: req.policyHash,
-      quote_id: `quote_${randomUUID()}`,
+      quote_id: authoritativeQuoteId,
       lease_epoch: req.leaseEpoch,
       reservation_ids: [reservationId],
       max_qty: Number(req.amountSharesBase) / 1_000_000,
@@ -417,6 +372,7 @@ export class MoneyKernel {
     // Validate the permit we are about to persist.
     const parsed = ExecutionPermitSchema.safeParse(permit);
     if (!parsed.success) {
+      // This should not happen if we built it correctly, but just in case.
       return {
         ok: false,
         code: "PERMIT_INVALID",
@@ -424,20 +380,7 @@ export class MoneyKernel {
       };
     }
 
-    // ── Commit funds and record reservation+permit atomically ──
-    // Use semantic method: reserveFunds moves available -> committed
-    await this.opts.balance.reserveFunds(req.account, req.asset, cashNeeded);
-    // The durable counter (committed_base) is the source of truth.
-    await this.opts.sink.push("RESERVATION_CREATED", {
-      reservationId: permit.reservation_ids[0],
-      permitId: permit.permit_id,
-      intentId: req.intentId,
-      amountSharesBase: String(req.amountSharesBase),
-      cashBase: String(cashNeeded),
-      leaseEpoch: req.leaseEpoch,
-    });
-
-    return { ok: true, permit, reservationId: permit.reservation_ids[0]! };
+    return { ok: true, permit, reservationId };
   }
 
   /** Release a reservation's committed funds back to available (negative-line cancel; PM-RISK-07). */

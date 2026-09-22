@@ -35,8 +35,46 @@ import {
   MoneyKernel,
   type BalanceStore,
   type KernelEventSink,
+  type MoneyAuthority,
+  type MoneyAuthorityResult,
   killSwitch,
 } from "@polyroot/risk";
+
+const fakeAuthority: MoneyAuthority = {
+  async reserve(
+    account: string,
+    asset: string,
+    cashNeededBase: bigint,
+    _decisionId: string,
+    _intentId: string,
+    _leaseEpoch: number,
+    _now: Date,
+    _amountSharesBase?: bigint,
+    _policyHash?: string,
+    _quoteId?: string,
+    _riskDecision?: any,
+  ): Promise<MoneyAuthorityResult> {
+    // We need to access the MemBalance to actually reserve funds
+    // This is a test-only workaround
+    const balanceStore = (globalThis as any).__fakeBalanceStore;
+    if (balanceStore) {
+      try {
+        await balanceStore.reserveFunds(account, asset, cashNeededBase);
+      } catch (e) {
+        return {
+          ok: false,
+          code: "INSUFFICIENT_FUNDS",
+          reason: "insufficient available balance",
+        };
+      }
+    }
+    return {
+      ok: true,
+      reservationId: randomUUID(),
+      permitId: randomUUID(),
+    };
+  }
+};
 import {
   planCancelOpen,
   recordCancelOutcome,
@@ -278,9 +316,11 @@ class NoopSink implements KernelEventSink {
 describe("FT-01 — Concurrent spend: at most one reservation commits", () => {
   it("two combined-intents-over-balance reserve serially: only the first commits", async () => {
     const balance = new MemBalance(new Map([["0xA:USDC", 6_000_000n]]));
+    (globalThis as any).__fakeBalanceStore = balance;
     const kernel = new MoneyKernel({
       balance,
       sink: new NoopSink(),
+      authority: fakeAuthority,
       now: () => new Date("2026-01-01T00:00:00Z"),
     });
     const base = {

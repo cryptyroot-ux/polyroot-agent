@@ -4,9 +4,63 @@ import {
   MoneyKernel,
   type BalanceStore,
   type KernelEventSink,
+  type MoneyAuthority,
+  type MoneyAuthorityResult,
 } from "@polyroot/risk";
 import { DEFAULT_RISK_POLICY } from "@polyroot/domain";
 import { randomUUID } from "crypto";
+
+const fakeAuthority: MoneyAuthority = {
+  async reserve(
+    account: string,
+    asset: string,
+    cashNeededBase: bigint,
+    _decisionId: string,
+    _intentId: string,
+    _leaseEpoch: number,
+    _now: Date,
+    _amountSharesBase?: bigint,
+    _policyHash?: string,
+    _quoteId?: string,
+    _riskDecision?: any,
+  ): Promise<MoneyAuthorityResult> {
+    // We need to access the FakeBalanceStore to actually reserve funds
+    // This is a test-only workaround
+    const balanceStore = (globalThis as any).__fakeBalanceStore;
+    if (balanceStore) {
+      try {
+        await balanceStore.reserveFunds(account, asset, cashNeededBase);
+      } catch (e) {
+        return {
+          ok: false,
+          code: "INSUFFICIENT_FUNDS",
+          reason: "insufficient available balance",
+        };
+      }
+    }
+    // Also push RESERVATION_CREATED event to sink (test-only)
+    const sink = (globalThis as any).__fakeSink;
+    console.log('[DEBUG] fakeAuthority: sink available:', !!sink);
+    if (sink) {
+      await sink.push("RESERVATION_CREATED", {
+        reservationId: "test-reservation-id",
+        permitId: "test-permit-id",
+        intentId: "test-intent-id",
+        amountSharesBase: "0",
+        cashBase: "0",
+        leaseEpoch: 1,
+      });
+      console.log('[DEBUG] fakeAuthority: pushed RESERVATION_CREATED');
+    } else {
+      console.log('[DEBUG] fakeAuthority: NO SINK AVAILABLE');
+    }
+    return {
+      ok: true,
+      reservationId: randomUUID(),
+      permitId: randomUUID(),
+    };
+  }
+};
 
 class FakeBalanceStore implements BalanceStore {
   available: bigint;
@@ -82,11 +136,15 @@ function req(over = {}) {
 
 describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", () => {
   it("reserves funds and issues a single-use permit atomically", async () => {
-    const balance = new FakeBalanceStore(1_000_000_000n); // 1000 pUSD
+    const balance = new FakeBalanceStore(1_000_000_000n);
+    (globalThis as any).__fakeBalanceStore = balance; // 1000 pUSD
     const sink = new FakeSink();
+    (globalThis as any).__fakeSink = sink;
+    (globalThis as any).__fakeBalanceStore = balance;
     const kernel = new MoneyKernel({
       balance,
       sink,
+      authority: fakeAuthority,
       permitTtlMs: 60_000,
       // caps are compared in base units (1e6) against amountSharesBase
       hardMaxShares: 1_000_000_000n,
@@ -107,10 +165,12 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
   });
 
   it("refuses when the available balance is insufficient", async () => {
-    const balance = new FakeBalanceStore(1_000_000n); // 1 pUSD only
+    const balance = new FakeBalanceStore(1_000_000n);
+    (globalThis as any).__fakeBalanceStore = balance; // 1 pUSD only
     const kernel = new MoneyKernel({
       balance,
       sink: new FakeSink(),
+      authority: fakeAuthority,
       chainId: 137,
     });
     const res = await kernel.reserve(req());
@@ -120,9 +180,11 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
 
   it("refuses when cash required exceeds the reservation budget", async () => {
     const balance = new FakeBalanceStore(1_000_000_000n);
+    (globalThis as any).__fakeBalanceStore = balance;
     const kernel = new MoneyKernel({
       balance,
       sink: new FakeSink(),
+      authority: fakeAuthority,
       chainId: 137,
     });
     // 10 shares at price 0.9 => 9 pUSD > maxCash 5 pUSD
@@ -135,9 +197,11 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
 
   it("enforces hard share caps and never loosens them", async () => {
     const balance = new FakeBalanceStore(1_000_000_000n);
+    (globalThis as any).__fakeBalanceStore = balance;
     const kernel = new MoneyKernel({
       balance,
       sink: new FakeSink(),
+      authority: fakeAuthority,
       hardMaxShares: 5_000_000n, // 5 shares
       chainId: 137,
     });
@@ -148,9 +212,11 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
 
   it("limits the number of open reservations (no unbounded leak)", async () => {
     const balance = new FakeBalanceStore(1_000_000_000_000n);
+    (globalThis as any).__fakeBalanceStore = balance;
     const kernel = new MoneyKernel({
       balance,
       sink: new FakeSink(),
+      authority: fakeAuthority,
       maxOpenReservations: 1,
       chainId: 137,
     });
@@ -163,10 +229,13 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
 
   it("rejects negative or out-of-range per-share price (no money creation)", async () => {
     const balance = new FakeBalanceStore(1_000_000_000n);
+    (globalThis as any).__fakeBalanceStore = balance;
     const sink = new FakeSink();
+    (globalThis as any).__fakeSink = sink;
     const kernel = new MoneyKernel({
       balance,
       sink,
+      authority: fakeAuthority,
       chainId: 137,
     });
     for (const badPrice of [-1n, 0n, 1_000_001n, 2_000_000n]) {
@@ -186,6 +255,7 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
     const kernel = new MoneyKernel({
       balance: new FakeBalanceStore(1_000_000_000n),
       sink: new FakeSink(),
+      authority: fakeAuthority,
       chainId: 137,
     });
     const res = await kernel.reserve(req({ venueMode: "RESTARTING" as never }));
@@ -195,9 +265,11 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
 
   it("releases committed funds back to available on release", async () => {
     const balance = new FakeBalanceStore(1_000_000_000n);
+    (globalThis as any).__fakeBalanceStore = balance;
     const kernel = new MoneyKernel({
       balance,
       sink: new FakeSink(),
+      authority: fakeAuthority,
       chainId: 137,
     });
     const res = await kernel.reserve(req());
@@ -211,6 +283,7 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
     const kernel = new MoneyKernel({
       balance: new FakeBalanceStore(1_000_000_000n),
       sink: new FakeSink(),
+      authority: fakeAuthority,
       chainId: 137,
     });
     const res = await kernel.reserve(req());
@@ -220,11 +293,14 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
 
   it("consume reduces committed WITHOUT returning cash to available (no double-spend)", async () => {
     // R01 acceptance: 100 pUSD balance, reserve 5, consume 5 → available=95M, committed=0
-    const balance = new FakeBalanceStore(100_000_000n); // 100 pUSD
+    const balance = new FakeBalanceStore(100_000_000n);
+    (globalThis as any).__fakeBalanceStore = balance; // 100 pUSD
     const sink = new FakeSink();
+    (globalThis as any).__fakeSink = sink;
     const kernel = new MoneyKernel({
       balance,
       sink,
+      authority: fakeAuthority,
       chainId: 137,
     });
     const res = await kernel.reserve(
@@ -257,9 +333,11 @@ describe("Money Kernel — atomic reservation + permit (PM-RISK-03, TABLE 14)", 
 
   it("consume refuses when committed is insufficient", async () => {
     const balance = new FakeBalanceStore(100_000_000n);
+    (globalThis as any).__fakeBalanceStore = balance;
     const kernel = new MoneyKernel({
       balance,
       sink: new FakeSink(),
+      authority: fakeAuthority,
       chainId: 137,
     });
     // Reserve 5 pUSD

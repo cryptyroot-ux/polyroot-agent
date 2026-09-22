@@ -5,6 +5,8 @@ import {
   MoneyKernel,
   type BalanceStore,
   type KernelEventSink,
+  type MoneyAuthority,
+  type MoneyAuthorityResult,
 } from "@polyroot/risk";
 import {
   DEFAULT_RISK_POLICY,
@@ -13,6 +15,46 @@ import {
   type WalletIdentity,
 } from "@polyroot/domain";
 import { randomUUID } from "crypto";
+
+const fakeAuthority: MoneyAuthority = {
+  async reserve(
+    account: string,
+    asset: string,
+    cashNeededBase: bigint,
+    _decisionId: string,
+    _intentId: string,
+    _leaseEpoch: number,
+    _now: Date,
+    _amountSharesBase?: bigint,
+    _policyHash?: string,
+    _quoteId?: string,
+    _riskDecision?: any,
+  ): Promise<MoneyAuthorityResult> {
+    // We need to access the FakeBalanceStore to actually reserve funds
+    // This is a test-only workaround
+    const balanceStore = (globalThis as any).__fakeBalanceStore;
+    console.log('[DEBUG] fakeAuthority: balanceStore available:', !!balanceStore);
+    if (balanceStore) {
+      try {
+        await balanceStore.reserveFunds(account, asset, cashNeededBase);
+        console.log('[DEBUG] fakeAuthority: balanceStore.committed after reserve:', balanceStore.committed);
+      } catch (e) {
+        return {
+          ok: false,
+          code: "INSUFFICIENT_FUNDS",
+          reason: "insufficient available balance",
+        };
+      }
+    } else {
+      console.log('[DEBUG] fakeAuthority: NO BALANCE STORE');
+    }
+    return {
+      ok: true,
+      reservationId: randomUUID(),
+      permitId: randomUUID(),
+    };
+  }
+};
 
 class FakeBalanceStore implements BalanceStore {
   available: bigint;
@@ -62,10 +104,12 @@ class FakeSink implements KernelEventSink {
 
 function makeKernel(balance?: FakeBalanceStore) {
   const balanceStore = balance ?? new FakeBalanceStore(100_000_000_000n);
+  (globalThis as any).__fakeBalanceStore = balanceStore;
   const sink = new FakeSink();
   const kernel = new MoneyKernel({
     balance: balanceStore,
     sink,
+    authority: fakeAuthority,
     chainId: 137,
     permitTtlMs: 60_000,
   });
