@@ -8,21 +8,40 @@
 import { Pool } from "pg";
 import { createPgStores } from "@polyroot/risk";
 import { MoneyKernel } from "@polyroot/risk";
-import { SignerVault } from "@polyroot/signer";
+import { SignerVault, type CryptoSigner } from "@polyroot/signer";
 import { PolymarketVenueAdapter } from "@polyroot/venue";
-import { PgPermitStore, PgRecoveryLedger, PgLeaseStore, type PermitStore } from "@polyroot/venue";
+import { PgPermitStore, PgRecoveryLedger, PgLeaseStore, type PermitStore, type VenueAdapter } from "@polyroot/venue";
 import { Executor } from "@polyroot/executor";
 import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 
+export interface BootstrapAgentOptions {
+  /**
+   * Real KMS/HSM-backed signer. REQUIRED for MICRO_LIVE/LIVE.
+   * When omitted, a PAPER/SHADOW-only placeholder signer is used that
+   * rejects unhashed requests and must never touch real funds.
+   */
+  cryptoSigner?: CryptoSigner;
+  /**
+   * Real venue adapter. REQUIRED for MICRO_LIVE/LIVE.
+   * When omitted, a mock venue adapter is used (PAPER/SHADOW-only).
+   */
+  venueAdapter?: VenueAdapter;
+}
+
 export async function bootstrapAgent(
   connectionString: string,
   mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" = "PAPER",
+  opts: BootstrapAgentOptions = {},
 ) {
   const pool = new Pool({ connectionString });
-  
-  // 1. Initialize PostgreSQL-backed persistence stores
-  const stores = createPgStores(connectionString);
+  pool.on("error", (err: unknown) => {
+    console.error("PG pool idle client error:", err);
+  });
+
+  // 1. Initialize PostgreSQL-backed persistence stores on ONE shared pool.
+  // Passing { pool } avoids a second internal pool that would leak on shutdown.
+  const stores = createPgStores({ pool });
   
   // 2. Initialize Money Kernel with authoritative PG persistence
   // FIND-003 remediation: authority is now REQUIRED - no non-authoritative fallback
@@ -34,18 +53,31 @@ export async function bootstrapAgent(
     mode,
   });
 
+  // Fail-closed LIVE guard: placeholder signer + mock venue are PAPER/SHADOW-only.
+  // MICRO_LIVE/LIVE require explicitly injected production dependencies.
+  const isLive = mode === "MICRO_LIVE" || mode === "LIVE";
+  if (isLive && (!opts.cryptoSigner || !opts.venueAdapter)) {
+    await pool.end().catch(() => undefined);
+    throw new Error(
+      "REFUSE_LIVE_WITH_STUBS: MICRO_LIVE/LIVE requires explicit cryptoSigner (KMS/HSM) " +
+        "and venueAdapter; the placeholder signer and mock venue are PAPER/SHADOW-only",
+    );
+  }
+
   // 3. Initialize SignerVault with a secure production signer (placeholder for KMS/HSM)
   // FIND-001 remediation: enforce actual cryptographic signing or HSM check
   const signer = new SignerVault({
     expectedChainId: 137,
-    cryptoSigner: async (req) => {
-      // In production, this MUST invoke an HSM, AWS KMS, or Vault service.
-      // For runtime wiring demonstration, we ensure strict payload verification.
-      if (!req.payloadHash) {
-        throw new Error("REJECT_UNHASHED_SIGNING_REQUEST");
-      }
-      return `0x_prod_sig_${req.actionId}`;
-    },
+    cryptoSigner:
+      opts.cryptoSigner ??
+      (async (req) => {
+        // In production, this MUST invoke an HSM, AWS KMS, or Vault service.
+        // For runtime wiring demonstration, we ensure strict payload verification.
+        if (!req.payloadHash) {
+          throw new Error("REJECT_UNHASHED_SIGNING_REQUEST");
+        }
+        return `0x_prod_sig_${req.actionId}`;
+      }),
   });
 
   // 4. Initialize Venue Adapter with Polymarket SDK client wrapper
@@ -55,7 +87,8 @@ export async function bootstrapAgent(
     cancelOrder: async () => ({ success: true }),
     fetchOrder: async () => ({ status: "LIVE" }),
   };
-  const venueAdapter = new PolymarketVenueAdapter(mockSdkClient, "NORMAL");
+  const venueAdapter: VenueAdapter =
+    opts.venueAdapter ?? new PolymarketVenueAdapter(mockSdkClient, "NORMAL");
 
   // 5. Initialize Executor with recovery ledger and lease store
   const permitStore: PermitStore = new PgPermitStore(pool);

@@ -47,6 +47,11 @@ COPY --from=builder --chown=nodejs:nodejs /app/src ./src
 # Install production dependencies only
 RUN npm ci --omit=dev --ignore-scripts
 
+# Pre-create the Unix-socket directory owned by the runtime user.
+# The strategy-socket named volume inherits this ownership on first mount;
+# without it, the supervisor's bind() fails with EACCES as nodejs.
+RUN mkdir -p /run/strategy && chown nodejs:nodejs /run/strategy
+
 # Switch to non-root user
 USER nodejs
 

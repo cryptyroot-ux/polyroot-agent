@@ -13,6 +13,17 @@ function getEnv(key: string): string | undefined {
   return process.env[key];
 }
 
+const MODES = ["PAPER", "SHADOW", "MICRO_LIVE", "LIVE"] as const;
+
+function parseMode(raw: string | undefined, source: string): CLIConfig["mode"] {
+  if (!raw || !(MODES as readonly string[]).includes(raw)) {
+    throw new Error(
+      `Invalid mode ${JSON.stringify(raw)} from ${source}; expected one of ${MODES.join(", ")}`,
+    );
+  }
+  return raw as CLIConfig["mode"];
+}
+
 export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   let mode: CLIConfig["mode"] = "PAPER";
   let databaseUrl = "";
@@ -25,7 +36,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
       console.log("Usage: polyroot --mode PAPER --db <DATABASE_URL> --kms-key <KEY_ID> [--once]");
       process.exit(0);
     } else if (a === "--mode") {
-      mode = argv[++i] as CLIConfig["mode"];
+      mode = parseMode(argv[++i], "--mode");
     } else if (a === "--db" || a === "--database-url") {
       databaseUrl = argv[++i] ?? "";
     } else if (a === "--kms-key") {
@@ -37,8 +48,8 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
 
   if (!databaseUrl) databaseUrl = getEnv("DATABASE_URL") ?? "";
   if (!kmsKeyId) kmsKeyId = getEnv("KMS_KEY_ID") ?? "";
-  const envMode = getEnv("RUNTIME_MODE") as CLIConfig["mode"] | undefined;
-  if (mode === "PAPER" && envMode) mode = envMode;
+  const envMode = getEnv("RUNTIME_MODE");
+  if (mode === "PAPER" && envMode) mode = parseMode(envMode, "RUNTIME_MODE");
 
   if (!databaseUrl) throw new Error("DATABASE_URL required (--db or DATABASE_URL env)");
   if (!kmsKeyId) throw new Error("KMS_KEY_ID required (--kms-key or KMS_KEY_ID env)");
@@ -65,14 +76,37 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     return;
   }
 
-  const shutdown = () => {
+  let stopping = false;
+  const shutdown = (signal: string): void => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`Received ${signal} — stopping agent...`);
     const p = agent.pipeline as unknown as { stop?: () => void };
-    if (typeof p.stop === "function") p.stop();
+    if (typeof p.stop === "function") {
+      try {
+        p.stop();
+      } catch (err: unknown) {
+        console.error("Pipeline stop error:", err);
+      }
+    }
+    // Close the shared PG pool so the event loop can drain, then exit.
+    // Without this the process hangs on open pool sockets until SIGKILL.
+    void agent.pool
+      .end()
+      .catch((err: unknown) => console.error("Pool close error:", err))
+      .finally(() => process.exit(0));
+    // Failsafe: never hang forever on shutdown.
+    setTimeout(() => process.exit(1), 10_000).unref();
   };
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 
   await pipeline.runContinuous();
+  // Resolved without a signal (e.g. stop() called externally):
+  // close the pool so the process can exit cleanly.
+  if (!stopping) {
+    await agent.pool.end().catch(() => undefined);
+  }
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
