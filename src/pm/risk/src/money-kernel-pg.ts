@@ -239,6 +239,16 @@ private readonly pool: Pool;
         code: "QUOTE_ID_REQUIRED",
       };
     }
+    // 0b. Fail-closed on invalid lease epoch. A non-positive or non-integer
+    //     epoch can never match the authoritative executor lease, so refuse
+    //     before touching the database (no partial state, no connection held).
+    if (!Number.isInteger(leaseEpoch) || leaseEpoch <= 0) {
+      return {
+        ok: false,
+        reason: "permit lease epoch does not match current executor lease epoch",
+        code: "LEASE_EPOCH_MISMATCH",
+      };
+    }
 
     const client: PoolClient = await this.pool.connect();
     try {
@@ -261,15 +271,24 @@ private readonly pool: Pool;
         };
       }
 
-      // 1. Lock balance row and check availability
+      // 1. Lock balance row and check availability.
+      //    A missing balance row is a DISTINCT fail-closed condition from
+      //    insufficient funds: it means the account/asset was never funded
+      //    (or was deleted), not merely underfunded. Callers must be able to
+      //    distinguish onboarding/funding bugs from spend limits.
       const bal = await client.query(
         `SELECT available_base FROM balance_entries WHERE account = $1 AND asset = $2 FOR UPDATE`,
         [account, asset],
       );
-      if (
-        bal.rowCount === 0 ||
-        BigInt(bal.rows[0].available_base) < cashNeededBase
-      ) {
+      if (bal.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return {
+          ok: false,
+          reason: "balance row missing",
+          code: "BALANCE_ROW_MISSING",
+        };
+      }
+      if (BigInt(bal.rows[0].available_base) < cashNeededBase) {
         await client.query("ROLLBACK");
         return {
           ok: false,

@@ -178,6 +178,79 @@ export function cashNeededFor(
   return (amountSharesBase * perSharePriceBase) / 1_000_000n;
 }
 
+/**
+ * Permit validation error codes (fail-closed taxonomy, Phase 7.6 gap fix).
+ *
+ * These codes already exist in the executor/venue layers
+ * (LEASE_EPOCH_MISMATCH, PERMIT_EXPIRED) — they were missing from the risk
+ * layer. Adding them here makes the taxonomy consistent across layers:
+ * a permit that is expired, bound to a different policy hash, or bound to
+ * a different lease epoch MUST be rejected with a typed code, never with a
+ * generic failure or, worse, a silent pass.
+ */
+export type PermitValidationErrorCode =
+  | "PERMIT_EXPIRED"
+  | "POLICY_HASH_MISMATCH"
+  | "LEASE_EPOCH_MISMATCH"
+  | "PERMIT_INVALID";
+
+export interface PermitValidationExpectation {
+  policyHash: string;
+  leaseEpoch: number;
+  now?: Date;
+}
+
+/**
+ * Validate an existing permit against its expected authorization context.
+ * Pure function (no I/O) so it is unit-testable without a database.
+ *
+ * Order of checks is intentional (cheapest and most time-sensitive first):
+ *   1. expiry — a stale permit is dead even if everything else matches
+ *   2. policy hash — the exact audited policy that authorized the spend
+ *   3. lease epoch — the single-holder fencing epoch at issuance
+ */
+export function validatePermit(
+  permit: {
+    expires_at: Date | string;
+    policy_hash: string;
+    lease_epoch: number;
+  },
+  expected: PermitValidationExpectation,
+): { ok: true } | { ok: false; code: PermitValidationErrorCode; reason: string } {
+  const now = expected.now ?? new Date();
+  const expiresAt =
+    permit.expires_at instanceof Date
+      ? permit.expires_at
+      : new Date(permit.expires_at);
+  if (Number.isNaN(expiresAt.getTime()) || now.getTime() > expiresAt.getTime()) {
+    return {
+      ok: false,
+      code: "PERMIT_EXPIRED",
+      reason: "permit expired",
+    };
+  }
+  if (!permit.policy_hash || permit.policy_hash !== expected.policyHash) {
+    return {
+      ok: false,
+      code: "POLICY_HASH_MISMATCH",
+      reason: "permit policy hash does not match expected policy hash",
+    };
+  }
+  if (
+    !Number.isInteger(permit.lease_epoch) ||
+    !Number.isInteger(expected.leaseEpoch) ||
+    permit.lease_epoch !== expected.leaseEpoch
+  ) {
+    return {
+      ok: false,
+      code: "LEASE_EPOCH_MISMATCH",
+      reason:
+        "permit lease epoch does not match current executor lease epoch",
+    };
+  }
+  return { ok: true };
+}
+
 export class MoneyKernel {
   private readonly opts: ResolvedMoneyKernelOpts;
   private readonly authority: MoneyAuthority;

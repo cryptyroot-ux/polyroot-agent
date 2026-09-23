@@ -136,7 +136,7 @@ export class ReservationManager {
       await client.query("BEGIN");
       // Lock the reservation row for the duration of the accounting update.
       const r = await client.query(
-        `SELECT account, asset, amount, status, consumed_amount
+        `SELECT account, asset, amount, status, consumed_amount, expires_at
          FROM reservations WHERE id=$1 FOR UPDATE`,
         [reservationId],
       );
@@ -154,7 +154,26 @@ export class ReservationManager {
         amount: string;
         status: string;
         consumed_amount: string;
+        expires_at: Date | string | null;
       };
+      // Fail-closed on expiry: a consumed fill is a FINAL economic posting.
+      // An expired reservation (its permit is expired by the same deadline)
+      // must never settle — release() remains available for cleanup so funds
+      // cannot get stuck, but consume() is blocked with a typed code.
+      if (row.expires_at) {
+        const expiresAt =
+          row.expires_at instanceof Date
+            ? row.expires_at
+            : new Date(row.expires_at);
+        if (!Number.isNaN(expiresAt.getTime()) && new Date() > expiresAt) {
+          await client.query("ROLLBACK");
+          return {
+            ok: false,
+            code: "PERMIT_EXPIRED",
+            reason: "reservation expired (permit expired)",
+          };
+        }
+      }
       if (row.status !== "ACTIVE" && row.status !== "PARTIALLY_CONSUMED") {
         await client.query("ROLLBACK");
         return {

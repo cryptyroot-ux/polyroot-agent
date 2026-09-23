@@ -146,7 +146,7 @@ export class G4Pipeline {
   async runContinuous(): Promise<void> {
     this.running = true;
     console.log(`🔄 G4 Pipeline running in ${this.config.mode} mode...`);
-    
+
     while (this.running) {
       try {
         // In a real implementation, this would fetch markets from the venue adapter
@@ -156,9 +156,9 @@ export class G4Pipeline {
           bid: 0.45,
           ask: 0.55,
         };
-        
+
         const result = await this.processMarket(mockInput);
-        
+
         if (result.fill && (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")) {
           console.log(`✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}`);
         } else if (result.decision !== "NO_TRADE") {
@@ -166,10 +166,10 @@ export class G4Pipeline {
         } else {
           console.log(`⏭️  No trade: ${result.reason}`);
         }
-        
+
         // Wait for next interval
         await new Promise(resolve => setTimeout(resolve, 5000));
-        
+
       } catch (error) {
         console.error("❌ Pipeline error:", error);
         // Continue running even if one iteration fails
