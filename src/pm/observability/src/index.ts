@@ -192,3 +192,5 @@ export class HealthCheck implements HealthCheckEngine {
     };
   }
 }
+
+export * from "./status-board.js";
