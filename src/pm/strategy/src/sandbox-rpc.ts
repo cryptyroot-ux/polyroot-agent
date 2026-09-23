@@ -10,6 +10,26 @@ export interface StrategySandboxClient {
   terminate(): Promise<void>;
 }
 
+export interface StrategyWorkerResourceLimits {
+  maxOldGenerationSizeMb?: number;
+  maxYoungGenerationSizeMb?: number;
+  codeRangeSizeMb?: number;
+  stackSizeMb?: number;
+}
+
+/**
+ * Conservative V8 heap caps for strategy workers (FT-16). A malicious or
+ * buggy plugin (fork bomb, runaway allocation) is killed by the runtime
+ * instead of exhausting the host. Values are generous for legitimate
+ * strategies (small JSON in/out) and overridable per call.
+ */
+export const DEFAULT_WORKER_RESOURCE_LIMITS: Required<StrategyWorkerResourceLimits> = {
+  maxOldGenerationSizeMb: 256,
+  maxYoungGenerationSizeMb: 64,
+  codeRangeSizeMb: 0,
+  stackSizeMb: 4,
+};
+
 export async function spawnStrategyWorker(opts: {
   strategyCode: string;
   /**
@@ -18,10 +38,13 @@ export async function spawnStrategyWorker(opts: {
    * hanging the caller — and the leaked listener is always removed.
    */
   timeoutMs?: number;
+  /** V8 heap caps; defaults to DEFAULT_WORKER_RESOURCE_LIMITS. */
+  resourceLimits?: StrategyWorkerResourceLimits;
 }): Promise<{ client: StrategySandboxClient; worker: Worker }> {
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const worker = new Worker(resolve(HERE, "./sandbox-worker.js"), {
     workerData: { strategyCode: opts.strategyCode },
+    resourceLimits: { ...DEFAULT_WORKER_RESOURCE_LIMITS, ...opts.resourceLimits },
   });
 
   function callWorker(message: unknown): Promise<any> {

@@ -200,4 +200,16 @@ describe("Signer Vault — TABLE 8 pre-sign invariants (PM-WALLET-07)", () => {
       ].sort(),
     );
   });
+
+  it("FT-15 refuses new signatures for a stale lease epoch (old executor gets nothing)", async () => {
+    const v = vault();
+    const req: any = makeReq({ permit: makePermit({ lease_epoch: 1 }) });
+    // Simulate a previous executor resuming after lease loss: the current
+    // authoritative epoch has moved on.
+    req.expectedLeaseEpoch = 2;
+    req.payloadHash = computePayloadHash(req);
+    const res = await outcome(v.sign(req));
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "LEASE_EPOCH_MISMATCH");
+  });
 });

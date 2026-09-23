@@ -103,6 +103,15 @@ export {
 } from "./egress-filter.js";
 export type { EgressCheckInput } from "./egress-guard.js";
 
+// Decode budget guard (FT-19, PM-SEC-05)
+export {
+  checkDecodeBudget,
+  DEFAULT_DECODE_BUDGET,
+  type DecodeBudgetInput,
+  type DecodeBudgetCode,
+  type DecodeBudgetResult,
+} from "./decode-budget.js";
+
 // Security Proxy (PR-SEC-04, PR-SEC-07, T-PR-SEC-04, T-PR-SEC-07)
 export {
   SecurityProxy,
