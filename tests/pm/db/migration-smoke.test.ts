@@ -11,9 +11,10 @@ import { readdirSync } from "fs";
 import { resolve } from "path";
 
 const MIGRATIONS_DIR = resolve("migrations");
-const EXPECTED_MIGRATION_COUNT = readdirSync(MIGRATIONS_DIR)
-  .filter((f) => f.endsWith(".sql"))
-  .filter((f) => /^\d{4}_/.test(f)).length;
+// Mirror scripts/migrate.ts exactly: every *.sql file in lexical order.
+const EXPECTED_MIGRATION_COUNT = readdirSync(MIGRATIONS_DIR).filter((f) =>
+  f.endsWith(".sql"),
+).length;
 
 const BASE_PG_URL =
   process.env.TEST_DATABASE_URL ||

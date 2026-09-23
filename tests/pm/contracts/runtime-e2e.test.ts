@@ -120,6 +120,7 @@ function makePipeline(forecastP: number | null) {
     sink: new FakeSink(),
     authority: fakeAuthority,
     chainId: 137,
+    mode: "PAPER",
     permitTtlMs: 60_000,
   });
   const signer = new SignerVault({
