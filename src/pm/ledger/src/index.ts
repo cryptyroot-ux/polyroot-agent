@@ -235,5 +235,6 @@ export interface OutboxProcessor {
 export * from "./pg-event-store.js";
 export * from "./pg-projection-engine.js";
 export * from "./pg-outbox-processor.js";
+export { InMemoryEventStore } from "./event-store.js";
 export * from "./incentives.js";
 export * from "./settlement.js";
