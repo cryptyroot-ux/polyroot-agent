@@ -61,4 +61,7 @@ ENTRYPOINT ["tini", "--"]
 # Default command runs the strategy sandbox supervisor (Unix-socket RPC).
 # The supervisor spawns one worker_threads worker per request and tears it
 # down afterwards; strategy code never runs in the supervisor process itself.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD test -S /run/strategy/strategy.sock || exit 1
+
 CMD ["node", "src/pm/strategy/dist/sandbox-supervisor.js"]
