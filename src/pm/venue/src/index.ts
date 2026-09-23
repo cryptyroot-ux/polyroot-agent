@@ -25,6 +25,7 @@ export * from "./execution-safety.js";
 export * from "./protocol-profile.js";
 export * from "./heartbeat-route.js";
 export * from "./redeem-target.js";
+export * from "./adapter-freeze.js";
 export * from "./capability.js";
 export * from "./polymarket-adapter.js";
 
