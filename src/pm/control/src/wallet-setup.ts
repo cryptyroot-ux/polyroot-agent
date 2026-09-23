@@ -121,3 +121,155 @@ export function availableToTrade(
   }
   return { ok: true, availableToTrade: Math.min(balance, approved) };
 }
+
+/* ─── CT-07: deposit wallet create/discover (PM-WALLET-04, G0/G1 half) ── */
+
+export type WalletPresence = "EXISTING" | "ABSENT";
+
+export interface WalletDiscovery {
+  presence: WalletPresence;
+  /** Canonical wallet address when EXISTING, else null. */
+  address: string | null;
+  note: string;
+}
+
+/**
+ * CT-07 discovery: an on-chain lookup result maps to EXISTING (with its
+ * canonical address) or ABSENT. ABSENT never fabricates an address —
+ * creation is a separate, owner-authorized step.
+ */
+export function discoverWallet(reportedAddress: string | null): WalletDiscovery {
+  if (reportedAddress && reportedAddress.length > 0) {
+    return {
+      presence: "EXISTING",
+      address: reportedAddress,
+      note: "wallet exists at reported address",
+    };
+  }
+  return { presence: "ABSENT", address: null, note: "no wallet deployed" };
+}
+
+export type CreateReconciliation =
+  | { ok: true; created: boolean; address: string; note: string }
+  | { ok: false; code: "CREATE_CONFLICT"; reason: string };
+
+/**
+ * CT-07 WALLET-CREATE idempotent reconciliation: creating when ABSENT
+ * yields the new address; creating when an EXISTING wallet is already
+ * recorded returns it unchanged (no duplicate deployment). A create that
+ * names a DIFFERENT address than the recorded one conflicts — the caller
+ * must reconcile explicitly, never by deploying a second wallet.
+ */
+export function reconcileWalletCreate(
+  discovery: WalletDiscovery,
+  requestedAddress: string,
+): CreateReconciliation {
+  if (discovery.presence === "ABSENT") {
+    if (!requestedAddress) {
+      return {
+        ok: false,
+        code: "CREATE_CONFLICT",
+        reason: "absent wallet requires an explicit address to create",
+      };
+    }
+    return {
+      ok: true,
+      created: true,
+      address: requestedAddress,
+      note: "wallet created at requested address",
+    };
+  }
+  if (discovery.address !== requestedAddress) {
+    return {
+      ok: false,
+      code: "CREATE_CONFLICT",
+      reason: `recorded wallet ${discovery.address} differs from requested ${requestedAddress}`,
+    };
+  }
+  return {
+    ok: true,
+    created: false,
+    address: discovery.address as string,
+    note: "already exists; reconciled without redeploy",
+  };
+}
+
+/* ─── CT-08: approval caller/spender (PM-WALLET-05, G0 half) ─────────── */
+
+export type ApprovalTokenStandard = "ERC20" | "ERC1155";
+
+export type ApprovalCallResult =
+  | { ok: true; note: string }
+  | { ok: false; code: "WRONG_CALLER" | "WRONG_SPENDER"; reason: string };
+
+/**
+ * CT-08: an approval call (ERC20 collateral or ERC1155 operator) must
+ * originate from the correct account wallet AND name the intended
+ * spender. A caller mismatch and a spender mismatch are distinct,
+ * typed refusals.
+ */
+export function checkApprovalCall(input: {
+  caller: string;
+  accountWallet: string;
+  spender: string;
+  intendedSpender: string;
+  tokenStandard: ApprovalTokenStandard;
+}): ApprovalCallResult {
+  if (input.caller !== input.accountWallet) {
+    return {
+      ok: false,
+      code: "WRONG_CALLER",
+      reason: `${input.tokenStandard} approval must originate from account wallet ${input.accountWallet}`,
+    };
+  }
+  if (input.spender !== input.intendedSpender) {
+    return {
+      ok: false,
+      code: "WRONG_SPENDER",
+      reason: `approval names ${input.spender}, mandate requires ${input.intendedSpender}`,
+    };
+  }
+  return { ok: true, note: `${input.tokenStandard} approval call valid` };
+}
+
+/* ─── CT-10: relayer nonce conflicts (PM-WALLET-04, G0/G1 half) ─────── */
+
+export type NonceVerdict =
+  | { ok: true; note: string }
+  | { ok: false; code: "NONCE_REPLAY" | "NONCE_GAP"; reason: string };
+
+/**
+ * CT-10: relayer nonces must advance by exactly one. A repeated nonce is
+ * a replay (idempotent resubmit path handles retries instead); a jumped
+ * nonce means a lost operation — never silently skipped.
+ */
+export function checkRelayerNonce(
+  lastSeenNonce: number | null,
+  incomingNonce: number,
+): NonceVerdict {
+  if (!Number.isInteger(incomingNonce) || incomingNonce < 0) {
+    return {
+      ok: false,
+      code: "NONCE_REPLAY",
+      reason: "incoming nonce must be a non-negative integer",
+    };
+  }
+  if (lastSeenNonce === null) {
+    return { ok: true, note: "first nonce accepted" };
+  }
+  if (incomingNonce <= lastSeenNonce) {
+    return {
+      ok: false,
+      code: "NONCE_REPLAY",
+      reason: `nonce ${incomingNonce} already seen (last ${lastSeenNonce})`,
+    };
+  }
+  if (incomingNonce > lastSeenNonce + 1) {
+    return {
+      ok: false,
+      code: "NONCE_GAP",
+      reason: `nonce jump ${lastSeenNonce} -> ${incomingNonce}: missing operation, never skip`,
+    };
+  }
+  return { ok: true, note: "nonce advances by exactly one" };
+}

@@ -441,6 +441,15 @@ export {
   type ProdSignerConfig,
 } from "./crypto-signer-prod.js";
 
+// Credential authentication contracts (CT-09, G0 half)
+export {
+  verifyBodyHmac,
+  checkCredentialBinding,
+  type CredentialAuthCode,
+  type CredentialAuthResult,
+  type CredentialBinding,
+} from "./credential-auth.js";
+
 // Wallet mapping contracts (CT-04/05/06, G0 half)
 export {
   validateWalletMapping,
