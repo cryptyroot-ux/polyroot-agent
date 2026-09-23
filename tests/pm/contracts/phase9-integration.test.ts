@@ -86,7 +86,11 @@ async function runFullPipeline(
     reliability: evidence.reliability,
     registered_at: new Date(),
   };
-  const familyId = registry.register(sourceRecord);
+  // register() is async: the family id MUST be awaited into a stable
+  // string. Using the raw Promise would only work by reference-equality
+  // accident and violates deterministic lineage (Blueprint §6).
+  const familyId = await registry.register(sourceRecord);
+  assert.equal(typeof familyId, "string");
 
   // 3. Generate forecasts → ensemble + calibration
   const weightBooks = new Map<string, Map<string, number>>();
@@ -196,5 +200,47 @@ describe("Phase 9 Integration Test", () => {
     const intent = await runFullPipeline(testMarketSnapshot, testEvidence);
     assert.ok(intent);
     assert.equal(intent.status, "CREATED");
+  });
+
+  it("syndication folding: two wire copies of one article collapse to ONE family (PM-INTEL-02)", async () => {
+    const registry = new SourceRegistry();
+    const parent = "https://origin.example.com/article-1";
+    const famA = await registry.register({
+      schema_version: "1.0.0" as const,
+      source_id: "src_wire_a",
+      url: "https://wire-a.example.com/article-1",
+      epistemic_class: "WIRE_SERVICE" as any,
+      domain: "wire-a.example.com",
+      source_class: "FINANCIAL_NEWS" as const,
+      syndication_parent: parent,
+      reliability: { score: 0.9, sample_count: 100, window: 30 },
+      registered_at: new Date(),
+    } as any);
+    const famB = await registry.register({
+      schema_version: "1.0.0" as const,
+      source_id: "src_wire_b",
+      url: "https://wire-b.example.com/article-1",
+      epistemic_class: "WIRE_SERVICE" as any,
+      domain: "wire-b.example.com",
+      source_class: "FINANCIAL_NEWS" as const,
+      syndication_parent: parent,
+      reliability: { score: 0.9, sample_count: 100, window: 30 },
+      registered_at: new Date(),
+    } as any);
+    assert.equal(typeof famA, "string");
+    assert.equal(famA, famB);
+    // An ensemble over the two copies must count ONE effective family,
+    // never two independent confirmations.
+    const out = ensembleForecast({
+      components: [
+        { p_yes: 0.7, familyId: famA, weight: 1.0 },
+        { p_yes: 0.7, familyId: famB, weight: 1.0 },
+      ],
+      eventClass: "POLITICAL",
+      weightBooks: new Map(),
+      version: "v1-test",
+    });
+    assert.equal(out.ok, true);
+    if (out.ok) assert.equal(out.effectiveFamilyCount, 1);
   });
 });
