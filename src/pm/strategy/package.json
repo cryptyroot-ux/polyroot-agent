@@ -20,6 +20,11 @@
       "types": "./dist/sandbox-worker.d.ts",
       "import": "./dist/sandbox-worker.js",
       "require": "./dist/sandbox-worker.js"
+    },
+    "./src/sandbox-supervisor": {
+      "types": "./dist/sandbox-supervisor.d.ts",
+      "import": "./dist/sandbox-supervisor.js",
+      "require": "./dist/sandbox-supervisor.js"
     }
   },
   "scripts": {

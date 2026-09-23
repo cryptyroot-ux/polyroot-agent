@@ -148,6 +148,53 @@ export class G4AutonomousLoop {
       this.config.minEdgeAfterCost,
     );
   }
+
+  /**
+   * Run the autonomous loop continuously, polling markets at the configured interval.
+   * This is the main entry point for autonomous operation.
+   */
+  async runContinuous(): Promise<void> {
+    this.running = true;
+    console.log(`🔄 G4 Autonomous Loop running in ${this.config.mode} mode...`);
+    
+    while (this.running) {
+      try {
+        // In a real implementation, this would fetch markets from the venue adapter
+        // For now, we'll run a single iteration with mock data
+        const mockInput = {
+          market_id: "mock_market_1",
+          bid: 0.45,
+          ask: 0.55,
+        };
+        
+        const result = await this.step(mockInput);
+        
+        if (result.fill && (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")) {
+          console.log(`✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}`);
+        } else if (result.decision !== "NO_TRADE") {
+          console.log(`📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})`);
+        } else {
+          console.log(`⏭️  No trade: ${result.reason}`);
+        }
+        
+        // Wait for next interval
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+      } catch (error) {
+        console.error("❌ Loop error:", error);
+        // Continue running even if one iteration fails
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+  }
+
+  /**
+   * Stop the continuous loop gracefully.
+   */
+  stop(): void {
+    this.running = false;
+    console.log("🛑 G4 Autonomous Loop stopping...");
+  }
 }
 
 /* ─── Factory for creating G4 loop with all dependencies ─────────────────── */

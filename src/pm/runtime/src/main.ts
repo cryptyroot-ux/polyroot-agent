@@ -15,7 +15,10 @@ import { Executor } from "@polyroot/executor";
 import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 
-export async function bootstrapAgent(connectionString: string) {
+export async function bootstrapAgent(
+  connectionString: string,
+  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" = "PAPER",
+) {
   const pool = new Pool({ connectionString });
   
   // 1. Initialize PostgreSQL-backed persistence stores
@@ -28,6 +31,7 @@ export async function bootstrapAgent(connectionString: string) {
     sink: stores.eventSink,
     authority: stores.authority,
     chainId: 137,
+    mode,
   });
 
   // 3. Initialize SignerVault with a secure production signer (placeholder for KMS/HSM)
@@ -90,7 +94,7 @@ export async function bootstrapAgent(connectionString: string) {
   // 7. Create G4 Pipeline
   const pipeline = createG4Pipeline({
     config: {
-      mode: "PAPER",
+      mode,
       minEdgeAfterCost: 0.03,
     },
     kernel,

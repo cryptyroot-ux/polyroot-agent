@@ -1,0 +1,59 @@
+# ─── Builder Stage ───
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
+# Copy package files
+COPY package*.json ./
+COPY turbo.json ./
+COPY tsconfig.base.json ./
+COPY tsconfig/ ./tsconfig/
+
+# Copy workspace source (preserves src/pm/<pkg>/package.json hierarchy)
+COPY src/ ./src/
+
+# Install dependencies
+RUN npm ci
+
+# Build all workspaces
+RUN npm run build:all
+
+# ─── Runtime Stage ───
+FROM node:24-alpine AS runtime
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 -G nodejs
+
+# Install runtime dependencies only
+RUN apk add --no-cache \
+    tini \
+    && rm -rf /var/cache/apk/*
+
+# Copy package files
+COPY package*.json ./
+COPY turbo.json ./
+COPY tsconfig.base.json ./
+COPY tsconfig/ ./tsconfig/
+
+# Copy built artifacts from builder (package-local dist + workspace layout)
+COPY --from=builder --chown=nodejs:nodejs /app/src ./src
+
+# Install production dependencies only
+RUN npm ci --omit=dev --ignore-scripts
+
+# Switch to non-root user
+USER nodejs
+
+# Use tini for proper signal handling
+ENTRYPOINT ["tini", "--"]
+
+# Default command runs the strategy sandbox supervisor (Unix-socket RPC).
+# The supervisor spawns one worker_threads worker per request and tears it
+# down afterwards; strategy code never runs in the supervisor process itself.
+CMD ["node", "src/pm/strategy/dist/sandbox-supervisor.js"]

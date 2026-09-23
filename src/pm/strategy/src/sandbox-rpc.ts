@@ -1,5 +1,8 @@
 import { Worker } from "worker_threads";
-import { resolve } from "path";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 export interface StrategySandboxClient {
   run(input: any): Promise<any>;
@@ -8,7 +11,7 @@ export interface StrategySandboxClient {
 }
 
 export async function spawnStrategyWorker(opts: { strategyCode: string }): Promise<{ client: StrategySandboxClient; worker: Worker }> {
-  const worker = new Worker(resolve(__dirname, "./sandbox-worker.js"), {
+  const worker = new Worker(resolve(HERE, "./sandbox-worker.js"), {
     workerData: { strategyCode: opts.strategyCode },
   });
   

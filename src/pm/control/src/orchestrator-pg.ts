@@ -98,6 +98,7 @@ export async function createOrchestratorPg(
     sink: eventSink,
     chainId: 137,
     authority,
+    mode: "LIVE",
   });
 
   // ── PostgreSQL-backed Permit Store & Recovery Ledger ──────────────────────
