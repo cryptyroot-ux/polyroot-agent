@@ -7,6 +7,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "child_process";
 import { randomUUID } from "crypto";
+import { readdirSync } from "fs";
+import { resolve } from "path";
+
+const MIGRATIONS_DIR = resolve("migrations");
+const EXPECTED_MIGRATION_COUNT = readdirSync(MIGRATIONS_DIR)
+  .filter((f) => f.endsWith(".sql"))
+  .filter((f) => /^\d{4}_/.test(f)).length;
 
 const BASE_PG_URL =
   process.env.TEST_DATABASE_URL ||
@@ -62,8 +69,12 @@ describe("Migration smoke test (fresh DB)", { skip: !DB_OK }, () => {
         { stdio: "pipe" },
       );
       const count = parseInt(countResult.toString().trim(), 10);
-      // We expect 19 migrations (0001 through 0019)
-      assert.strictEqual(count, 19, "Expected 19 migrations to be applied");
+      // We expect as many migrations as SQL files in migrations/
+      assert.strictEqual(
+        count,
+        EXPECTED_MIGRATION_COUNT,
+        `Expected ${EXPECTED_MIGRATION_COUNT} migrations to be applied`,
+      );
 
       // Optionally, check that a few core tables exist
       const tablesResult = execFileSync(
