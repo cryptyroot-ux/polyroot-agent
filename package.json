@@ -2,7 +2,7 @@
   "name": "polyroot",
   "version": "0.1.0",
   "private": true,
-  "description": "PolyRoot Agent — autonomous AI trading agent for Polymarket (fork of CloddsBot, controlled autonomy)",
+  "description": "PolyRoot Agent \u2014 autonomous AI trading agent for Polymarket (fork of CloddsBot, controlled autonomy)",
   "repository": {
     "type": "git",
     "url": "https://github.com/cryptyroot-ux/polyroot-agent"
@@ -40,7 +40,9 @@
     "clean": "turbo run clean && rm -rf node_modules dist .turbo",
     "ci": "npm run typecheck && npm run lint && npm run test && npm run build",
     "release": "changeset publish",
-    "test:migration": "node --test --import tsx \"tests/pm/db/**/*.test.ts\""
+    "test:migration": "node --test --import tsx \"tests/pm/db/**/*.test.ts\"",
+    "coverage": "c8 --reporter=text --include='src/pm/*/dist/*.js' node --test --import tsx \"tests/pm/contracts/**/*.test.ts\"",
+    "coverage:gate": "node scripts/coverage-gate.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.0",
@@ -49,6 +51,7 @@
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.70.0",
     "@typescript-eslint/parser": "^8.70.0",
+    "c8": "^12.0.0",
     "commander": "^12.1.0",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^9.1.0",

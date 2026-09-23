@@ -99,3 +99,27 @@ describe("Phase 18 CT-10: relayer nonce conflicts (PM-WALLET-04)", () => {
     if (!jump.ok) assert.equal(jump.code, "NONCE_GAP");
   });
 });
+
+describe("No.3 coverage: credential-auth invalid branches", () => {
+  it("empty secret/body/tag refuse without throwing", async () => {
+    const { verifyBodyHmac } = await import("@polyroot/signer");
+    assert.equal(verifyBodyHmac("", "b", "aa").ok, false);
+    assert.equal(verifyBodyHmac("s", "", "aa").ok, false);
+    assert.equal(verifyBodyHmac("s", "b", "").ok, false);
+  });
+  it("non-hex tags refuse", async () => {
+    const { verifyBodyHmac } = await import("@polyroot/signer");
+    const r = verifyBodyHmac("s", "b", "zzzz");
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.code, "HMAC_MISMATCH");
+  });
+  it("incomplete credential bindings refuse", async () => {
+    const { checkCredentialBinding } = await import("@polyroot/signer");
+    const r = checkCredentialBinding(
+      { credentialId: "", boundSignerAddress: "0xA" },
+      "0xA",
+    );
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.code, "SIGNER_NOT_BOUND");
+  });
+});

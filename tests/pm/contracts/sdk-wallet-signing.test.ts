@@ -61,3 +61,31 @@ describe("Phase 17 CT-04/05/06: wallet mapping, G0 half (PM-WALLET-01)", () => {
     assert.equal(withWrapper.ok, true);
   });
 });
+
+describe("No.3 coverage: wallet-mapping invalid branches", () => {
+  it("unknown wallet types refuse", async () => {
+    const { validateWalletMapping } = await import("@polyroot/signer");
+    const r = validateWalletMapping({
+      wallet: {
+        wallet_type: "QUANTUM",
+        signer_address: "0xS",
+        account_wallet: "0xA",
+        funder: "0xF",
+      } as any,
+    });
+    assert.equal(r.ok, false);
+  });
+  it("missing signer address refuses", async () => {
+    const { validateWalletMapping } = await import("@polyroot/signer");
+    const r = validateWalletMapping({
+      wallet: {
+        wallet_type: "EOA",
+        signer_address: "",
+        account_wallet: "0xA",
+        funder: "0xF",
+      } as any,
+    });
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.code, "WALLET_NOT_DISTINCT");
+  });
+});

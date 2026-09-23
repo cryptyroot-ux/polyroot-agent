@@ -22,3 +22,6 @@ vendor/
 Thumbs.db
 
 .turbo/
+# Coverage + local tool artifacts (never committed)
+coverage/
+.codebase-memory/

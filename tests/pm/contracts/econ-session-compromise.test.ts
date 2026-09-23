@@ -130,3 +130,21 @@ describe("Phase 21 CT-31: session scope beta (PM-WALLET-10)", () => {
     assert.equal(done.final, true);
   });
 });
+
+describe("No.3 coverage: negative incentive amounts refuse", () => {
+  it("negative postings never touch confirmed books", async () => {
+    const { postConfirmedIncentive } = await import("@polyroot/ledger");
+    const r = postConfirmedIncentive(
+      {
+        category: "LP_REWARD",
+        amountBase: -10n,
+        asset: "pUSD",
+        state: "CONFIRMED_PAID",
+        provenance: "x",
+      },
+      "pUSD",
+      100n,
+    );
+    assert.equal(r.ok, false);
+  });
+});

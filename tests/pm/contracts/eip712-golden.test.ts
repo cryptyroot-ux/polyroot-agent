@@ -141,3 +141,32 @@ describe("No.2 EIP-712 golden vs ethers v6 (CT-06 offline half)", () => {
     );
   });
 });
+
+describe("No.3 coverage: eip712 invalid-input branches", () => {
+  it("malformed addresses, out-of-range uints, bad bytes32/bool refuse", async () => {
+    const m = await import("@polyroot/signer");
+    assert.throws(() => m.encodeField("address", "0x123"), /address/);
+    assert.throws(() => m.encodeField("uint256", -1), /out of range/);
+    assert.throws(() => m.encodeField("uint256", 1.5), /non-integer/);
+    assert.throws(() => m.encodeField("bytes32", "0x1234"), /bytes32/);
+    assert.throws(() => m.encodeField("bool", "yes" as any), /bool/);
+    assert.throws(() => m.encodeField("uint256", "0xZZ" as any), /hex/);
+  });
+  it("oversize words and bad digests refuse", async () => {
+    const m = await import("@polyroot/signer");
+    assert.throws(
+      () => m.signingDigest(Buffer.alloc(31), Buffer.alloc(32)),
+      /32 bytes/,
+    );
+    assert.throws(
+      () =>
+        m.hashNested1271({
+          domainFields: [],
+          messageType: "M",
+          messageFields: [],
+          innerMessageHash: "0x1234",
+        }),
+      /innerMessageHash/,
+    );
+  });
+});

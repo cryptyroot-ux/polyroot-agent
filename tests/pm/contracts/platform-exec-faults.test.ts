@@ -327,3 +327,194 @@ describe("Phase 28 adversarial: red-team findings on own gates", () => {
     if (!r.ok) assert.equal(r.code, "HEARTBEAT_STALE");
   });
 });
+
+describe("No.3 coverage: execution-safety invalid branches", () => {
+  it("non-finite fees and invalid tick rules refuse", async () => {
+    const v = await import("@polyroot/venue");
+    assert.equal(
+      v.revalidateFee(Number.NaN, 10).ok,
+      false,
+    );
+    assert.equal(
+      v.revalidateTick(0.5, 10, { tickSize: 0, minSize: 1 }, 1000).ok,
+      false,
+    );
+    assert.equal(
+      v.revalidateTick(0.5, 10, { tickSize: 0.01, minSize: 1 }, -5).ok,
+      false,
+    );
+    assert.equal(
+      v.checkPostOnly("BUY", Number.NaN, 0.5, 0.6).ok,
+      false,
+    );
+  });
+  it("heartbeat invalid timestamps refuse", async () => {
+    const v = await import("@polyroot/venue");
+    const r = v.reconcileHeartbeat(
+      {
+        heartbeatId: "h",
+        writerId: "w",
+        sequence: 1,
+        at: new Date("invalid"),
+        expectedCancelled: [],
+      },
+      { heartbeatId: "h", writerId: "w", sequence: 1, observedCancelled: [] },
+    );
+    assert.equal(r.ok, false);
+  });
+  it("stream frames reject invalid sequences; freshness rejects bad clocks", async () => {
+    const d = await import("@polyroot/data");
+    assert.equal(
+      d.applyStreamDelta({ lastAppliedSeq: 1, gapDetected: false }, -2).ok,
+      false,
+    );
+    assert.equal(
+      d.frameFreshness({
+        lastSnapshotAt: Number.NaN,
+        gapDetectedAt: null,
+        now: 100,
+        maxAgeMs: 1000,
+      }).fresh,
+      false,
+    );
+    assert.equal(
+      d.frameFreshness({
+        lastSnapshotAt: 100,
+        gapDetectedAt: null,
+        now: 5000,
+        maxAgeMs: 1000,
+      }).code,
+      "STALE_AGE",
+    );
+  });
+  it("catalyst budget invalid measurements refuse", async () => {
+    const { checkInferenceBudget } = await import("@polyroot/intelligence");
+    assert.equal(
+      checkInferenceBudget({ spent: Number.NaN, cap: 100 }).ok,
+      false,
+    );
+    assert.equal(checkInferenceBudget({ spent: 5, cap: 0 }).ok, false);
+  });
+});
+
+describe("Coverage gate: structural invalid branches", () => {
+  it("empty universe, duplicates and non-positive payout never prove", async () => {
+    const s = await import("@polyroot/strategy");
+    assert.equal(
+      s.proveGuaranteedPayout({
+        outcomes: [],
+        coveredStates: [],
+        allStates: [],
+        claimedMinPayout: 1,
+      }).ok,
+      false,
+    );
+    assert.equal(
+      s.proveGuaranteedPayout({
+        outcomes: ["A"],
+        coveredStates: ["s1", "s1"],
+        allStates: ["s1"],
+        claimedMinPayout: 1,
+      }).ok,
+      false,
+    );
+    assert.equal(
+      s.proveGuaranteedPayout({
+        outcomes: ["A"],
+        coveredStates: ["s1"],
+        allStates: ["s1"],
+        claimedMinPayout: 0,
+      }).ok,
+      false,
+    );
+  });
+  it("residual measurement guards refuse garbage", async () => {
+    const s = await import("@polyroot/strategy");
+    assert.equal(
+      s.boundResidualExposure({
+        filledNotional: Number.NaN,
+        totalNotional: 100,
+        maxUnhedged: 100,
+      }).ok,
+      false,
+    );
+    assert.equal(
+      s.boundResidualExposure({
+        filledNotional: 200,
+        totalNotional: 100,
+        maxUnhedged: 1000,
+      }).ok,
+      false,
+    );
+    assert.equal(
+      s.groupCapWithFallback({
+        verifiedGroupCaps: [100],
+        hasUnknownRelation: false,
+        conservativeCap: -5,
+      }).ok,
+      false,
+    );
+    assert.equal(
+      s.groupCapWithFallback({
+        verifiedGroupCaps: [Number.NaN],
+        hasUnknownRelation: false,
+        conservativeCap: 100,
+      }).ok,
+      false,
+    );
+  });
+});
+
+describe("Coverage gate: execution-safety invalid branches", () => {
+  it("heartbeat invalid timestamps refuse", async () => {
+    const v = await import("@polyroot/venue");
+    assert.equal(
+      v.reconcileHeartbeat(
+        {
+          heartbeatId: "h",
+          writerId: "w",
+          sequence: 1,
+          at: new Date("invalid"),
+          expectedCancelled: [],
+        },
+        { heartbeatId: "h", writerId: "w", sequence: 1, observedCancelled: [] },
+      ).ok,
+      false,
+    );
+  });
+  it("fee/tick/post-only invalid measurements refuse", async () => {
+    const v = await import("@polyroot/venue");
+    assert.equal(v.revalidateFee(Number.POSITIVE_INFINITY, 1).ok, false);
+    assert.equal(
+      v.revalidateTick(0.5, 10, { tickSize: -0.01, minSize: 1 }, 100).ok,
+      false,
+    );
+    assert.equal(v.checkPostOnly("BUY", 2, 0.5, 0.6).ok, false);
+    assert.equal(
+      v.validateOrderExpiry({ tif: "GTD", expiresAt: "not-a-date", now: new Date() }).ok,
+      false,
+    );
+  });
+});
+
+describe("Coverage gate: heartbeat-route + catalyst invalid branches", () => {
+  it("heartbeat build without auth refuses; scope invalid timing refuses", async () => {
+    const v = await import("@polyroot/venue");
+    assert.equal(v.buildHeartbeatRequest({ auth: "" }).ok, false);
+    assert.equal(
+      v.checkHeartbeatScope({
+        issuedAt: "yesterday" as any,
+        ttlMs: 1000,
+        writerId: "w",
+        expectedWriterId: "w",
+        accountCount: 1,
+        orderCount: 0,
+      }).ok,
+      false,
+    );
+  });
+  it("catalyst budget invalid measurements refuse", async () => {
+    const { checkInferenceBudget } = await import("@polyroot/intelligence");
+    assert.equal(checkInferenceBudget({ spent: -1, cap: 100 }).ok, false);
+  });
+});
