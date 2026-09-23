@@ -440,3 +440,11 @@ export {
   createSignerFromHex,
   type ProdSignerConfig,
 } from "./crypto-signer-prod.js";
+
+// Wallet mapping contracts (CT-04/05/06, G0 half)
+export {
+  validateWalletMapping,
+  type WalletMappingInput,
+  type WalletMappingResult,
+  type WalletMappingCode,
+} from "./wallet-mapping.js";
