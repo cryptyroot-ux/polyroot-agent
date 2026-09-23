@@ -161,6 +161,53 @@ export function revalidateFee(
   };
 }
 
+/* ─── CT-18: post-only crossing ──────────────────────────────────── */
+
+export type PostOnlyVerdict =
+  | { ok: true; note: string }
+  | { ok: false; code: "POST_ONLY_CROSSING"; reason: string };
+
+/**
+ * CT-18: a post-only order that would cross the book is REJECTED — never
+ * silently converted to a taker. BUY must rest strictly below best ask;
+ * SELL strictly above best bid.
+ */
+export function checkPostOnly(
+  side: "BUY" | "SELL",
+  price: number,
+  bestBid: number,
+  bestAsk: number,
+): PostOnlyVerdict {
+  for (const [name, v] of [
+    ["price", price],
+    ["bestBid", bestBid],
+    ["bestAsk", bestAsk],
+  ] as const) {
+    if (!Number.isFinite(v) || v <= 0 || v >= 1) {
+      return {
+        ok: false,
+        code: "POST_ONLY_CROSSING",
+        reason: `invalid ${name} for post-only check`,
+      };
+    }
+  }
+  if (side === "BUY" && price >= bestAsk) {
+    return {
+      ok: false,
+      code: "POST_ONLY_CROSSING",
+      reason: `BUY ${price} would cross best ask ${bestAsk}; rejected, not converted to taker`,
+    };
+  }
+  if (side === "SELL" && price <= bestBid) {
+    return {
+      ok: false,
+      code: "POST_ONLY_CROSSING",
+      reason: `SELL ${price} would cross best bid ${bestBid}; rejected, not converted to taker`,
+    };
+  }
+  return { ok: true, note: "post-only rests without crossing" };
+}
+
 /* ─── CT-16: GTC/GTD expiration ──────────────────────────────────── */
 
 export type OrderTimeInForce = "GTC" | "GTD" | "FOK" | "FAK";
