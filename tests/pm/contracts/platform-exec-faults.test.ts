@@ -288,3 +288,42 @@ describe("Phase 15 FT-28: WS gap keeps features stale until snapshot", () => {
     assert.equal(recovered.fresh, true);
   });
 });
+
+describe("Phase 28 adversarial: red-team findings on own gates", () => {
+  it("unknown settlement kinds refuse via transition table (no miscategorization)", async () => {
+    const { applySettlementEvent, initialSettlement } = await import(
+      "@polyroot/ledger"
+    );
+    const r = applySettlementEvent(initialSettlement(), {
+      kind: "NUKE",
+      entry: "J",
+    } as any);
+    assert.equal(r.ok, false);
+  });
+
+  it("negative observed fees refuse and retain zero (no fabricated profit)", async () => {
+    const { revalidateFee } = await import("@polyroot/venue");
+    const r = revalidateFee(200, -50);
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.code, "FEE_BOUND_EXCEEDED");
+      assert.equal(r.feeToRetain, 0);
+    }
+  });
+
+  it("future-dated heartbeat records refuse as stale (clock-skew bound)", async () => {
+    const { reconcileHeartbeat } = await import("@polyroot/venue");
+    const r = reconcileHeartbeat(
+      {
+        heartbeatId: "h",
+        writerId: "w",
+        sequence: 1,
+        at: new Date(Date.now() + 3_600_000),
+        expectedCancelled: [],
+      },
+      { heartbeatId: "h", writerId: "w", sequence: 1, observedCancelled: [] },
+    );
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.equal(r.code, "HEARTBEAT_STALE");
+  });
+});

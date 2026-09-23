@@ -32,7 +32,7 @@ export interface HeartbeatRecord {
   writerId: string;
   /** Monotonic sequence per writer; replays/duplicates share it. */
   sequence: number;
-  at: Date;
+  at: Date | string;
   /** Order ids the writer expected cancelled as of this heartbeat. */
   expectedCancelled: string[];
 }
@@ -58,7 +58,7 @@ export type HeartbeatVerdict =
 export function reconcileHeartbeat(
   record: HeartbeatRecord,
   observation: HeartbeatObservation,
-  opts?: { maxAgeMs?: number; now?: Date },
+  opts?: { maxAgeMs?: number; maxClockSkewMs?: number; now?: Date },
 ): HeartbeatVerdict {
   const now = opts?.now ?? new Date();
   const maxAgeMs = opts?.maxAgeMs ?? 60_000;
@@ -83,11 +83,29 @@ export function reconcileHeartbeat(
       reason: `observation sequence ${observation.sequence} older than recorded ${record.sequence}`,
     };
   }
-  if (now.getTime() - record.at.getTime() > maxAgeMs) {
+  const recordAt = record.at instanceof Date ? record.at : new Date(record.at);
+  if (Number.isNaN(recordAt.getTime())) {
+    return {
+      ok: false,
+      code: "HEARTBEAT_STALE",
+      reason: "heartbeat record timestamp is invalid",
+    };
+  }
+  if (now.getTime() - recordAt.getTime() > maxAgeMs) {
     return {
       ok: false,
       code: "HEARTBEAT_STALE",
       reason: "heartbeat record expired; re-observe before reconciling",
+    };
+  }
+  // Adversarial fix (Phase 28): a record dated in the future (beyond clock
+  // skew) cannot be reconciled — its "evidence" postdates the observation.
+  const maxSkew = opts?.maxClockSkewMs ?? 5_000;
+  if (recordAt.getTime() - now.getTime() > maxSkew) {
+    return {
+      ok: false,
+      code: "HEARTBEAT_STALE",
+      reason: "heartbeat record is future-dated beyond clock skew",
     };
   }
   const observed = new Set(observation.observedCancelled);
@@ -144,6 +162,17 @@ export function revalidateFee(
       code: "FEE_BOUND_EXCEEDED",
       reason: "non-finite fee measurement; path blocked",
       feeToRetain: Number.isFinite(observedFee) ? observedFee : 0,
+    };
+  }
+  // Adversarial fix (Phase 28): a negative "fee" is not a cheap fill — it
+  // is a miscoded rebate flowing the wrong way. Costs are non-negative;
+  // rebates travel the incentive ledger, never the fee path.
+  if (quotedFeeBound < 0 || observedFee < 0) {
+    return {
+      ok: false,
+      code: "FEE_BOUND_EXCEEDED",
+      reason: "negative fee measurement; path blocked",
+      feeToRetain: observedFee < 0 ? 0 : observedFee,
     };
   }
   if (observedFee <= quotedFeeBound) {
