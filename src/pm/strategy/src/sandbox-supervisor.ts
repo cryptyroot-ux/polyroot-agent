@@ -20,8 +20,26 @@ interface SupervisorResponse {
   error?: string;
 }
 
-function writeLine(socket: Socket, msg: SupervisorResponse): void {
-  socket.write(JSON.stringify(msg) + "\n");
+/**
+ * Maximum bytes buffered per connection awaiting a newline. The parsed-code
+ * limit (CODE_TOO_LARGE) only applies AFTER a full line arrives — without
+ * this cap a client can grow `buffer` without bound by never sending `\n`.
+ */
+export const MAX_BUFFER_BYTES = 1_048_576;
+
+/**
+ * Best-effort single-line write. Returns false when the message was NOT
+ * sent (destroyed socket, failed write) so callers never throw on a dead
+ * peer — previously an uncaught ERR_STREAM_DESTROYED. Backpressure
+ * (`write()` returning false) is reported, not silently dropped.
+ */
+export function writeLine(socket: Socket, msg: SupervisorResponse): boolean {
+  if (socket.destroyed || !socket.writable) return false;
+  try {
+    return socket.write(JSON.stringify(msg) + "\n");
+  } catch {
+    return false;
+  }
 }
 
 export async function handleConnection(socket: Socket): Promise<void> {
@@ -30,6 +48,14 @@ export async function handleConnection(socket: Socket): Promise<void> {
 
   socket.on("data", (chunk: string) => {
     buffer += chunk;
+    // Fail-closed on buffer abuse: refuse, report, and drop the connection
+    // instead of growing memory without bound.
+    if (buffer.length > MAX_BUFFER_BYTES) {
+      writeLine(socket, { id: "unknown", error: "BUFFER_OVERFLOW" });
+      socket.destroy();
+      buffer = "";
+      return;
+    }
     let idx = buffer.indexOf("\n");
     while (idx >= 0) {
       const line = buffer.slice(0, idx).trim();

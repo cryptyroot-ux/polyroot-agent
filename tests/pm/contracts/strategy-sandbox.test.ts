@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { spawnStrategyWorker } from "@polyroot/strategy/src/sandbox-rpc";
+import { spawnStrategyWorker } from "@polyroot/strategy/sandbox-rpc";
 
 describe("Strategy Sandbox — Process Isolation", () => {
   it("strategy runs in isolated worker; no network/DB/shell access", async () => {

@@ -11,17 +11,17 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js"
     },
-    "./src/sandbox-rpc": {
+    "./sandbox-rpc": {
       "types": "./dist/sandbox-rpc.d.ts",
       "import": "./dist/sandbox-rpc.js",
       "require": "./dist/sandbox-rpc.js"
     },
-    "./src/sandbox-worker": {
+    "./sandbox-worker": {
       "types": "./dist/sandbox-worker.d.ts",
       "import": "./dist/sandbox-worker.js",
       "require": "./dist/sandbox-worker.js"
     },
-    "./src/sandbox-supervisor": {
+    "./sandbox-supervisor": {
       "types": "./dist/sandbox-supervisor.d.ts",
       "import": "./dist/sandbox-supervisor.js",
       "require": "./dist/sandbox-supervisor.js"
