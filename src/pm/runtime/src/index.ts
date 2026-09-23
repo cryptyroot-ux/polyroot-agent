@@ -8,6 +8,7 @@ export { G4AutonomousLoop, createG4Loop, type G4Mode, type G4LoopConfig, type G4
 export { G4Pipeline, createG4Pipeline, type G4PipelineMode, type G4PipelineConfig, type G4PipelineDeps, type G4PipelineInput, type G4PipelineResult, type G4PipelineMetrics } from "./g4-pipeline.js";
 export * from "./g4-core.js";
 export * from "./reality-gap.js";
-export { bootstrapAgent } from "./main.js";
+export * from "./micro-live-guard.js";
+export { bootstrapAgent, type BootstrapAgentOptions } from "./main.js";
 export { parseArgs, startAgent, main } from "./cli.js";
 export type { CLIConfig } from "./cli.js";
