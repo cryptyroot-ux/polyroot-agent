@@ -57,9 +57,15 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   return { mode, databaseUrl, kmsKeyId, kmsEndpoint: "", kmsRegion: "", once };
 }
 
+import { createSignerFromEnv } from "@polyroot/signer";
+import { PolymarketVenueAdapter } from "@polyroot/venue";
+
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
-  const agent = await bootstrapAgent(config.databaseUrl, config.mode);
+  const isLive = config.mode === "MICRO_LIVE" || config.mode === "LIVE";
+  const agent = await bootstrapAgent(config.databaseUrl, config.mode, isLive
+    ? { cryptoSigner: createSignerFromEnv(), venueAdapter: new PolymarketVenueAdapter({}) }
+    : {});
   const pipeline = agent.pipeline as unknown as {
     runContinuous: () => Promise<void>;
     processMarket: (input: { market_id: string; bid: number; ask: number }) => Promise<unknown>;

@@ -1,0 +1,25 @@
+{
+  "$schema": "polyroot-golden-fixture-v1",
+  "note": "Frozen relayer/session API shapes (No.4). Any drift fails the replay test until explicitly re-frozen here.",
+  "hmacGolden": {
+    "secret": "rlr-test-secret",
+    "body": "{\"op\":\"op_golden_001\",\"nonce\":7}",
+    "tag": "aec7ddc212cc245594c1cac97bf7038415e41abc6b2bcbe24f6c0395f4b5b0d2"
+  },
+  "relayerSubmitSequence": [
+    { "operationId": "op_golden_001", "nonce": 0 },
+    { "operationId": "op_golden_001", "nonce": 0 },
+    { "operationId": "op_golden_002", "nonce": 1 }
+  ],
+  "relayerExpected": [
+    { "duplicate": false, "attempts": 1 },
+    { "duplicate": true, "attempts": 2 },
+    { "duplicate": false, "attempts": 1 }
+  ],
+  "sessionGrant": {
+    "scopes": ["SIGN_ORDERS", "READ"],
+    "lifetimeMs": 600000,
+    "now": "2026-01-01T00:00:00.000Z",
+    "expectedExpiresAt": "2026-01-01T00:10:00.000Z"
+  }
+}
