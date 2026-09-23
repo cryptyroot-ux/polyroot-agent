@@ -21,6 +21,7 @@ export type { SubmitOutcome, VenueAdapter } from "./types.js";
 // Venue-mode gate, capability intersection, error taxonomy, throttling,
 // recovery (PM-VENUE-01..06)
 export * from "./policy.js";
+export * from "./execution-safety.js";
 export * from "./capability.js";
 export * from "./polymarket-adapter.js";
 

@@ -385,4 +385,5 @@ export class UniverseLog {
 
 export * from "@polyroot/domain";
 export * from "./live-feed.js";
+export * from "./frame-freshness.js";
 export * from "./graph.js";

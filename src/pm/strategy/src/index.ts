@@ -71,6 +71,19 @@ export {
 } from "./market-graph-relative-value-v1.js";
 
 export {
+  type StructuralCode,
+  type StructuralResult,
+  type ExclusivityClaim,
+  type ResidualCheck,
+  type ResidualVerdict,
+  type GroupCapInput,
+  type GroupCapVerdict,
+  proveGuaranteedPayout,
+  boundResidualExposure,
+  groupCapWithFallback,
+} from "./structural-safety.js";
+
+export {
   type IntegrityCode,
   type IntegrityResult,
   type HoldoutExposure,

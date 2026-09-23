@@ -719,6 +719,8 @@ export class PgCatalystBus {
   }
 }
 
+export * from "./catalyst-gate.js";
+
 /* ─── minor re-exports ───────────────────────────────────────────────── */
 
 export type {
