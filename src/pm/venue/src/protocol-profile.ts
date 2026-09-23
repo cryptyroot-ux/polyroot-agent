@@ -22,11 +22,11 @@ export type ProfileResolution =
 
 export interface AssetProfileInput {
   /** Protocol surface version claimed by the venue metadata. */
-  version?: string;
+  version?: string | undefined;
   /** Asset kind from venue metadata (e.g. "CTF", "POLY_V2", "ERC1155"). */
-  assetKind?: string;
+  assetKind?: string | undefined;
   /** Structured PolyV2 asset identifier, when present. */
-  assetId?: string;
+  assetId?: string | undefined;
 }
 
 function norm(value: string | undefined): string {

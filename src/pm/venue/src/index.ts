@@ -23,6 +23,8 @@ export type { SubmitOutcome, VenueAdapter } from "./types.js";
 export * from "./policy.js";
 export * from "./execution-safety.js";
 export * from "./protocol-profile.js";
+export * from "./heartbeat-route.js";
+export * from "./redeem-target.js";
 export * from "./capability.js";
 export * from "./polymarket-adapter.js";
 

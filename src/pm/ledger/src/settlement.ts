@@ -19,7 +19,13 @@
  * accept, keyed by the same idempotency identities.
  */
 
-export type SettlementStatus = "OPEN" | "MATCHED" | "CONFIRMED" | "FAILED";
+export type SettlementStatus =
+  | "OPEN"
+  | "MATCHED"
+  | "MINED"
+  | "RETRYING"
+  | "CONFIRMED"
+  | "FAILED";
 
 export interface SettlementState {
   status: SettlementStatus;
@@ -39,21 +45,27 @@ export type SettlementResult =
 
 const VALID_TRANSITIONS: Record<SettlementStatus, SettlementStatus[]> = {
   OPEN: ["MATCHED"],
-  MATCHED: ["CONFIRMED", "FAILED"],
+  MATCHED: ["MINED", "CONFIRMED", "FAILED"],
+  MINED: ["CONFIRMED", "FAILED", "RETRYING"],
+  RETRYING: ["MINED", "CONFIRMED", "FAILED"],
   CONFIRMED: [],
   FAILED: [],
 };
 
 export function applySettlementEvent(
   state: SettlementState,
-  event: { kind: "MATCH" | "CONFIRM" | "FAIL"; entry: string },
+  event: { kind: "MATCH" | "MINE" | "RETRY" | "CONFIRM" | "FAIL"; entry: string },
 ): SettlementResult {
   const target: SettlementStatus =
     event.kind === "MATCH"
       ? "MATCHED"
-      : event.kind === "CONFIRM"
-        ? "CONFIRMED"
-        : "FAILED";
+      : event.kind === "MINE"
+        ? "MINED"
+        : event.kind === "RETRY"
+          ? "RETRYING"
+          : event.kind === "CONFIRM"
+            ? "CONFIRMED"
+            : "FAILED";
   if (!VALID_TRANSITIONS[state.status].includes(target)) {
     return {
       ok: false,
@@ -77,6 +89,34 @@ export function applySettlementEvent(
       spendable: target === "CONFIRMED",
     },
     note: target === "FAILED" ? "compensating entry posted" : `${target} recorded`,
+  };
+}
+
+/**
+ * CT-26 reorg/correction: a chain reorganization (or venue correction)
+ * that invalidates a CONFIRMED settlement posts an explicit correction
+ * pair and returns the settlement to FAILED. Reorgs are the ONLY path
+ * out of CONFIRMED — there is no silent rewrite of a confirmed posting.
+ */
+export function applyReorgCorrection(
+  state: SettlementState,
+  entry: string,
+): SettlementResult {
+  if (state.status !== "CONFIRMED") {
+    return {
+      ok: false,
+      code: "SETTLEMENT_INVALID_TRANSITION",
+      reason: `reorg correction applies only to CONFIRMED, not ${state.status}`,
+    };
+  }
+  return {
+    ok: true,
+    state: {
+      status: "FAILED",
+      journal: [...state.journal, entry, `REORG_CORRECT:${entry}`],
+      spendable: false,
+    },
+    note: "reorg correction posted; settlement no longer spendable",
   };
 }
 
