@@ -450,6 +450,20 @@ export {
   type CredentialBinding,
 } from "./credential-auth.js";
 
+// EIP-712 core + ERC-7739 nesting (No.2, CT-06 offline half)
+export {
+  encodeField,
+  encodeType,
+  typeHash,
+  hashStruct,
+  signingDigest,
+  hashNested1271,
+  type Eip712Field,
+  type Eip712FieldType,
+  type Nested1271Input,
+  type Nested1271Result,
+} from "./eip712.js";
+
 // Session scope contracts (CT-31, opt-in beta)
 export {
   grantSessionScope,
