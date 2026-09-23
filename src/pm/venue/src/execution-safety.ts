@@ -161,6 +161,66 @@ export function revalidateFee(
   };
 }
 
+/* ─── CT-16: GTC/GTD expiration ──────────────────────────────────── */
+
+export type OrderTimeInForce = "GTC" | "GTD" | "FOK" | "FAK";
+
+export type ExpiryVerdict =
+  | { ok: true; note: string }
+  | { ok: false; code: "ORDER_EXPIRED" | "GTD_TOO_SOON"; reason: string };
+
+/**
+ * CT-16: time-in-force deadlines. GTD requires a future expiry at least
+ * `minFutureMs` out (covers the venue's security offset + minimum future
+ * expiry); GTC/FOK/FAK carry no venue expiry. An already-expired deadline
+ * refuses — there is no silent fallback to GTC to make a request acceptable.
+ */
+export function validateOrderExpiry(input: {
+  tif: OrderTimeInForce;
+  expiresAt?: Date | string | null;
+  now?: Date;
+  minFutureMs?: number;
+}): ExpiryVerdict {
+  const now = input.now ?? new Date();
+  if (input.tif === "GTC" || input.tif === "FOK" || input.tif === "FAK") {
+    return { ok: true, note: `${input.tif} carries no venue expiry` };
+  }
+  if (input.expiresAt == null) {
+    return {
+      ok: false,
+      code: "ORDER_EXPIRED",
+      reason: "GTD requires an explicit future expiry",
+    };
+  }
+  const expires =
+    input.expiresAt instanceof Date
+      ? input.expiresAt
+      : new Date(input.expiresAt);
+  if (Number.isNaN(expires.getTime())) {
+    return {
+      ok: false,
+      code: "ORDER_EXPIRED",
+      reason: "GTD expiry is not a valid timestamp",
+    };
+  }
+  const minFutureMs = input.minFutureMs ?? 180_000;
+  if (expires.getTime() <= now.getTime()) {
+    return {
+      ok: false,
+      code: "ORDER_EXPIRED",
+      reason: "GTD expiry is already past",
+    };
+  }
+  if (expires.getTime() - now.getTime() < minFutureMs) {
+    return {
+      ok: false,
+      code: "GTD_TOO_SOON",
+      reason: `GTD expiry must be at least ${minFutureMs}ms in the future`,
+    };
+  }
+  return { ok: true, note: "GTD expiry satisfies minimum future bound" };
+}
+
 /* ─── FT-25: tick/minimum revalidation ─────────────────────────────── */
 
 export interface TickRule {
