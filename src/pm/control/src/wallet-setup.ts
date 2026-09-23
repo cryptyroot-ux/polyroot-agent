@@ -273,3 +273,131 @@ export function checkRelayerNonce(
   }
   return { ok: true, note: "nonce advances by exactly one" };
 }
+
+/* ─── Phase 26: wallet lifecycle (Blueprint §5) ──────────────────────── */
+
+export type WalletLifecycleState =
+  | "DISCOVERING"
+  | "EXISTING"
+  | "ABSENT"
+  | "SETUP_AUTHORIZED"
+  | "CREATING"
+  | "DEPLOYED"
+  | "APPROVAL_PENDING"
+  | "READY"
+  | "UNKNOWN"
+  | "FAILED"
+  | "BLOCKED";
+
+export type WalletLifecycleEvent =
+  | { kind: "DISCOVERED"; exists: boolean }
+  | { kind: "AUTHORIZE_SETUP"; ownerAuth: string }
+  | { kind: "CREATED"; txReceipt: string }
+  | { kind: "DEPLOYED"; confirmationReceipt: string }
+  | { kind: "APPROVALS_SUBMITTED" }
+  | { kind: "APPROVALS_VERIFIED" }
+  | { kind: "NETWORK_FAILURE" }
+  | { kind: "REDISCOVER" }
+  | { kind: "FAIL"; reason: string }
+  | { kind: "BLOCK"; reason: string }
+  | { kind: "RESET" };
+
+export type LifecycleVerdict =
+  | { ok: true; state: WalletLifecycleState; note: string }
+  | { ok: false; code: "ILLEGAL_LIFECYCLE_TRANSITION"; reason: string };
+
+/**
+ * Phase 26: wallet lifecycle state machine (Blueprint §5).
+ *
+ *   DISCOVERING → EXISTING | ABSENT → SETUP_AUTHORIZED → CREATING →
+ *   DEPLOYED → APPROVAL_PENDING → READY
+ *
+ * Fail-closed properties:
+ * - Creation/deployment/approval steps require their receipts; a missing
+ *   receipt refuses instead of advancing on assumption.
+ * - UNKNOWN/FAILED/BLOCKED can surface on ANY network transition; only
+ *   REDISCOVER (from UNKNOWN) and RESET (from FAILED) leave them — BLOCKED
+ *   is terminal and needs a fresh lifecycle.
+ * - Setup authorization requires a non-empty owner auth token.
+ */
+export function advanceWalletLifecycle(
+  state: WalletLifecycleState,
+  event: WalletLifecycleEvent,
+): LifecycleVerdict {
+  const bad = (reason: string): LifecycleVerdict => ({
+    ok: false,
+    code: "ILLEGAL_LIFECYCLE_TRANSITION",
+    reason: `${state} + ${event.kind}: ${reason}`,
+  });
+
+  // Terminal + failure states first (valid from ANY non-terminal state).
+  if (event.kind === "BLOCK") {
+    if (state === "BLOCKED") return bad("already blocked");
+    return { ok: true, state: "BLOCKED", note: `blocked: ${event.reason}` };
+  }
+  if (event.kind === "FAIL") {
+    if (state === "BLOCKED") return bad("blocked is terminal");
+    return { ok: true, state: "FAILED", note: `failed: ${event.reason}` };
+  }
+  if (event.kind === "NETWORK_FAILURE") {
+    if (state === "BLOCKED" || state === "FAILED" || state === "READY") {
+      return bad("network failure does not apply in a settled state");
+    }
+    return { ok: true, state: "UNKNOWN", note: "network transition failed" };
+  }
+  if (event.kind === "REDISCOVER") {
+    if (state !== "UNKNOWN") return bad("rediscover only from UNKNOWN");
+    return { ok: true, state: "DISCOVERING", note: "re-running discovery" };
+  }
+  if (event.kind === "RESET") {
+    if (state !== "FAILED") return bad("reset only from FAILED");
+    return { ok: true, state: "DISCOVERING", note: "restarting lifecycle" };
+  }
+  if (state === "BLOCKED" || state === "FAILED" || state === "UNKNOWN") {
+    return bad("settled state accepts only its exit event");
+  }
+
+  switch (state) {
+    case "DISCOVERING":
+      if (event.kind !== "DISCOVERED") return bad("expected discovery result");
+      return event.exists
+        ? { ok: true, state: "EXISTING", note: "wallet exists" }
+        : { ok: true, state: "ABSENT", note: "no wallet deployed" };
+    case "EXISTING":
+    case "ABSENT":
+      if (event.kind !== "AUTHORIZE_SETUP")
+        return bad("expected owner setup authorization");
+      if (!event.ownerAuth) {
+        return {
+          ok: false,
+          code: "ILLEGAL_LIFECYCLE_TRANSITION",
+          reason: "setup requires explicit owner authorization",
+        };
+      }
+      return { ok: true, state: "SETUP_AUTHORIZED", note: "owner authorized setup" };
+    case "SETUP_AUTHORIZED":
+      if (event.kind !== "CREATED" || !event.txReceipt) {
+        return bad("creation requires a transaction receipt");
+      }
+      return { ok: true, state: "CREATING", note: "creation submitted" };
+    case "CREATING":
+      if (event.kind !== "DEPLOYED" || !event.confirmationReceipt) {
+        return bad("deployment requires a confirmation receipt");
+      }
+      return { ok: true, state: "DEPLOYED", note: "wallet deployed" };
+    case "DEPLOYED":
+      if (event.kind !== "APPROVALS_SUBMITTED") {
+        return bad("expected approvals submission");
+      }
+      return { ok: true, state: "APPROVAL_PENDING", note: "approvals submitted" };
+    case "APPROVAL_PENDING":
+      if (event.kind !== "APPROVALS_VERIFIED") {
+        return bad("expected approvals verification");
+      }
+      return { ok: true, state: "READY", note: "wallet ready for mandate binding" };
+    case "READY":
+      return bad("READY is terminal for setup; bind a mandate to proceed");
+    default:
+      return bad("unknown state");
+  }
+}
