@@ -138,6 +138,7 @@ export interface CreateG4CoreOptions {
   now: () => Date;
   forecast: (market: { market_id: string; bid: number; ask: number }) => Promise<number | null>;
   sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number;
+  observability?: G4CoreObservability;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -153,6 +154,7 @@ export function createG4Core(options: CreateG4CoreOptions) {
     venueMode: options.venueMode,
     leaseEpoch: options.leaseEpoch,
     now: options.now,
+    ...(options.observability ? { observability: options.observability } : {}),
   };
   return {
     config: options.config,
@@ -235,6 +237,7 @@ export async function executeG4Step(
   } = input;
   void _forecastObj;
   const { config, deps } = core;
+  core.deps.observability?.emitStepStart?.(input, config.mode);
 
   // 1. Check financial gate
   const gate = computeFinancialGate(
@@ -242,8 +245,20 @@ export async function executeG4Step(
     deps.venueMode,
     config.minEdgeAfterCost,
   );
+  core.deps.observability?.emitFinancialGate?.(gate, config.mode, deps.venueMode());
   if (gate !== "ALLOW") {
-    core.deps.observability?.emitFinancialGate?.(gate, config.mode, deps.venueMode());
+    core.deps.observability?.emitStepComplete?.(input, {
+      market_id,
+      decision: "NO_TRADE",
+      reason: `Financial gate: ${gate}`,
+      outcome: undefined,
+      pnl: 0,
+      fill: undefined,
+      orderId: undefined,
+      permitId: undefined,
+      p: undefined,
+      size: undefined,
+    } as G4CoreResult);
     return {
       market_id,
       decision: "NO_TRADE",
@@ -438,6 +453,13 @@ export async function executeG4Step(
     }
   }
 
+  let decision: G4CoreResult["decision"] = "NO_TRADE";
+  if (fill) {
+    decision = p > 0.5 ? "BUY" : "SELL";
+  } else if ((config.mode === "MICRO_LIVE" || config.mode === "LIVE") && (outcome === "SUBMITTED" || outcome === "NEEDS_RECONCILIATION")) {
+    decision = p > 0.5 ? "BUY" : "SELL";
+  }
+
   // Calculate PnL
   const pnl = fill
     ? (fill.status === "FILLED" || fill.status === "PARTIAL")
@@ -445,9 +467,9 @@ export async function executeG4Step(
       : 0
     : 0;
 
-  return {
+  const res: G4CoreResult = {
     market_id,
-    decision: fill ? (p > 0.5 ? "BUY" : "SELL") : "NO_TRADE",
+    decision,
     reason: fill ? undefined : "execution failed",
     fill,
     pnl,
@@ -457,4 +479,6 @@ export async function executeG4Step(
     p,
     size,
   };
+  deps.observability?.emitStepComplete?.(input, res);
+  return res;
 }

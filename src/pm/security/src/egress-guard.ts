@@ -23,6 +23,14 @@ export interface EgressCheckInput {
 
 /** IP address utilities for private/link-local/metadata range detection. */
 function ipToNumber(ip: string): bigint | null {
+  // Handle IPv6-mapped IPv4 addresses (::ffff:w.x.y.z) - extract the IPv4 portion for range validation
+  if (ip.startsWith(":")) {
+    const match = ip.match(/:ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (match && match[1]) {
+      return ipToNumber(match[1]);
+    }
+  }
+
   if (ip.includes(".")) {
     const parts = ip.split(".");
     if (parts.length !== 4) return null;

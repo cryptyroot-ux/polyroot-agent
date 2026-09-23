@@ -83,6 +83,8 @@ export interface AdaptiveTunerConfig {
   require_significance: boolean;
   /** Significance threshold (p-value). */
   significance_threshold: number;
+  /** Maximum number of parameter entries in state.values. */
+  max_entries?: number;
 }
 
 /** Default adaptive tuner configuration. */
@@ -91,6 +93,7 @@ export const DEFAULT_ADAPTIVE_TUNER_CONFIG: AdaptiveTunerConfig = {
   max_pending_proposals: 5,
   require_significance: true,
   significance_threshold: 0.05,
+  max_entries: 100,
 };
 
 /**
@@ -118,6 +121,10 @@ export async function proposeAdaptation(
 
   if (pending_proposals >= config.max_pending_proposals) {
     return { ok: false, code: "TOO_MANY_PENDING", reason: "max pending proposals reached" };
+  }
+
+  if (config.max_entries !== undefined && Object.keys(current_state.values).length > config.max_entries) {
+    return { ok: false, code: "TOO_MANY_ENTRIES", reason: `state entries count ${Object.keys(current_state.values).length} exceeds max_entries cap ${config.max_entries}` };
   }
 
   const proposals: AdaptationProposal[] = [];

@@ -64,7 +64,17 @@ export class G4Pipeline {
   constructor(config: G4PipelineConfig, deps: G4PipelineDeps) {
     const defaults = getDefaultModeConfig(config.mode, config);
     this.config = defaults as Required<G4PipelineConfig>;
-    this.deps = deps;
+    this.deps = {
+      ...deps,
+      observability: {
+        emitStepStart: deps.observability?.emitStepStart ?? (() => {}),
+        emitStepComplete: deps.observability?.emitStepComplete ?? (() => {}),
+        emitFinancialGate: deps.observability?.emitFinancialGate ?? (() => {}),
+        emitError: deps.observability?.emitError ?? (() => {}),
+        emitMetrics: deps.observability?.emitMetrics ?? (() => {}),
+        emitModeTransition: deps.observability?.emitModeTransition ?? (() => {}),
+      },
+    };
     this.metrics = {
       totalOrders: 0,
       filledOrders: 0,

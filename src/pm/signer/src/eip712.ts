@@ -50,37 +50,56 @@ function toBigInt(value: string | number | bigint | boolean): bigint {
 
 /** ABI-encode one atomic value to a 32-byte word (EIP-712 encodeData). */
 export function encodeField(type: Eip712FieldType, value: Eip712Field["value"]): Buffer {
+  // Built‑in stricter runtime guards – ensure the supplied value truly matches the declared type
   switch (type) {
     case "address": {
-      if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
+      if (typeof value !== "string") {
+        throw new Error("EIP712: address value must be a string");
+      }
+      if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
         throw new Error("EIP712: address must be 0x + 40 hex chars");
       }
       return leftPad32(Buffer.from(value.slice(2), "hex"));
     }
     case "uint256": {
+      if (typeof value !== "bigint" && typeof value !== "number" && typeof value !== "string") {
+        throw new Error("EIP712: uint256 value must be bigint, number, or numeric string");
+      }
       const n = toBigInt(value);
       if (n < 0n || n >= 2n ** 256n) throw new Error("EIP712: uint256 out of range");
       return leftPad32(Buffer.from(n.toString(16).padStart(64, "0"), "hex"));
     }
     case "bytes32": {
-      if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+      if (typeof value !== "string") {
+        throw new Error("EIP712: bytes32 value must be a string");
+      }
+      if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
         throw new Error("EIP712: bytes32 must be 0x + 64 hex chars");
       }
       return Buffer.from(value.slice(2), "hex");
     }
-    case "string":
+    case "string": {
+      if (typeof value !== "string") {
+        throw new Error("EIP712: string value must be a string");
+      }
+      return keccak256(Buffer.from(value, "utf8"));
+    }
     case "bytes": {
-      const bytes =
-        typeof value === "string" && value.startsWith("0x") && type === "bytes"
-          ? Buffer.from(value.slice(2), "hex")
-          : Buffer.from(String(value), "utf8");
+      if (typeof value !== "string") {
+        throw new Error("EIP712: bytes value must be a hex string");
+      }
+      const bytes = value.startsWith("0x") ? Buffer.from(value.slice(2), "hex") : Buffer.from(value, "utf8");
       return keccak256(bytes);
     }
     case "bool": {
-      if (typeof value !== "boolean") throw new Error("EIP712: bool must be boolean");
+      if (typeof value !== "boolean") {
+        throw new Error("EIP712: bool must be boolean");
+      }
       return leftPad32(Buffer.from(value ? "01" : "00", "hex"));
     }
   }
+  // Unreachable – TypeScript exhaustive check
+  throw new Error("EIP712: unknown field type");
 }
 
 /** encodeType string, e.g. `Order(address signer,uint256 amount)`. */

@@ -30,8 +30,18 @@ export const KILL_LEVELS: readonly KillLevel[] = [
   "FLATTEN",
 ];
 
+/** Strict validation for KillLevel strings. */
+export function validateKillLevel(level: unknown): KillLevel {
+  if (typeof level !== "string" || !KILL_LEVELS.includes(level as KillLevel)) {
+    throw new Error(`KillSwitch: invalid kill level "${level}"`);
+  }
+  return level as KillLevel;
+}
+
 /** Monotonic comparison: heavier level >= lighter level. */
 export function levelAtLeast(a: KillLevel, b: KillLevel): boolean {
+  validateKillLevel(a);
+  validateKillLevel(b);
   return KILL_LEVELS.indexOf(a) >= KILL_LEVELS.indexOf(b);
 }
 

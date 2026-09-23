@@ -66,7 +66,9 @@ export async function handleConnection(socket: Socket): Promise<void> {
     }
   });
 
-  socket.on("error", () => undefined);
+  socket.on("error", () => {
+    if (!socket.destroyed) socket.destroy();
+  });
 }
 
 async function handleLine(socket: Socket, line: string): Promise<void> {

@@ -51,7 +51,8 @@ const DEFAULT_CONFIG: Required<LiveFeedConfig> = {
   chainId: 137,
 };
 
-/* ─── Types ──────────────────────────────────────────────────────────────── */
+const MAX_RECONNECT_ATTEMPTS = 5;
+const MAX_RECONNECT_DELAY_MS = 60_000;
 
 export interface MarketMetadata {
   market_id: string;
@@ -89,11 +90,12 @@ export class PolymarketLiveFeed {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private metadataPollTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly orderBooks = new Map<string, OrderBook>();
+  private reconnectAttempts = 0;
   private readonly feeGate = new FeeGate();
   private readonly rulesRegistry = new SettlementRulesRegistry();
   private readonly universeLog = new UniverseLog();
   private readonly seenMarketIds = new Set<string>();
+  private readonly orderBooks = new Map<string, OrderBook>();
 
   private connecting = false;
   private connected = false;
@@ -196,6 +198,7 @@ export class PolymarketLiveFeed {
 
       this.ws.onopen = () => {
         this.connected = true;
+        this.reconnectAttempts = 0;
         this.callbacks.onConnect?.();
 
         if (this.config.marketIds.length > 0) {
@@ -239,8 +242,12 @@ export class PolymarketLiveFeed {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
-
+    if (this.reconnectTimer || this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
+    const delay = Math.min(
+      this.config.reconnectIntervalMs * 2 ** this.reconnectAttempts,
+      MAX_RECONNECT_DELAY_MS,
+    );
+    this.reconnectAttempts++;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (!this.connected && !this.connecting) {
@@ -248,7 +255,7 @@ export class PolymarketLiveFeed {
           this.callbacks.onError?.(err, "reconnect"),
         );
       }
-    }, this.config.reconnectIntervalMs);
+    }, delay);
   }
 
   private subscribeToMarket(marketId: string): void {

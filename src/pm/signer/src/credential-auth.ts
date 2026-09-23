@@ -12,11 +12,49 @@
 
 import { createHmac, timingSafeEqual } from "crypto";
 
-export type CredentialAuthCode = "HMAC_MISMATCH" | "SIGNER_NOT_BOUND";
+/**
+ * In-memory token bucket rate limiter for credential authentication requests.
+ */
+interface RateBucket {
+  tokens: number;
+  lastRefill: number;
+}
+
+const rateBuckets = new Map<string, RateBucket>();
+const RATE_LIMIT_CAPACITY = 60; // 60 requests per window
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute window
+
+export type CredentialAuthCode = "HMAC_MISMATCH" | "SIGNER_NOT_BOUND" | "RATE_LIMIT_EXCEEDED";
 
 export type CredentialAuthResult =
   | { ok: true; note: string }
   | { ok: false; code: CredentialAuthCode; reason: string };
+
+/**
+ * Check and consume a rate limit token for a given credential or key identifier.
+ */
+export function checkRateLimit(key: string, now: number = Date.now()): boolean {
+  if (!key) return true;
+  let bucket = rateBuckets.get(key);
+  if (!bucket) {
+    bucket = { tokens: RATE_LIMIT_CAPACITY, lastRefill: now };
+    rateBuckets.set(key, bucket);
+  }
+
+  // Refill tokens based on elapsed time
+  const elapsed = now - bucket.lastRefill;
+  if (elapsed > RATE_LIMIT_WINDOW_MS) {
+    bucket.tokens = RATE_LIMIT_CAPACITY;
+    bucket.lastRefill = now;
+  }
+
+  if (bucket.tokens <= 0) {
+    return false;
+  }
+
+  bucket.tokens -= 1;
+  return true;
+}
 
 /**
  * Verify a typed request body against its HMAC-SHA256 tag. Comparison is
@@ -26,6 +64,7 @@ export function verifyBodyHmac(
   secret: string,
   body: string,
   presentedHex: string,
+  options?: { rateLimitKey?: string },
 ): CredentialAuthResult {
   if (!secret || !body || !presentedHex) {
     return {
@@ -34,6 +73,15 @@ export function verifyBodyHmac(
       reason: "secret, body and tag are all required",
     };
   }
+  // Rate limit check: only if a key is provided
+  if (options?.rateLimitKey && !checkRateLimit(options.rateLimitKey)) {
+    return {
+      ok: false,
+      code: "RATE_LIMIT_EXCEEDED",
+      reason: "rate limit exceeded",
+    };
+  }
+
   let presented: Buffer;
   try {
     presented = Buffer.from(presentedHex, "hex");
@@ -75,12 +123,20 @@ export interface CredentialBinding {
 export function checkCredentialBinding(
   credential: CredentialBinding,
   requestSignerAddress: string,
+  options?: { rateLimitKey?: string },
 ): CredentialAuthResult {
   if (!credential.credentialId || !credential.boundSignerAddress) {
     return {
       ok: false,
       code: "SIGNER_NOT_BOUND",
       reason: "credential binding incomplete",
+    };
+  }
+  if (options?.rateLimitKey && !checkRateLimit(options.rateLimitKey)) {
+    return {
+      ok: false,
+      code: "RATE_LIMIT_EXCEEDED",
+      reason: "rate limit exceeded",
     };
   }
   if (
