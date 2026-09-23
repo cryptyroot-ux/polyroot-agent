@@ -80,7 +80,15 @@ describe("Take-over audit: socket hardening (#8 buffer cap, #9 writeLine guard)"
       "data",
       JSON.stringify({ id: 1, code: "return 1" }) + "\n",
     );
-    await new Promise((r) => setTimeout(r, 200));
+    // Poll for the reply instead of a fixed sleep: worker spawn time
+    // varies under parallel-suite load; a fixed timeout flakes.
+    const deadline = Date.now() + 10_000;
+    while (
+      !socket.written.join("").includes('"result":1') &&
+      Date.now() < deadline
+    ) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
     assert.equal(socket.destroyCalled, false);
     assert.match(socket.written.join(""), /"result":1/);
   });

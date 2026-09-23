@@ -146,3 +146,61 @@ export function planCompromiseResponse(
   );
   return plan;
 }
+
+/* ─── CT-30: revocation receipt tracking (PM-SEC-08) ─────────────────── */
+
+export type RevocationDomain = "api" | "session" | "approval";
+export type RevocationState = "PENDING" | "REVOKED" | "FAILED";
+
+export interface RevocationTracker {
+  domains: Record<RevocationDomain, RevocationState>;
+  /** Open orders that must remain visible until venue-confirmed closed. */
+  openOrders: string[];
+}
+
+export function initRevocationTracker(openOrders: string[] = []): RevocationTracker {
+  return {
+    domains: { api: "PENDING", session: "PENDING", approval: "PENDING" },
+    openOrders: [...openOrders],
+  };
+}
+
+export type RevocationMarkResult =
+  | { ok: true; tracker: RevocationTracker }
+  | { ok: false; code: "UNKNOWN_DOMAIN"; reason: string };
+
+/**
+ * CT-30: record a revocation receipt per domain. Revoking the API key does
+ * NOT auto-revoke sessions or approvals — each domain completes on its own
+ * receipt. A FAILED receipt stays failed (retry explicitly); open orders
+ * remain listed regardless of revocation progress.
+ */
+export function markRevoked(
+  tracker: RevocationTracker,
+  domain: string,
+  revoked: boolean,
+): RevocationMarkResult {
+  if (domain !== "api" && domain !== "session" && domain !== "approval") {
+    return {
+      ok: false,
+      code: "UNKNOWN_DOMAIN",
+      reason: `unknown revocation domain: ${domain}`,
+    };
+  }
+  return {
+    ok: true,
+    tracker: {
+      domains: { ...tracker.domains, [domain]: revoked ? "REVOKED" : "FAILED" },
+      openOrders: [...tracker.openOrders],
+    },
+  };
+}
+
+/** Fully revoked only when API, session AND approval are all REVOKED. */
+export function isFullyRevoked(tracker: RevocationTracker): boolean {
+  return (
+    tracker.domains.api === "REVOKED" &&
+    tracker.domains.session === "REVOKED" &&
+    tracker.domains.approval === "REVOKED"
+  );
+}

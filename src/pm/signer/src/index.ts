@@ -450,6 +450,16 @@ export {
   type CredentialBinding,
 } from "./credential-auth.js";
 
+// Session scope contracts (CT-31, opt-in beta)
+export {
+  grantSessionScope,
+  checkRevocationFinality,
+  MAX_SESSION_LIFETIME_MS,
+  type SessionScope,
+  type SessionScopeResult,
+  type RevocationFinality,
+} from "./session-scope.js";
+
 // Wallet mapping contracts (CT-04/05/06, G0 half)
 export {
   validateWalletMapping,
