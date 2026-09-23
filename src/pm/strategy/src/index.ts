@@ -70,6 +70,22 @@ export {
   MarketGraphRelativeValueV1,
 } from "./market-graph-relative-value-v1.js";
 
+export {
+  type IntegrityCode,
+  type IntegrityResult,
+  type HoldoutExposure,
+  type RetuneProposal,
+  type HoldoutVerdict,
+  type LineageSegment,
+  type CalibrationState,
+  type LineageDriftVerdict,
+  auditDenominator,
+  checkHoldoutReuse,
+  segmentOnLineageDrift,
+  RefPinRegistry,
+  verifyReplayHashes,
+} from "./research-integrity.js";
+
 /* ─── PM-STR-01: forecast-to-intent mapping ──────────────────────────── */
 
 /**
