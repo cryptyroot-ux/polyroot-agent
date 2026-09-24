@@ -1,6 +1,6 @@
 # PolyRoot Public API Reference
 
-This document describes the public API surface of PolyRoot Agent, including configuration, runtime modes, gateway endpoints, and integration points for developers and operators.
+This document describes the public API surface of PolyRoot Agent, including configuration, runtime modes, health/metrics endpoints, and integration points for developers and operators.
 
 ---
 
@@ -8,7 +8,7 @@ This document describes the public API surface of PolyRoot Agent, including conf
 1. [Core Concepts](#core-concepts)
 2. [Runtime Modes](#runtime-modes)
 3. [Configuration](#configuration)
-4. [Gateway API](#gateway-api)
+4. [HTTP Surface](#http-surface)
 5. [Executor Interface](#executor-interface)
 6. [Observability](#observability)
 7. [Deployment Modes](#deployment-modes)
@@ -162,7 +162,7 @@ http://<host>:9090   # host/port via POLYROOT_METRICS_HOST / POLYROOT_METRICS_PO
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/healthz` | GET | Public | Liveness probe — `{"status":"ok","uptime_s":N}`. Used by the Dockerfile HEALTHCHECK. |
-| `/metrics` | GET | Bearer owner key | Prometheus exposition (`POLYROOT_METRICS_OWNER_KEY`). Unset key = endpoint disabled. |
+| `/metrics` | GET | Bearer owner key | Prometheus exposition (`POLYROOT_METRICS_OWNER_KEY`). Unset key or bad Bearer = `401`; the endpoint is disabled without a configured key. |
 
 ### Authentication
 - `/metrics` requires `Authorization: Bearer <POLYROOT_METRICS_OWNER_KEY>`,
@@ -322,36 +322,16 @@ Venue-specific errors are normalized:
 
 ## Integration Examples
 
-### Submitting an Intent (Node.js)
-```typescript
-import fetch from "node-fetch";
-
-const INTENT: TradeIntent = {
-  marketId: "mkt_0xabc123",
-  outcomeId: "yes",
-  side: "BUY",
-  size: 500000,      // 0.5 USDC
-  maxPrice: 650000,  // 0.65 probability
-  orderType: "LIMIT",
-  meta: { strategy: "evidence_directional_v2" }
-};
-
-const response = await fetch("http://localhost:3000/intents", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${process.env.GATEWAY_API_TOKEN}`
-  },
-  body: JSON.stringify(INTENT)
-});
-
-const result = await response.json();
-console.log("Intent submitted:", result.intentId);
+### Check liveness
+```bash
+curl http://127.0.0.1:9090/healthz
 ```
 
-### Checking Readiness for Promotion
+### Read Prometheus metrics
 ```bash
-curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/runtime/status | jq '.promotionReady'
+curl \
+  -H "Authorization: Bearer $POLYROOT_METRICS_OWNER_KEY" \
+  http://127.0.0.1:9090/metrics
 ```
 
 ---
@@ -359,7 +339,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/runtime/status | jq
 ## Versioning & Compatibility
 - **SemVer** via Changesets (`@changesets/cli`).
 - Breaking changes only in major versions.
-- Public API surface: Gateway endpoints, `TradeIntent` schema, `VenueAdapter` interface, error codes.
+- Public API surface: `/healthz`, `/metrics`, `TradeIntent` schema, `VenueAdapter` interface, error codes.
 - Internal packages (`@polyroot/*`) are private and not semver-guaranteed.
 
 ---

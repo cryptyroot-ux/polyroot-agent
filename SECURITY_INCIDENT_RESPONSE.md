@@ -61,4 +61,4 @@ This runbook defines the process for detecting, responding to, and recovering fr
 ## 6. References
 
 - [SECURITY.md](../SECURITY.md)
-- [GitHub Security Advisories](https://github.com/your-org/polyroot-agent/security/advisories)
+- [GitHub Security Advisories](https://github.com/cryptyroot-ux/polyroot-agent/security/advisories)

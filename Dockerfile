@@ -54,7 +54,7 @@ RUN npm ci --omit=dev --ignore-scripts
 USER nodejs
 
 # Health check against the agent's public /healthz endpoint.
-# (Requires POLYROOT_METRICS_OWNER_KEY to be set so the metrics server runs.)
+# POLYROOT_METRICS_OWNER_KEY is optional; an unset key disables /metrics only.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:9090/healthz', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 

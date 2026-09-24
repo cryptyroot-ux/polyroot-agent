@@ -270,7 +270,7 @@ docker run -d --name postgres -e POSTGRES_USER=polyroot -e POSTGRES_PASSWORD=sec
 
 ## Configuration Reference
 
-See [`docs/PUBLIC_API.md`](docs/PUBLIC_API.md) for full API reference, runtime modes, observability, and integration examples.
+See [`docs/PUBLIC_API.md`](docs/PUBLIC_API.md) for full API reference, runtime modes, and observability.
 
 ### Environment Variables (`.env`)
 
@@ -284,7 +284,7 @@ See [`docs/PUBLIC_API.md`](docs/PUBLIC_API.md) for full API reference, runtime m
 | `NODE_ENV`                           | `development` \| `production`                     | `production`                                                    |
 | `LOG_LEVEL`                          | `debug` \| `info` \| `warn` \| `error`            | `info`                                                          |
 | `RUNTIME_MODE`                       | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE`     | `PAPER`                                                         |
-| `POLYROOT_METRICS_OWNER_KEY`         | Bearer key for `GET /metrics` (`/healthz` public) | _(unset = endpoint disabled)_                                   |
+| `POLYROOT_METRICS_OWNER_KEY`         | Bearer key for `GET /metrics` (`/healthz` public) | _(unset = `/metrics` disabled)_                                 |
 | `POLYROOT_METRICS_PORT`              | Metrics + health port                             | `9090`                                                          |
 | `POLYROOT_FORECAST_PROVIDER`         | `openai` to enable, else abstain                  | `none`                                                          |
 | `POLYROOT_FORECAST_MODEL`            | Model name for the forecast provider              | _(required when enabled)_                                       |
