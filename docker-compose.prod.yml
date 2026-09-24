@@ -1,3 +1,11 @@
+# =============================================================================
+# PRODUCTION STAGING DOCKER COMPOSE CONFIGURATION
+# IMPORTANT SECURITY NOTICE:
+# Sensitive secrets such as WALLET_PRIVATE_KEY, POSTGRES_PASSWORD, and OWNER_API_KEY
+# MUST be supplied securely via an external secret manager (e.g., Docker Secrets,
+# Vault, AWS Secrets Manager) or environment variables injected at runtime.
+# NEVER commit raw private keys or production secrets to version control.
+# =============================================================================
 version: "3.8"
 
 services:
