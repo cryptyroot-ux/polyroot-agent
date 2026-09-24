@@ -266,22 +266,22 @@ See [`docs/PUBLIC_API.md`](docs/PUBLIC_API.md) for full API reference, runtime m
 
 ### Environment Variables (`.env`)
 
-| Variable                 | Description                                   | Example                                                         |
-| ------------------------ | --------------------------------------------- | --------------------------------------------------------------- |
-| `DATABASE_URL`           | PostgreSQL connection string                  | `postgresql://polyroot:secure_password@localhost:5432/polyroot` |
-| `WALLET_PRIVATE_KEY`     | Deposit wallet private key (0x-prefixed)      | `0xa1b2c3d4...`                                                 |
-| `WALLET_ADDRESS`         | Derived wallet address (0x-prefixed)          | `0xAbCdEf12...`                                                 |
-| `CHAIN_ID`               | Polygon = 137                                 | `137`                                                           |
-| `RPC_URL`                | Polygon RPC endpoint (HTTPS)                  | `https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY`             |
-| `NODE_ENV`               | `development` \| `production`                 | `production`                                                    |
-| `LOG_LEVEL`              | `debug` \| `info` \| `warn` \| `error`        | `info`                                                          |
-| `RUNTIME_MODE`           | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE` | `PAPER`                                                         |
-| `POLYROOT_METRICS_OWNER_KEY` | Bearer key for `GET /metrics` (`/healthz` public) | *(unset = endpoint disabled)*                          |
-| `POLYROOT_METRICS_PORT` | Metrics + health port                                | `9090`                                                  |
-| `POLYROOT_FORECAST_PROVIDER` | `openai` to enable, else abstain              | `none`                                                  |
-| `POLYROOT_FORECAST_MODEL` | Model name for the forecast provider         | *(required when enabled)*                               |
-| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | Credentials for OpenAI-compatible gateway | *(required when enabled)*                        |
-| `WALLET_ACCOUNT` / `WALLET_FUNDER` | Distinct deposit-wallet addresses (live only) | *(required for MICRO_LIVE/LIVE)*               |
+| Variable                             | Description                                       | Example                                                         |
+| ------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------- |
+| `DATABASE_URL`                       | PostgreSQL connection string                      | `postgresql://polyroot:secure_password@localhost:5432/polyroot` |
+| `WALLET_PRIVATE_KEY`                 | Deposit wallet private key (0x-prefixed)          | `0xa1b2c3d4...`                                                 |
+| `WALLET_ADDRESS`                     | Derived wallet address (0x-prefixed)              | `0xAbCdEf12...`                                                 |
+| `CHAIN_ID`                           | Polygon = 137                                     | `137`                                                           |
+| `RPC_URL`                            | Polygon RPC endpoint (HTTPS)                      | `https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY`             |
+| `NODE_ENV`                           | `development` \| `production`                     | `production`                                                    |
+| `LOG_LEVEL`                          | `debug` \| `info` \| `warn` \| `error`            | `info`                                                          |
+| `RUNTIME_MODE`                       | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE`     | `PAPER`                                                         |
+| `POLYROOT_METRICS_OWNER_KEY`         | Bearer key for `GET /metrics` (`/healthz` public) | _(unset = endpoint disabled)_                                   |
+| `POLYROOT_METRICS_PORT`              | Metrics + health port                             | `9090`                                                          |
+| `POLYROOT_FORECAST_PROVIDER`         | `openai` to enable, else abstain                  | `none`                                                          |
+| `POLYROOT_FORECAST_MODEL`            | Model name for the forecast provider              | _(required when enabled)_                                       |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | Credentials for OpenAI-compatible gateway         | _(required when enabled)_                                       |
+| `WALLET_ACCOUNT` / `WALLET_FUNDER`   | Distinct deposit-wallet addresses (live only)     | _(required for MICRO_LIVE/LIVE)_                                |
 
 ---
 

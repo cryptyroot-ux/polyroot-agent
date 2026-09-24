@@ -40,7 +40,8 @@ services:
       dockerfile: Dockerfile
       target: runtime
     container_name: polyroot-prod-agent
-    command: ["node", "src/pm/runtime/dist/cli.js", "--mode", "${RUNTIME_MODE:-PAPER}"]
+    command:
+      ["node", "src/pm/runtime/dist/cli.js", "--mode", "${RUNTIME_MODE:-PAPER}"]
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-secure_postgres_password}@postgres:5432/polyroot_prod
