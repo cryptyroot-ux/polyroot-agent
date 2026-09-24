@@ -266,6 +266,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y trivy
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image for scan
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: polyroot/trader:dev
+          cache-from: type=gha
+
       - name: Run Trivy vulnerability scanner on Dockerfile
         run: |
           trivy fs --severity HIGH,CRITICAL --exit-code 1 .
