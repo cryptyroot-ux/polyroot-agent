@@ -316,7 +316,9 @@ export async function main(
 }
 
 const isMain =
-  process.argv[1] !== undefined && process.argv[1].endsWith("cli.ts");
+  process.argv[1] !== undefined &&
+  (process.argv[1].endsWith("cli.ts") ||
+    process.argv[1].endsWith("cli.js"));
 if (isMain) {
   main().catch((err: unknown) => {
     console.error("Fatal error:", err);

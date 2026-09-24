@@ -53,12 +53,13 @@ RUN npm ci --omit=dev --ignore-scripts
 # Switch to non-root user
 USER nodejs
 
-# Health check
+# Health check against the agent's public /healthz endpoint.
+# (Requires POLYROOT_METRICS_OWNER_KEY to be set so the metrics server runs.)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+  CMD node -e "require('http').get('http://localhost:9090/healthz', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 # Use tini for proper signal handling
 ENTRYPOINT ["tini", "--"]
 
-# Default command runs the executor (gateway runs separately in compose)
-CMD ["node", "src/pm/executor/dist/index.js"]
+# Default command runs the PolyRoot agent CLI (PAPER by default; see RUNTIME_MODE).
+CMD ["node", "src/pm/runtime/dist/cli.js"]
