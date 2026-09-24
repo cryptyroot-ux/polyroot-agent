@@ -182,7 +182,8 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
     await permitStore.claim(permit.permit_id, "ord_1");
     const res = await ex.submit(makeSignedOrder(), permit);
     assert.equal(res.outcome, "PERMIT_INVALID");
-    if (res.outcome === "PERMIT_INVALID") assert.equal(res.code, "PERMIT_REUSED");
+    if (res.outcome === "PERMIT_INVALID")
+      assert.equal(res.code, "PERMIT_REUSED");
   });
 
   it("fails closed when the venue is in CANCEL_ONLY (submit blocked, cancel allowed)", async () => {

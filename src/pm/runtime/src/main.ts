@@ -1,6 +1,6 @@
 /**
  * @polyroot/runtime — Production Agent Entrypoint (Runtime Wiring).
- * 
+ *
  * Addresses FIND-002: Wires the G4 loop and pipeline end-to-end with
  * PostgreSQL persistence, Polymarket VenueAdapter, SignerVault, and MoneyKernel.
  */
@@ -10,7 +10,13 @@ import { createPgStores } from "@polyroot/risk";
 import { MoneyKernel } from "@polyroot/risk";
 import { SignerVault, type CryptoSigner } from "@polyroot/signer";
 import { PolymarketVenueAdapter } from "@polyroot/venue";
-import { PgPermitStore, PgRecoveryLedger, PgLeaseStore, type PermitStore, type VenueAdapter } from "@polyroot/venue";
+import {
+  PgPermitStore,
+  PgRecoveryLedger,
+  PgLeaseStore,
+  type PermitStore,
+  type VenueAdapter,
+} from "@polyroot/venue";
 import { Executor } from "@polyroot/executor";
 import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
@@ -42,7 +48,7 @@ export async function bootstrapAgent(
   // 1. Initialize PostgreSQL-backed persistence stores on ONE shared pool.
   // Passing { pool } avoids a second internal pool that would leak on shutdown.
   const stores = createPgStores({ pool });
-  
+
   // 2. Initialize Money Kernel with authoritative PG persistence
   // FIND-003 remediation: authority is now REQUIRED - no non-authoritative fallback
   const kernel = new MoneyKernel({
@@ -82,7 +88,11 @@ export async function bootstrapAgent(
 
   // 4. Initialize Venue Adapter with Polymarket SDK client wrapper
   const mockSdkClient = {
-    fetchOrderBook: async () => ({ bids: [], asks: [], market: { question: "Production Book", status: "ACTIVE" } }),
+    fetchOrderBook: async () => ({
+      bids: [],
+      asks: [],
+      market: { question: "Production Book", status: "ACTIVE" },
+    }),
     postOrder: async () => ({ success: true, orderID: "ord_" + Date.now() }),
     cancelOrder: async () => ({ success: true }),
     fetchOrder: async () => ({ status: "LIVE" }),
@@ -94,7 +104,7 @@ export async function bootstrapAgent(
   const permitStore: PermitStore = new PgPermitStore(pool);
   const recoveryLedger = new PgRecoveryLedger(pool);
   const leaseStore = new PgLeaseStore(pool);
-  
+
   const seenMap = new Map();
   const executor = new Executor({
     adapter: venueAdapter,

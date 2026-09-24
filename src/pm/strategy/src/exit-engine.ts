@@ -66,13 +66,19 @@ export class ExitEngine {
 
     // Adverse selection buffer (half spread)
     const spread = (book.asks?.[0]?.[0] ?? 1) - (book.bids?.[0]?.[0] ?? 0);
-    const adverseSelection = (this.config.adverseSelectionBuffer ?? 0.5) * spread;
+    const adverseSelection =
+      (this.config.adverseSelectionBuffer ?? 0.5) * spread;
 
     // Time decay factor - closer to resolution means less time for edge to materialize
-    const timeDecayFactor = Math.max(0.1, 1 - time_to_resolution_sec / (30 * 24 * 3600));
+    const timeDecayFactor = Math.max(
+      0.1,
+      1 - time_to_resolution_sec / (30 * 24 * 3600),
+    );
 
     const holdEV =
-      (expectedPayoffPerShare - feePerShare - adverseSelection) * size * timeDecayFactor;
+      (expectedPayoffPerShare - feePerShare - adverseSelection) *
+      size *
+      timeDecayFactor;
 
     // Decide action
     if (holdEV < this.config.minHoldEV) {
@@ -112,7 +118,10 @@ export class ExitEngine {
     };
   }
 
-  private getConservativeProbability(forecast: Forecast, positionSide: "YES" | "NO"): number {
+  private getConservativeProbability(
+    forecast: Forecast,
+    positionSide: "YES" | "NO",
+  ): number {
     // Use conservative probability for the position's side
     const pYes =
       forecast.p_conservative ??
@@ -124,7 +133,10 @@ export class ExitEngine {
     return positionSide === "YES" ? pYes : 1 - pYes;
   }
 
-  private getCurrentPrice(book: OrderBookFrame, positionSide: "YES" | "NO"): number {
+  private getCurrentPrice(
+    book: OrderBookFrame,
+    positionSide: "YES" | "NO",
+  ): number {
     // For YES position, we sell at bid; for NO position, we sell at ask (which is 1 - YES bid)
     if (positionSide === "YES") {
       return book.bids?.[0]?.[0] ?? book.asks?.[0]?.[0] ?? 0.5;

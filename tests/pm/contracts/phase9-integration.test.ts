@@ -2,11 +2,24 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import crypto from "node:crypto";
-import type { MarketSnapshot, EvidenceItem, Forecast, GraphEdge } from "@polyroot/domain";
-import { type StrategyProposal, type TradeIntent, type RiskPolicy } from "@polyroot/domain";
+import type {
+  MarketSnapshot,
+  EvidenceItem,
+  Forecast,
+  GraphEdge,
+} from "@polyroot/domain";
+import {
+  type StrategyProposal,
+  type TradeIntent,
+  type RiskPolicy,
+} from "@polyroot/domain";
 import { StrategyArbiter } from "@polyroot/strategy";
 import { EvidenceDirectionalV2 } from "@polyroot/strategy";
-import { ensembleForecast, SourceRegistry, conservativeOf } from "@polyroot/intelligence";
+import {
+  ensembleForecast,
+  SourceRegistry,
+  conservativeOf,
+} from "@polyroot/intelligence";
 
 function createTestMarketSnapshot(marketId: string): MarketSnapshot {
   return {
@@ -46,22 +59,24 @@ class MockGraphEdgeStore {
   }
   async getEdgesByMarket(marketId: string): Promise<GraphEdge[]> {
     return this.edges.filter(
-      (e) => e.from_market_id === marketId || e.to_market_id === marketId
+      (e) => e.from_market_id === marketId || e.to_market_id === marketId,
     );
   }
-  async getEdgesByType(relationType: GraphEdge["relation_type"]): Promise<GraphEdge[]> {
+  async getEdgesByType(
+    relationType: GraphEdge["relation_type"],
+  ): Promise<GraphEdge[]> {
     return this.edges.filter((e) => e.relation_type === relationType);
   }
   async deleteMarketEdges(marketId: string): Promise<void> {
     this.edges = this.edges.filter(
-      (e) => e.from_market_id !== marketId && e.to_market_id !== marketId
+      (e) => e.from_market_id !== marketId && e.to_market_id !== marketId,
     );
   }
 }
 
 async function runFullPipeline(
   marketSnapshot: MarketSnapshot,
-  evidence: EvidenceItem
+  evidence: EvidenceItem,
 ): Promise<TradeIntent> {
   // 1. Ingest market data → build native edges
   const graphStore = new MockGraphEdgeStore();
@@ -99,9 +114,7 @@ async function runFullPipeline(
   weightBooks.set("POLITICAL", classWeights);
 
   const ensembleResult = ensembleForecast({
-    components: [
-      { p_yes: 0.75, familyId, weight: 1.0 },
-    ],
+    components: [{ p_yes: 0.75, familyId, weight: 1.0 }],
     eventClass: "POLITICAL",
     weightBooks,
     version: "v1-test",
@@ -150,7 +163,10 @@ async function runFullPipeline(
     }
     // Convert float desired_qty to integer shares for arbiter rounding
     if (typeof proposal.strategy_params.desired_qty === "number") {
-      proposal.strategy_params.desired_qty = Math.max(1, Math.round(proposal.strategy_params.desired_qty * 100));
+      proposal.strategy_params.desired_qty = Math.max(
+        1,
+        Math.round(proposal.strategy_params.desired_qty * 100),
+      );
     }
   }
 

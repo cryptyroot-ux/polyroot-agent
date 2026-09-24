@@ -78,14 +78,23 @@ export function recoveryGate(input: {
       missing,
     };
   }
-  return { ok: true, ready: true, note: "recovery complete: permits may resume" };
+  return {
+    ok: true,
+    ready: true,
+    note: "recovery complete: permits may resume",
+  };
 }
 
 /* ─── FT-45: supply-chain pin ──────────────────────────────────────── */
 
 export type SupplyChainVerdict =
   | { ok: true; checked: number }
-  | { ok: false; code: "SUPPLY_CHAIN_DRIFT"; reason: string; packages: string[] };
+  | {
+      ok: false;
+      code: "SUPPLY_CHAIN_DRIFT";
+      reason: string;
+      packages: string[];
+    };
 
 /**
  * FT-45: every pinned production dependency must match its locked digest.
@@ -95,7 +104,9 @@ export function verifySupplyChainPin(
   locked: Readonly<Record<string, string>>,
   observed: Readonly<Record<string, string>>,
 ): SupplyChainVerdict {
-  const drifted = Object.keys(locked).filter((name) => observed[name] !== locked[name]);
+  const drifted = Object.keys(locked).filter(
+    (name) => observed[name] !== locked[name],
+  );
   if (drifted.length > 0) {
     return {
       ok: false,

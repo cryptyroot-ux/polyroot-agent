@@ -22,24 +22,33 @@ export interface FreezePin {
 
 export interface FreezeDecisionInput {
   expected: FreezePin & { surface: string[]; suiteRef: string };
-  observed: FreezePin & { surface: string[]; suiteRef: string; suitePass: boolean };
+  observed: FreezePin & {
+    surface: string[];
+    suiteRef: string;
+    suitePass: boolean;
+  };
 }
 
 export type FreezeVerdict =
   | { frozen: true; note: string }
-  | { ok: false; code: "FREEZE_MISMATCH"; reason: string; mismatches: string[] };
+  | {
+      ok: false;
+      code: "FREEZE_MISMATCH";
+      reason: string;
+      mismatches: string[];
+    };
 
 /**
  * Verify the freeze chain. Version, integrity, surface AND suite result
  * must all match — a pinned version with a different integrity hash, a
  * wider surface, or a failing suite is UNFROZEN.
  */
-export function checkAdapterFreeze(
-  input: FreezeDecisionInput,
-): FreezeVerdict {
+export function checkAdapterFreeze(input: FreezeDecisionInput): FreezeVerdict {
   const mismatches: string[] = [];
   if (input.observed.packageName !== input.expected.packageName)
-    mismatches.push(`package ${input.observed.packageName} !== ${input.expected.packageName}`);
+    mismatches.push(
+      `package ${input.observed.packageName} !== ${input.expected.packageName}`,
+    );
   if (input.observed.version !== input.expected.version)
     mismatches.push(
       `version ${input.observed.version} !== pinned ${input.expected.version}`,
@@ -55,8 +64,7 @@ export function checkAdapterFreeze(
     mismatches.push(
       `suite ${input.observed.suiteRef} !== frozen ${input.expected.suiteRef}`,
     );
-  if (!input.observed.suitePass)
-    mismatches.push("contract suite is not green");
+  if (!input.observed.suitePass) mismatches.push("contract suite is not green");
   if (mismatches.length > 0) {
     return {
       ok: false,

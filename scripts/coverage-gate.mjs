@@ -22,29 +22,134 @@ const exec = promisify(execFile);
 
 // [label, dist glob, dedicated test files]
 const MODULES = [
-  ["reality-gap", "src/pm/runtime/dist/reality-gap.js", ["tests/pm/contracts/reality-gap.test.ts", "tests/pm/contracts/micro-live-guard.test.ts"]],
-  ["micro-live-guard", "src/pm/runtime/dist/micro-live-guard.js", ["tests/pm/contracts/micro-live-guard.test.ts"]],
-  ["platform-safety", "src/pm/runtime/dist/platform-safety.js", ["tests/pm/contracts/platform-exec-faults.test.ts"]],
-  ["research-integrity", "src/pm/strategy/dist/research-integrity.js", ["tests/pm/contracts/research-integrity.test.ts"]],
-  ["structural-safety", "src/pm/strategy/dist/structural-safety.js", ["tests/pm/contracts/platform-exec-faults.test.ts"]],
-  ["execution-safety", "src/pm/venue/dist/execution-safety.js", ["tests/pm/contracts/platform-exec-faults.test.ts"]],
-  ["protocol-profile", "src/pm/venue/dist/protocol-profile.js", ["tests/pm/contracts/sdk-contracts-g0.test.ts"]],
-  ["heartbeat-route", "src/pm/venue/dist/heartbeat-route.js", ["tests/pm/contracts/platform-exec-faults.test.ts", "tests/pm/contracts/streams-settlement-heartbeat.test.ts"]],
-  ["redeem-target", "src/pm/venue/dist/redeem-target.js", ["tests/pm/contracts/streams-settlement-heartbeat.test.ts"]],
-  ["adapter-freeze", "src/pm/venue/dist/adapter-freeze.js", ["tests/pm/contracts/adapter-freeze.test.ts"]],
-  ["catalyst-gate", "src/pm/intelligence/dist/catalyst-gate.js", ["tests/pm/contracts/platform-exec-faults.test.ts"]],
-  ["settlement", "src/pm/ledger/dist/settlement.js", ["tests/pm/contracts/ledger-wallet-faults.test.ts", "tests/pm/contracts/streams-settlement-heartbeat.test.ts"]],
-  ["wallet-setup", "src/pm/control/dist/wallet-setup.js", ["tests/pm/contracts/ledger-wallet-faults.test.ts", "tests/pm/contracts/sdk-credentials-relayer.test.ts", "tests/pm/contracts/wallet-lifecycle.test.ts"]],
-  ["incentives", "src/pm/ledger/dist/incentives.js", ["tests/pm/contracts/econ-session-compromise.test.ts"]],
-  ["decode-budget", "src/pm/security/dist/decode-budget.js", ["tests/pm/contracts/security-faults.test.ts"]],
-  ["frame-freshness", "src/pm/data/dist/frame-freshness.js", ["tests/pm/contracts/platform-exec-faults.test.ts"]],
-  ["stream-frames", "src/pm/data/dist/stream-frames.js", ["tests/pm/contracts/platform-exec-faults.test.ts"]],
-  ["release-verdict", "src/pm/control/dist/release-verdict.js", ["tests/pm/contracts/release-verdict.test.ts"]],
-  ["live-promotion", "src/pm/control/dist/live-promotion.js", ["tests/pm/contracts/live-promotion.test.ts"]],
-  ["wallet-mapping", "src/pm/signer/dist/wallet-mapping.js", ["tests/pm/contracts/sdk-wallet-signing.test.ts"]],
-  ["credential-auth", "src/pm/signer/dist/credential-auth.js", ["tests/pm/contracts/sdk-credentials-relayer.test.ts"]],
-  ["session-scope", "src/pm/signer/dist/session-scope.js", ["tests/pm/contracts/econ-session-compromise.test.ts"]],
-  ["eip712", "src/pm/signer/dist/eip712.js", ["tests/pm/contracts/eip712-golden.test.ts"]],
+  [
+    "reality-gap",
+    "src/pm/runtime/dist/reality-gap.js",
+    [
+      "tests/pm/contracts/reality-gap.test.ts",
+      "tests/pm/contracts/micro-live-guard.test.ts",
+    ],
+  ],
+  [
+    "micro-live-guard",
+    "src/pm/runtime/dist/micro-live-guard.js",
+    ["tests/pm/contracts/micro-live-guard.test.ts"],
+  ],
+  [
+    "platform-safety",
+    "src/pm/runtime/dist/platform-safety.js",
+    ["tests/pm/contracts/platform-exec-faults.test.ts"],
+  ],
+  [
+    "research-integrity",
+    "src/pm/strategy/dist/research-integrity.js",
+    ["tests/pm/contracts/research-integrity.test.ts"],
+  ],
+  [
+    "structural-safety",
+    "src/pm/strategy/dist/structural-safety.js",
+    ["tests/pm/contracts/platform-exec-faults.test.ts"],
+  ],
+  [
+    "execution-safety",
+    "src/pm/venue/dist/execution-safety.js",
+    ["tests/pm/contracts/platform-exec-faults.test.ts"],
+  ],
+  [
+    "protocol-profile",
+    "src/pm/venue/dist/protocol-profile.js",
+    ["tests/pm/contracts/sdk-contracts-g0.test.ts"],
+  ],
+  [
+    "heartbeat-route",
+    "src/pm/venue/dist/heartbeat-route.js",
+    [
+      "tests/pm/contracts/platform-exec-faults.test.ts",
+      "tests/pm/contracts/streams-settlement-heartbeat.test.ts",
+    ],
+  ],
+  [
+    "redeem-target",
+    "src/pm/venue/dist/redeem-target.js",
+    ["tests/pm/contracts/streams-settlement-heartbeat.test.ts"],
+  ],
+  [
+    "adapter-freeze",
+    "src/pm/venue/dist/adapter-freeze.js",
+    ["tests/pm/contracts/adapter-freeze.test.ts"],
+  ],
+  [
+    "catalyst-gate",
+    "src/pm/intelligence/dist/catalyst-gate.js",
+    ["tests/pm/contracts/platform-exec-faults.test.ts"],
+  ],
+  [
+    "settlement",
+    "src/pm/ledger/dist/settlement.js",
+    [
+      "tests/pm/contracts/ledger-wallet-faults.test.ts",
+      "tests/pm/contracts/streams-settlement-heartbeat.test.ts",
+    ],
+  ],
+  [
+    "wallet-setup",
+    "src/pm/control/dist/wallet-setup.js",
+    [
+      "tests/pm/contracts/ledger-wallet-faults.test.ts",
+      "tests/pm/contracts/sdk-credentials-relayer.test.ts",
+      "tests/pm/contracts/wallet-lifecycle.test.ts",
+    ],
+  ],
+  [
+    "incentives",
+    "src/pm/ledger/dist/incentives.js",
+    ["tests/pm/contracts/econ-session-compromise.test.ts"],
+  ],
+  [
+    "decode-budget",
+    "src/pm/security/dist/decode-budget.js",
+    ["tests/pm/contracts/security-faults.test.ts"],
+  ],
+  [
+    "frame-freshness",
+    "src/pm/data/dist/frame-freshness.js",
+    ["tests/pm/contracts/platform-exec-faults.test.ts"],
+  ],
+  [
+    "stream-frames",
+    "src/pm/data/dist/stream-frames.js",
+    ["tests/pm/contracts/platform-exec-faults.test.ts"],
+  ],
+  [
+    "release-verdict",
+    "src/pm/control/dist/release-verdict.js",
+    ["tests/pm/contracts/release-verdict.test.ts"],
+  ],
+  [
+    "live-promotion",
+    "src/pm/control/dist/live-promotion.js",
+    ["tests/pm/contracts/live-promotion.test.ts"],
+  ],
+  [
+    "wallet-mapping",
+    "src/pm/signer/dist/wallet-mapping.js",
+    ["tests/pm/contracts/sdk-wallet-signing.test.ts"],
+  ],
+  [
+    "credential-auth",
+    "src/pm/signer/dist/credential-auth.js",
+    ["tests/pm/contracts/sdk-credentials-relayer.test.ts"],
+  ],
+  [
+    "session-scope",
+    "src/pm/signer/dist/session-scope.js",
+    ["tests/pm/contracts/econ-session-compromise.test.ts"],
+  ],
+  [
+    "eip712",
+    "src/pm/signer/dist/eip712.js",
+    ["tests/pm/contracts/eip712-golden.test.ts"],
+  ],
 ];
 
 function isHelper(name) {
@@ -79,9 +184,16 @@ async function main() {
     try {
       await exec(
         "npx",
-        ["c8", "--reporter=json",
+        [
+          "c8",
+          "--reporter=json",
           "--include=" + glob,
-          "node", "--test", "--import", "tsx", ...tests],
+          "node",
+          "--test",
+          "--import",
+          "tsx",
+          ...tests,
+        ],
         { timeout: 240000, maxBuffer: 64 * 1024 * 1024 },
       );
     } catch (e) {
@@ -95,10 +207,16 @@ async function main() {
     let uncalled = [];
     let pct = null;
     try {
-      const raw = JSON.parse(readFileSync("coverage/coverage-final.json", "utf8"));
+      const raw = JSON.parse(
+        readFileSync("coverage/coverage-final.json", "utf8"),
+      );
       const base = glob.split("/").pop().replace(/\.js$/, "");
       const keys = Object.keys(raw).filter((k) => {
-        const b = k.replace(/\\/g, "/").split("/").pop().replace(/\.(ts|js)$/, "");
+        const b = k
+          .replace(/\\/g, "/")
+          .split("/")
+          .pop()
+          .replace(/\.(ts|js)$/, "");
         return b === base;
       });
       // Group by NAME across all loaded instances: the tsx+c8 pipeline
@@ -128,7 +246,9 @@ async function main() {
   }
   console.log("module | uncalled functions | verdict");
   for (const r of rows) {
-    console.log(`${r.label} | ${r.uncalled.length === 0 ? "-" : r.uncalled.join(", ")} | ${r.pass ? "PASS" : "FAIL"}`);
+    console.log(
+      `${r.label} | ${r.uncalled.length === 0 ? "-" : r.uncalled.join(", ")} | ${r.pass ? "PASS" : "FAIL"}`,
+    );
   }
   if (failed > 0) {
     console.error(

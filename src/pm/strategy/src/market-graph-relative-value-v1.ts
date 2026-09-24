@@ -1,6 +1,6 @@
 /**
  * market_graph_relative_value_v1 — Relative Value via Market Graph
- * 
+ *
  * Finds NEG_RISK pairs with verified edges, checks settlement logic compatibility,
  * computes executable quotes on both legs, verifies structural inconsistency > edge threshold.
  * Returns paired TradeIntent[] with atomic execution requirement.
@@ -138,15 +138,24 @@ export class MarketGraphRelativeValueV1 {
         strategy_params: {
           market_id_a: marketA.market_id,
           market_id_b: marketB.market_id,
-          leg_a: { side: "NO", limit_price: noPriceA, market_id: marketA.market_id },
-          leg_b: { side: "YES", limit_price: yesPriceB, market_id: marketB.market_id },
+          leg_a: {
+            side: "NO",
+            limit_price: noPriceA,
+            market_id: marketA.market_id,
+          },
+          leg_b: {
+            side: "YES",
+            limit_price: yesPriceB,
+            market_id: marketB.market_id,
+          },
           execution_mode: "ATOMIC",
           edge_after_fees: edge,
         },
         forecast_refs: [],
         graph_refs: [graphEdge.from_market_id, graphEdge.to_market_id],
         entry_thesis: `NEG_RISK arb: NO@${noPriceA.toFixed(3)} + YES@${yesPriceB.toFixed(3)} = ${(noPriceA + yesPriceB).toFixed(3)} edge=${edge.toFixed(4)}`,
-        exit_thesis: "Hold to resolution (risk-free) or unwind if prices revert",
+        exit_thesis:
+          "Hold to resolution (risk-free) or unwind if prices revert",
         cost_assumptions: { taker_bps: takerBps },
         expected_edge_distribution: { mean: edge, std: 0.005 },
         expires_at: new Date(Date.now() + 3600000),
@@ -165,15 +174,24 @@ export class MarketGraphRelativeValueV1 {
         strategy_params: {
           market_id_a: marketA.market_id,
           market_id_b: marketB.market_id,
-          leg_a: { side: "YES", limit_price: yesPriceA, market_id: marketA.market_id },
-          leg_b: { side: "NO", limit_price: noPriceB, market_id: marketB.market_id },
+          leg_a: {
+            side: "YES",
+            limit_price: yesPriceA,
+            market_id: marketA.market_id,
+          },
+          leg_b: {
+            side: "NO",
+            limit_price: noPriceB,
+            market_id: marketB.market_id,
+          },
           execution_mode: "ATOMIC",
           edge_after_fees: edge,
         },
         forecast_refs: [],
         graph_refs: [graphEdge.from_market_id, graphEdge.to_market_id],
         entry_thesis: `NEG_RISK arb: YES@${yesPriceA.toFixed(3)} + NO@${noPriceB.toFixed(3)} = ${(yesPriceA + noPriceB).toFixed(3)} edge=${edge.toFixed(4)}`,
-        exit_thesis: "Hold to resolution (risk-free) or unwind if prices revert",
+        exit_thesis:
+          "Hold to resolution (risk-free) or unwind if prices revert",
         cost_assumptions: { taker_bps: takerBps },
         expected_edge_distribution: { mean: edge, std: 0.005 },
         expires_at: new Date(Date.now() + 3600000),

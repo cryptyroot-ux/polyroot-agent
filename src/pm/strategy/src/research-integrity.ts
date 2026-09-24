@@ -30,8 +30,7 @@ export type IntegrityCode =
   | "REPLAY_HASH_MISMATCH";
 
 export type IntegrityResult =
-  | { ok: true }
-  | { ok: false; code: IntegrityCode; reason: string };
+  { ok: true } | { ok: false; code: IntegrityCode; reason: string };
 
 /* ─── FT-38: denominator audit ─────────────────────────────────────── */
 

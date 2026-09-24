@@ -37,6 +37,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@polyroot/data": "*",
     "@polyroot/domain": "*",
     "@polyroot/intelligence": "*",
     "zod": "^3.22.4"

@@ -59,18 +59,12 @@ describe("Phase 29: deployment hardening gate (Blueprint §2/§15)", () => {
   });
 
   it("migrations seed read-only; pgdata persists (backup/restore posture)", () => {
-    assert.match(
-      compose,
-      /\.\/migrations:\/docker-entrypoint-initdb\.d:ro/,
-    );
+    assert.match(compose, /\.\/migrations:\/docker-entrypoint-initdb\.d:ro/);
     assert.match(compose, /polyroot_pgdata:/);
   });
 
   it("no real secrets baked into Dockerfiles or compose (dev placeholders only)", () => {
-    const text =
-      compose +
-      read("Dockerfile") +
-      read("Dockerfile.strategy");
+    const text = compose + read("Dockerfile") + read("Dockerfile.strategy");
     for (const pattern of [
       /AKIA[0-9A-Z]{16}/,
       /-----BEGIN (RSA )?PRIVATE KEY-----/,
@@ -88,8 +82,16 @@ describe("Phase 29: deployment hardening gate (Blueprint §2/§15)", () => {
       const text = read(file);
       const stages = text.split(/^FROM /m).slice(1);
       const runtime = stages[stages.length - 1] ?? "";
-      assert.match(runtime, /USER nodejs/, `${file}: final stage must be non-root`);
-      assert.match(runtime, /HEALTHCHECK/, `${file}: runtime needs a HEALTHCHECK`);
+      assert.match(
+        runtime,
+        /USER nodejs/,
+        `${file}: final stage must be non-root`,
+      );
+      assert.match(
+        runtime,
+        /HEALTHCHECK/,
+        `${file}: runtime needs a HEALTHCHECK`,
+      );
     }
   });
 });

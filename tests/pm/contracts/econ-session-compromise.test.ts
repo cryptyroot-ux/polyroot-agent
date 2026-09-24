@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  attributeBuilder,
-  postConfirmedIncentive,
-} from "@polyroot/ledger";
+import { attributeBuilder, postConfirmedIncentive } from "@polyroot/ledger";
 import {
   initRevocationTracker,
   markRevoked,
@@ -125,7 +122,10 @@ describe("Phase 21 CT-31: session scope beta (PM-WALLET-10)", () => {
     }
   });
   it("revocation finality needs an explicit receipt", () => {
-    assert.equal(checkRevocationFinality({ receiptId: null }).final ?? false, false);
+    assert.equal(
+      checkRevocationFinality({ receiptId: null }).final ?? false,
+      false,
+    );
     const done = checkRevocationFinality({ receiptId: "rcpt_1" });
     assert.equal(done.final, true);
   });

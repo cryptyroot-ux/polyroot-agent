@@ -216,13 +216,18 @@ export function validatePermit(
     lease_epoch: number;
   },
   expected: PermitValidationExpectation,
-): { ok: true } | { ok: false; code: PermitValidationErrorCode; reason: string } {
+):
+  | { ok: true }
+  | { ok: false; code: PermitValidationErrorCode; reason: string } {
   const now = expected.now ?? new Date();
   const expiresAt =
     permit.expires_at instanceof Date
       ? permit.expires_at
       : new Date(permit.expires_at);
-  if (Number.isNaN(expiresAt.getTime()) || now.getTime() > expiresAt.getTime()) {
+  if (
+    Number.isNaN(expiresAt.getTime()) ||
+    now.getTime() > expiresAt.getTime()
+  ) {
     return {
       ok: false,
       code: "PERMIT_EXPIRED",
@@ -244,8 +249,7 @@ export function validatePermit(
     return {
       ok: false,
       code: "LEASE_EPOCH_MISMATCH",
-      reason:
-        "permit lease epoch does not match current executor lease epoch",
+      reason: "permit lease epoch does not match current executor lease epoch",
     };
   }
   return { ok: true };

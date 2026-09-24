@@ -4,7 +4,9 @@ import { dirname } from "path";
 import { spawnStrategyWorker } from "./sandbox-rpc.js";
 
 function resolveSocketPath(): string {
-  const raw = process.env["STRATEGY_RPC_ENDPOINT"] ?? "unix:///run/strategy/strategy.sock";
+  const raw =
+    process.env["STRATEGY_RPC_ENDPOINT"] ??
+    "unix:///run/strategy/strategy.sock";
   return raw.startsWith("unix://") ? raw.slice("unix://".length) : raw;
 }
 
@@ -89,14 +91,18 @@ async function handleLine(socket: Socket, line: string): Promise<void> {
     return;
   }
 
-  let worker: Awaited<ReturnType<typeof spawnStrategyWorker>>["worker"] | undefined;
+  let worker:
+    Awaited<ReturnType<typeof spawnStrategyWorker>>["worker"] | undefined;
   try {
     const spawned = await spawnStrategyWorker({ strategyCode: req.code });
     worker = spawned.worker;
     const result = await spawned.client.run(req.input ?? null);
     writeLine(socket, { id: req.id, result });
   } catch (err: unknown) {
-    writeLine(socket, { id: req.id, error: err instanceof Error ? err.message : String(err) });
+    writeLine(socket, {
+      id: req.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
   } finally {
     try {
       await worker?.terminate();
@@ -106,7 +112,9 @@ async function handleLine(socket: Socket, line: string): Promise<void> {
   }
 }
 
-export function startSupervisor(socketPath: string = resolveSocketPath()): Promise<void> {
+export function startSupervisor(
+  socketPath: string = resolveSocketPath(),
+): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
       const dir = dirname(socketPath);
@@ -126,7 +134,9 @@ export function startSupervisor(socketPath: string = resolveSocketPath()): Promi
     });
 
     server.listen(socketPath, () => {
-      console.log("Strategy sandbox supervisor listening on unix://" + socketPath);
+      console.log(
+        "Strategy sandbox supervisor listening on unix://" + socketPath,
+      );
       resolve();
     });
 
@@ -139,7 +149,9 @@ export function startSupervisor(socketPath: string = resolveSocketPath()): Promi
   });
 }
 
-const isMain = process.argv[1] !== undefined && process.argv[1].endsWith("sandbox-supervisor.ts");
+const isMain =
+  process.argv[1] !== undefined &&
+  process.argv[1].endsWith("sandbox-supervisor.ts");
 if (isMain) {
   startSupervisor().catch((err: unknown) => {
     console.error("Supervisor fatal error:", err);

@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
-import {
-  submitRelayerOp,
-  type RelayerOperation,
-} from "@polyroot/control";
+import { submitRelayerOp, type RelayerOperation } from "@polyroot/control";
 import { verifyBodyHmac } from "@polyroot/signer";
 import { grantSessionScope } from "@polyroot/signer";
 
 const FIX = JSON.parse(
-  readFileSync(new URL("../../fixtures/relayer-session.json", import.meta.url), "utf8"),
+  readFileSync(
+    new URL("../../fixtures/relayer-session.json", import.meta.url),
+    "utf8",
+  ),
 );
 
 describe("No.4 golden fixtures: relayer/session replay (frozen API shapes)", () => {

@@ -62,7 +62,7 @@ const fakeAuthority: MoneyAuthority = {
       reservationId: randomUUID(),
       permitId: randomUUID(),
     };
-  }
+  },
 };
 
 class FakeBalanceStore implements BalanceStore {

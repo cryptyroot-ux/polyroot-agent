@@ -89,10 +89,7 @@ export async function buildSignedOrder(
     );
   }
   const orderType = (intent.order_type ?? "LIMIT") as
-    | "LIMIT"
-    | "POST_ONLY"
-    | "FOK"
-    | "IOC";
+    "LIMIT" | "POST_ONLY" | "FOK" | "IOC";
   if (
     permit.allowed_order_style.length > 0 &&
     !permit.allowed_order_style.includes(orderType)

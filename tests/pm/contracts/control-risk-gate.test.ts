@@ -33,11 +33,17 @@ const fakeAuthority: MoneyAuthority = {
     // We need to access the FakeBalanceStore to actually reserve funds
     // This is a test-only workaround
     const balanceStore = (globalThis as any).__fakeBalanceStore;
-    console.log('[DEBUG] fakeAuthority: balanceStore available:', !!balanceStore);
+    console.log(
+      "[DEBUG] fakeAuthority: balanceStore available:",
+      !!balanceStore,
+    );
     if (balanceStore) {
       try {
         await balanceStore.reserveFunds(account, asset, cashNeededBase);
-        console.log('[DEBUG] fakeAuthority: balanceStore.committed after reserve:', balanceStore.committed);
+        console.log(
+          "[DEBUG] fakeAuthority: balanceStore.committed after reserve:",
+          balanceStore.committed,
+        );
       } catch (e) {
         return {
           ok: false,
@@ -46,14 +52,14 @@ const fakeAuthority: MoneyAuthority = {
         };
       }
     } else {
-      console.log('[DEBUG] fakeAuthority: NO BALANCE STORE');
+      console.log("[DEBUG] fakeAuthority: NO BALANCE STORE");
     }
     return {
       ok: true,
       reservationId: randomUUID(),
       permitId: randomUUID(),
     };
-  }
+  },
 };
 
 class FakeBalanceStore implements BalanceStore {

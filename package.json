@@ -1,6 +1,6 @@
 {
   "name": "polyroot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "PolyRoot Agent \u2014 autonomous AI trading agent for Polymarket (fork of CloddsBot, controlled autonomy)",
   "repository": {

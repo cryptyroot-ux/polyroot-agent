@@ -172,10 +172,12 @@ export class PgKernelEventSink implements KernelEventSink {
  * operation is ROLLBACKed.  No intermediate partial state survives.
  */
 export class PgMoneyAuthority implements MoneyAuthority {
-private readonly pool: Pool;
+  private readonly pool: Pool;
   private readonly maxOpenReservations: number;
 
-  constructor(config: PoolConfig | string | Pool | PgBalanceStoreConfig | { pool?: Pool }) {
+  constructor(
+    config: PoolConfig | string | Pool | PgBalanceStoreConfig | { pool?: Pool },
+  ) {
     if (config instanceof Pool) {
       this.pool = config;
     } else if (
@@ -245,7 +247,8 @@ private readonly pool: Pool;
     if (!Number.isInteger(leaseEpoch) || leaseEpoch <= 0) {
       return {
         ok: false,
-        reason: "permit lease epoch does not match current executor lease epoch",
+        reason:
+          "permit lease epoch does not match current executor lease epoch",
         code: "LEASE_EPOCH_MISMATCH",
       };
     }
@@ -320,10 +323,14 @@ private readonly pool: Pool;
 
       // 4. Insert risk_decisions row atomically (P0: RISK DECISION IDENTITY)
       //    Must exist before reservation and execution_permits reference it.
-      const riskDecisionSchemaVersion = riskDecisionCols?.schema_version ?? "1.1";
-      const riskDecisionPolicyVersion = riskDecisionCols?.policy_version ?? "v0-bootstrap";
-      const riskDecisionLedgerVersion = riskDecisionCols?.ledger_version ?? "0003";
-      const riskDecisionAllowedOrderStyle = riskDecisionCols?.allowed_order_style ?? ["LIMIT", "POST_ONLY"];
+      const riskDecisionSchemaVersion =
+        riskDecisionCols?.schema_version ?? "1.1";
+      const riskDecisionPolicyVersion =
+        riskDecisionCols?.policy_version ?? "v0-bootstrap";
+      const riskDecisionLedgerVersion =
+        riskDecisionCols?.ledger_version ?? "0003";
+      const riskDecisionAllowedOrderStyle =
+        riskDecisionCols?.allowed_order_style ?? ["LIMIT", "POST_ONLY"];
       const riskDecisionVenueMode = riskDecisionCols?.venue_mode ?? "NORMAL";
 
       const maxQtyBase = (amountSharesBase ?? cashNeededBase).toString();

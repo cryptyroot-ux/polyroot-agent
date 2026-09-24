@@ -70,6 +70,23 @@ export interface IRecoveryLedger {
 }
 
 /** PostgreSQL implementation using recovery_ledger table (migration 0005). */
+/** Shape of a recovery_ledger row as returned by pg (snake_case columns). */
+interface RecoveryLedgerRow {
+  order_id: string;
+  venue_order_id: string | null;
+  permit_id: string | null;
+  state: OrderLifecycleState;
+  submitted_at: Date | null;
+  acknowledged_at: Date | null;
+  last_reconcile_at: Date | null;
+  reconcile_count: number;
+  resolved: boolean;
+  resolved_at: Date | null;
+  resolved_state: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export class PgRecoveryLedger implements IRecoveryLedger {
   private readonly pool: Pool;
 
@@ -110,7 +127,9 @@ export class PgRecoveryLedger implements IRecoveryLedger {
     permitId: string,
     orderId: string,
     venueOrderId?: string,
-  ): Promise<{ ok: true; permitId: string } | { ok: false; code: string; reason: string }> {
+  ): Promise<
+    { ok: true; permitId: string } | { ok: false; code: string; reason: string }
+  > {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -128,7 +147,11 @@ export class PgRecoveryLedger implements IRecoveryLedger {
       );
       if (claimResult.rowCount === 0) {
         await client.query("ROLLBACK");
-        return { ok: false, code: "PERMIT_INVALID", reason: "permit already used or expired" };
+        return {
+          ok: false,
+          code: "PERMIT_INVALID",
+          reason: "permit already used or expired",
+        };
       }
 
       // 2. Record the SUBMITTING state in the recovery ledger (same transaction)
@@ -241,13 +264,14 @@ export class PgRecoveryLedger implements IRecoveryLedger {
   }
 
   async certainCancels(): Promise<string[]> {
-    const result = await this.pool.query(
+    const result = await this.pool.query<{ order_id: string }>(
       `SELECT order_id FROM recovery_ledger WHERE resolved = true AND state = 'CANCEL_CERTAIN'`,
     );
-    return result.rows.map((r: any) => r.order_id);
+    return result.rows.map((r) => r.order_id);
   }
 
-  private mapRow(row: any): InFlightOrder {
+  /** Shape of a recovery_ledger row as returned by pg. */
+  private mapRow(row: RecoveryLedgerRow): InFlightOrder {
     return {
       orderId: row.order_id,
       venueOrderId: row.venue_order_id ?? undefined,
@@ -320,8 +344,7 @@ export class MemRecoveryLedger implements IRecoveryLedger {
     orderId: string,
     venueOrderId?: string,
   ): Promise<
-    | { ok: true; permitId: string }
-    | { ok: false; code: string; reason: string }
+    { ok: true; permitId: string } | { ok: false; code: string; reason: string }
   > {
     // In-memory: the caller (executor) has already validated the permit is
     // single-use and claimable; record SUBMITTING and report success.
@@ -434,7 +457,7 @@ export class RecoveryLedger extends MemRecoveryLedger {
     super();
     if (opts?.clock) {
       // Store clock for time-based tests
-      (this as any).clock = opts.clock;
+      Object.assign(this, { clock: opts.clock });
     }
   }
 }

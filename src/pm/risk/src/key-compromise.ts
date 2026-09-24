@@ -158,7 +158,9 @@ export interface RevocationTracker {
   openOrders: string[];
 }
 
-export function initRevocationTracker(openOrders: string[] = []): RevocationTracker {
+export function initRevocationTracker(
+  openOrders: string[] = [],
+): RevocationTracker {
   return {
     domains: { api: "PENDING", session: "PENDING", approval: "PENDING" },
     openOrders: [...openOrders],

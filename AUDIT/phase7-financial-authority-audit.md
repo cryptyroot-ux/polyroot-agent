@@ -16,12 +16,12 @@ The Financial Authority implementation is **architecturally sound** with strong 
 
 ### Critical Findings Summary
 
-| Severity | Count | Description |
-|----------|-------|-------------|
-| **CRITICAL** | 1 | Fallback path in MoneyKernel when authority is not provided |
-| **HIGH** | 4 | Missing error codes, hardcoded TTL, missing balance row creation |
-| **MEDIUM** | 5 | Missing error codes, hardcoded TTL, missing timeouts, balance row creation |
-| **LOW** | 3 | Optional types in interface, missing timeouts, unbounded event payloads |
+| Severity     | Count | Description                                                                |
+| ------------ | ----- | -------------------------------------------------------------------------- |
+| **CRITICAL** | 1     | Fallback path in MoneyKernel when authority is not provided                |
+| **HIGH**     | 4     | Missing error codes, hardcoded TTL, missing balance row creation           |
+| **MEDIUM**   | 5     | Missing error codes, hardcoded TTL, missing timeouts, balance row creation |
+| **LOW**      | 3     | Optional types in interface, missing timeouts, unbounded event payloads    |
 
 ---
 
@@ -63,14 +63,14 @@ type MoneyAuthorityResult =
 
 ### Interface Contract Audit Results
 
-| Check | Status | Details |
-|-------|--------|---------|
-| Method signature completeness | ✅ PASS | Single `reserve` method with all required parameters |
-| Parameter types | ✅ PASS | All parameters properly typed with `bigint`, `string`, `Date` |
-| Optional parameters | ✅ PASS | Optional parameters properly marked with `?` |
-| Return type | ✅ PASS | Discriminated union with `ok` discriminant |
-| Error code taxonomy | ⚠️ PARTIAL | Missing `PERMIT_EXPIRED`, `BALANCE_ROW_MISSING` |
-| Parameter validation | ⚠️ PARTIAL | JSDoc says "NOT empty string" but types allow `undefined` |
+| Check                         | Status     | Details                                                       |
+| ----------------------------- | ---------- | ------------------------------------------------------------- |
+| Method signature completeness | ✅ PASS    | Single `reserve` method with all required parameters          |
+| Parameter types               | ✅ PASS    | All parameters properly typed with `bigint`, `string`, `Date` |
+| Optional parameters           | ✅ PASS    | Optional parameters properly marked with `?`                  |
+| Return type                   | ✅ PASS    | Discriminated union with `ok` discriminant                    |
+| Error code taxonomy           | ⚠️ PARTIAL | Missing `PERMIT_EXPIRED`, `BALANCE_ROW_MISSING`               |
+| Parameter validation          | ⚠️ PARTIAL | JSDoc says "NOT empty string" but types allow `undefined`     |
 
 **Finding FA-001**: Interface JSDoc states `policyHash` and `quoteId` are "NOT empty string" but type signature allows `undefined` (optional `?`).
 
@@ -105,7 +105,11 @@ const dup = await client.query(
 );
 if (dup.rowCount && dup.rowCount > 0) {
   await client.query("ROLLBACK");
-  return { ok: false, reason: "duplicate economic intent", code: "DUPLICATE_INTENT" };
+  return {
+    ok: false,
+    reason: "duplicate economic intent",
+    code: "DUPLICATE_INTENT",
+  };
 }
 ```
 
@@ -131,7 +135,11 @@ const bal = await client.query(
 );
 if (bal.rowCount === 0 || BigInt(bal.rows[0].available_base) < cashNeededBase) {
   await client.query("ROLLBACK");
-  return { ok: false, reason: "INSUFFICIENT_AVAILABLE_BALANCE", code: "INSUFFICIENT_AVAILABLE_BALANCE" };
+  return {
+    ok: false,
+    reason: "INSUFFICIENT_AVAILABLE_BALANCE",
+    code: "INSUFFICIENT_AVAILABLE_BALANCE",
+  };
 }
 ```
 
@@ -143,47 +151,51 @@ if (bal.rowCount === 0 || BigInt(bal.rows[0].available_base) < cashNeededBase) {
 
 ### Critical Issues (P0)
 
-| ID | Component | Issue | Severity |
-|----|-----------|-------|----------|
-| FA-001 | PgMoneyAuthority | Missing `PERMIT_EXPIRED` error code | HIGH |
-| FA-002 | PgMoneyAuthority | Missing `BALANCE_ROW_MISSING` error code | HIGH |
-| FA-003 | MoneyKernel | Fallback path when `!this.authority` | CRITICAL |
-| FA-004 | PgMoneyAuthority | Missing `PERMIT_EXPIRED` error code | HIGH |
-| FA-005 | PgMoneyAuthority | Missing `BALANCE_ROW_MISSING` error code | HIGH |
+| ID     | Component        | Issue                                    | Severity |
+| ------ | ---------------- | ---------------------------------------- | -------- |
+| FA-001 | PgMoneyAuthority | Missing `PERMIT_EXPIRED` error code      | HIGH     |
+| FA-002 | PgMoneyAuthority | Missing `BALANCE_ROW_MISSING` error code | HIGH     |
+| FA-003 | MoneyKernel      | Fallback path when `!this.authority`     | CRITICAL |
+| FA-004 | PgMoneyAuthority | Missing `PERMIT_EXPIRED` error code      | HIGH     |
+| FA-005 | PgMoneyAuthority | Missing `BALANCE_ROW_MISSING` error code | HIGH     |
 
 ### Medium Issues
 
-| ID | Component | Issue |
-|----|-----------|-------|
+| ID     | Component                | Issue                                                         |
+| ------ | ------------------------ | ------------------------------------------------------------- |
 | MA-001 | MoneyAuthority interface | `policyHash`/`quoteId` optional in type but required per docs |
-| MA-002 | PgMoneyAuthority | Missing connection timeout config |
-| MA-003 | PgMoneyAuthority | Balance row not auto-created |
-| MA-004 | MoneyKernel | `mode` not passed to authority |
-| MA-005 | PgMoneyAuthority | Hardcoded permit TTL (60s) |
+| MA-002 | PgMoneyAuthority         | Missing connection timeout config                             |
+| MA-003 | PgMoneyAuthority         | Balance row not auto-created                                  |
+| MA-004 | MoneyKernel              | `mode` not passed to authority                                |
+| MA-005 | PgMoneyAuthority         | Hardcoded permit TTL (60s)                                    |
 
 ### Low Issues
-| ID | Component | Issue |
-|----|-----------|-------|
+
+| ID     | Component                | Issue                                                         |
+| ------ | ------------------------ | ------------------------------------------------------------- |
 | LA-001 | MoneyAuthority interface | `policyHash`/`quoteId` optional in type but required per docs |
-| LA-002 | PgMoneyAuthority | Missing connection timeout config |
-| LA-003 | PgKernelEventSink | Event payload size unbounded |
+| LA-002 | PgMoneyAuthority         | Missing connection timeout config                             |
+| LA-003 | PgKernelEventSink        | Event payload size unbounded                                  |
 
 ---
 
 ## Recommendations
 
 ### Immediate (P0)
+
 1. **Remove fallback path** in `MoneyKernel.reserve()` when `!this.authority`
 2. Add missing error codes: `PERMIT_EXPIRED`, `BALANCE_ROW_MISSING`
-4. Pass `mode` to authority for context-aware behavior
+3. Pass `mode` to authority for context-aware behavior
 
 ### Short-term (P1)
+
 1. Add missing error codes to PgMoneyAuthority
 2. Add connection/statement timeouts
 3. Auto-create balance rows on first access
 4. Make permit TTL configurable via `permitTtlMs`
 
 ### Follow-up
+
 1. Add integration tests for error code paths
 2. Add property-based tests for financial invariants
 3. Add mutation testing for critical paths
@@ -193,6 +205,7 @@ if (bal.rowCount === 0 || BigInt(bal.rows[0].available_base) < cashNeededBase) {
 ## Verification Status
 
 All findings are based on direct code inspection of:
+
 - `/root/polyroot-agent/src/pm/risk/src/money-kernel.ts`
 - `/root/polyroot-agent/src/pm/risk/src/money-kernel-pg.ts`
 - `/root/polyroot-agent/src/pm/risk/src/money-kernel.ts`

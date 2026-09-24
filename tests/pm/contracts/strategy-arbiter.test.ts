@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { StrategyArbiter } from "@polyroot/strategy";
-import type { StrategyProposal, TradeIntent, GraphEdge, RiskPolicy, GraphEdgeStore } from "@polyroot/domain";
+import type {
+  StrategyProposal,
+  TradeIntent,
+  GraphEdge,
+  RiskPolicy,
+  GraphEdgeStore,
+} from "@polyroot/domain";
 
 class MockGraphEdgeStore implements GraphEdgeStore {
   private edges: GraphEdge[] = [];
@@ -11,15 +17,21 @@ class MockGraphEdgeStore implements GraphEdgeStore {
   }
 
   async getEdgesByMarket(marketId: string): Promise<GraphEdge[]> {
-    return this.edges.filter(e => e.from_market_id === marketId || e.to_market_id === marketId);
+    return this.edges.filter(
+      (e) => e.from_market_id === marketId || e.to_market_id === marketId,
+    );
   }
 
-  async getEdgesByType(relationType: GraphEdge['relation_type']): Promise<GraphEdge[]> {
-    return this.edges.filter(e => e.relation_type === relationType);
+  async getEdgesByType(
+    relationType: GraphEdge["relation_type"],
+  ): Promise<GraphEdge[]> {
+    return this.edges.filter((e) => e.relation_type === relationType);
   }
 
   async deleteMarketEdges(marketId: string): Promise<void> {
-    this.edges = this.edges.filter(e => e.from_market_id !== marketId && e.to_market_id !== marketId);
+    this.edges = this.edges.filter(
+      (e) => e.from_market_id !== marketId && e.to_market_id !== marketId,
+    );
   }
 }
 
@@ -46,7 +58,9 @@ const defaultPolicy: RiskPolicy = {
   reconcile_interval_s: 15,
 };
 
-function createProposal(overrides: Partial<StrategyProposal> = {}): StrategyProposal {
+function createProposal(
+  overrides: Partial<StrategyProposal> = {},
+): StrategyProposal {
   const now = new Date();
   const base: StrategyProposal = {
     schema_version: "1.0.0",
@@ -80,7 +94,7 @@ function createProposal(overrides: Partial<StrategyProposal> = {}): StrategyProp
 describe("Strategy Arbiter", () => {
   it("deduplicates correlated intents via Market Graph (NEG_RISK netting)", async () => {
     const graphStore = new MockGraphEdgeStore();
-    
+
     // Add NEG_RISK edge between mkt_A and mkt_B
     await graphStore.upsert({
       schema_version: "1.0.0",
@@ -102,12 +116,22 @@ describe("Strategy Arbiter", () => {
     const arbiter = new StrategyArbiter({ graphStore, policy: defaultPolicy });
 
     const proposals = [
-      createProposal({ strategy: "evidence_directional_v2", market_id: "mkt_A", side: "BUY", desired_qty: 100 }),
-      createProposal({ strategy: "market_graph_relative_value_v1", market_id: "mkt_B", side: "SELL", desired_qty: 50 }),
+      createProposal({
+        strategy: "evidence_directional_v2",
+        market_id: "mkt_A",
+        side: "BUY",
+        desired_qty: 100,
+      }),
+      createProposal({
+        strategy: "market_graph_relative_value_v1",
+        market_id: "mkt_B",
+        side: "SELL",
+        desired_qty: 50,
+      }),
     ];
 
     const intents = await arbiter.arbitrate(proposals);
-    
+
     // Should net exposure: BUY 100 on mkt_A + SELL 50 on mkt_B (neg_risk pair) = net BUY 50
     assert.equal(intents.length, 1);
     assert.equal(intents[0].side, "BUY");
@@ -116,7 +140,7 @@ describe("Strategy Arbiter", () => {
 
   it("sums COMPLEMENT exposures", async () => {
     const graphStore = new MockGraphEdgeStore();
-    
+
     // Add COMPLEMENT edge between mkt_C and mkt_D
     await graphStore.upsert({
       schema_version: "1.0.0",
@@ -130,12 +154,22 @@ describe("Strategy Arbiter", () => {
     const arbiter = new StrategyArbiter({ graphStore, policy: defaultPolicy });
 
     const proposals = [
-      createProposal({ strategy: "strat1", market_id: "mkt_C", side: "BUY", desired_qty: 30 }),
-      createProposal({ strategy: "strat2", market_id: "mkt_D", side: "BUY", desired_qty: 20 }),
+      createProposal({
+        strategy: "strat1",
+        market_id: "mkt_C",
+        side: "BUY",
+        desired_qty: 30,
+      }),
+      createProposal({
+        strategy: "strat2",
+        market_id: "mkt_D",
+        side: "BUY",
+        desired_qty: 20,
+      }),
     ];
 
     const intents = await arbiter.arbitrate(proposals);
-    
+
     // Should sum exposures: BUY 30 + BUY 20 = BUY 50
     assert.equal(intents.length, 1);
     assert.equal(intents[0].side, "BUY");
@@ -144,7 +178,7 @@ describe("Strategy Arbiter", () => {
 
   it("applies correlation discount for CORRELATED markets", async () => {
     const graphStore = new MockGraphEdgeStore();
-    
+
     // Add CORRELATED edge between mkt_E and mkt_F
     await graphStore.upsert({
       schema_version: "1.0.0",
@@ -159,12 +193,22 @@ describe("Strategy Arbiter", () => {
     const arbiter = new StrategyArbiter({ graphStore, policy: defaultPolicy });
 
     const proposals = [
-      createProposal({ strategy: "strat1", market_id: "mkt_E", side: "BUY", desired_qty: 100 }),
-      createProposal({ strategy: "strat2", market_id: "mkt_F", side: "BUY", desired_qty: 100 }),
+      createProposal({
+        strategy: "strat1",
+        market_id: "mkt_E",
+        side: "BUY",
+        desired_qty: 100,
+      }),
+      createProposal({
+        strategy: "strat2",
+        market_id: "mkt_F",
+        side: "BUY",
+        desired_qty: 100,
+      }),
     ];
 
     const intents = await arbiter.arbitrate(proposals);
-    
+
     // With 0.8 correlation, effective exposure should be discounted
     // 100 + 100 * (1 - 0.8) = 100 + 20 = 120
     assert.ok(intents.length >= 1);
@@ -182,11 +226,16 @@ describe("Strategy Arbiter", () => {
     const arbiter = new StrategyArbiter({ graphStore, policy });
 
     const proposals = [
-      createProposal({ strategy: "evidence_directional_v2", market_id: "mkt_X", side: "BUY", desired_qty: 1000 }),
+      createProposal({
+        strategy: "evidence_directional_v2",
+        market_id: "mkt_X",
+        side: "BUY",
+        desired_qty: 1000,
+      }),
     ];
 
     const intents = await arbiter.arbitrate(proposals);
-    
+
     // Strategy budget should limit exposure
     assert.ok(intents.length > 0);
   });
@@ -204,7 +253,7 @@ describe("Strategy Arbiter", () => {
     });
 
     const intents = await arbiter.arbitrate([expiredProposal]);
-    
+
     assert.equal(intents.length, 0);
   });
 });

@@ -103,7 +103,9 @@ export class G4AutonomousLoop {
   /** Set mode (validates transitions). */
   setMode(mode: G4Mode): void {
     if (!isValidModeTransition(this.config.mode, mode)) {
-      throw new Error(`Invalid mode transition: ${this.config.mode} -> ${mode}`);
+      throw new Error(
+        `Invalid mode transition: ${this.config.mode} -> ${mode}`,
+      );
     }
     this.config.mode = mode;
   }
@@ -115,11 +117,18 @@ export class G4AutonomousLoop {
 
   /** Run one iteration of the autonomous loop for a single market. */
   async step(input: G4LoopInput): Promise<G4LoopResult> {
-    const result = await executeG4Step(input, { config: this.config, deps: this.deps }, this.paperFillConfig);
+    const result = await executeG4Step(
+      input,
+      { config: this.config, deps: this.deps },
+      this.paperFillConfig,
+    );
 
     // Update metrics
     this.metrics.totalOrders++;
-    if (result.fill && (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")) {
+    if (
+      result.fill &&
+      (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")
+    ) {
       this.metrics.filledOrders++;
     }
     this.metrics.totalPnl += result.pnl ?? 0;
@@ -169,21 +178,27 @@ export class G4AutonomousLoop {
 
         const result = await this.step(mockInput);
 
-        if (result.fill && (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")) {
-          console.log(`✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}`);
+        if (
+          result.fill &&
+          (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")
+        ) {
+          console.log(
+            `✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}`,
+          );
         } else if (result.decision !== "NO_TRADE") {
-          console.log(`📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})`);
+          console.log(
+            `📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})`,
+          );
         } else {
           console.log(`⏭️  No trade: ${result.reason}`);
         }
 
         // Wait for next interval
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
+        await new Promise((resolve) => setTimeout(resolve, 5000));
       } catch (error) {
         console.error("❌ Loop error:", error);
         // Continue running even if one iteration fails
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
     }
   }

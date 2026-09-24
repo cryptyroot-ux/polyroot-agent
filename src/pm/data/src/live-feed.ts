@@ -237,12 +237,16 @@ export class PolymarketLiveFeed {
       }, 10_000);
 
       const cleanup = () => clearTimeout(timeout);
-      resolvePromise = () => { cleanup(); resolvePromise = () => {}; };
+      resolvePromise = () => {
+        cleanup();
+        resolvePromise = () => {};
+      };
     });
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectTimer || this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
+    if (this.reconnectTimer || this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS)
+      return;
     const delay = Math.min(
       this.config.reconnectIntervalMs * 2 ** this.reconnectAttempts,
       MAX_RECONNECT_DELAY_MS,
@@ -283,7 +287,8 @@ export class PolymarketLiveFeed {
       const response = await fetch(`${this.config.restUrl}/markets`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-      const data = (await response.json()) as { data?: Record<string, unknown>[] } | Record<string, unknown>[];
+      const data = (await response.json()) as
+        { data?: Record<string, unknown>[] } | Record<string, unknown>[];
       const markets = Array.isArray(data) ? data : (data.data ?? []);
 
       for (const market of markets) {
@@ -295,7 +300,9 @@ export class PolymarketLiveFeed {
   }
 
   private processMarketMetadata(market: Record<string, unknown>): void {
-    const marketId = (market["condition_id"] ?? market["market_id"] ?? market["id"]) as string;
+    const marketId = (market["condition_id"] ??
+      market["market_id"] ??
+      market["id"]) as string;
     if (!marketId) return;
 
     this.seenMarketIds.add(marketId);
@@ -339,7 +346,9 @@ export class PolymarketLiveFeed {
       market_id: marketId,
       rule_version: metadata.rules_hash ?? "1.0.0",
       resolution_source: "POLYMARKET",
-      resolves_at_utc: metadata.end_date_iso ? new Date(metadata.end_date_iso) : new Date(),
+      resolves_at_utc: metadata.end_date_iso
+        ? new Date(metadata.end_date_iso)
+        : new Date(),
       rule_text_hash: metadata.rules_hash ?? "",
       rules_text: (metadata.question as string) ?? "",
       active_from: new Date(),
@@ -370,7 +379,9 @@ export class PolymarketLiveFeed {
     }
   }
 
-  private mapMarketTypeToTradeMode(negRisk: boolean): "BINARY" | "MULTI_OUTCOME" | "NEG_RISK" | "UNKNOWN" {
+  private mapMarketTypeToTradeMode(
+    negRisk: boolean,
+  ): "BINARY" | "MULTI_OUTCOME" | "NEG_RISK" | "UNKNOWN" {
     if (negRisk) return "NEG_RISK";
     // Default to BINARY for standard markets
     return "BINARY";
@@ -400,7 +411,9 @@ export class PolymarketLiveFeed {
   }
 
   private handleBookUpdate(data: Record<string, unknown>): void {
-    const marketId = (data["market_id"] ?? data["market_id"] ?? data["asset_id"]) as string;
+    const marketId = (data["market_id"] ??
+      data["market_id"] ??
+      data["asset_id"]) as string;
     if (!marketId) return;
 
     let book = this.orderBooks.get(marketId);
@@ -430,7 +443,10 @@ export class PolymarketLiveFeed {
       book.apply(frame);
       this.callbacks.onOrderBookUpdate?.(marketId, frame);
 
-      if (isSnapshot || (book.bestBid() !== undefined && book.bestAsk() !== undefined)) {
+      if (
+        isSnapshot ||
+        (book.bestBid() !== undefined && book.bestAsk() !== undefined)
+      ) {
         const snapshot = this.getSnapshot(marketId);
         if (snapshot) {
           this.callbacks.onMarketSnapshot?.(snapshot);

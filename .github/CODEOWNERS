@@ -1,0 +1,9 @@
+# CODEOWNERS
+
+# Global owners
+* @cryptyroot-ux/core-maintainers
+
+# Package specific owners
+/src/pm/runtime/ @cryptyroot-ux/runtime-maintainers
+/src/pm/security/ @cryptyroot-ux/security-maintainers
+/src/pm/venue/ @cryptyroot-ux/venue-maintainers

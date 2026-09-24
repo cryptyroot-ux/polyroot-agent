@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { verifyBodyHmac, checkCredentialBinding } from "../src/credential-auth.ts";
+import {
+  verifyBodyHmac,
+  checkCredentialBinding,
+} from "../src/credential-auth.ts";
 import { createHmac } from "crypto";
 
 describe("CredentialAuth — Rate Limiting", () => {
@@ -27,11 +30,15 @@ describe("CredentialAuth — Rate Limiting", () => {
     const key = "rate-key-binding-" + Math.random();
 
     for (let i = 0; i < 60; i++) {
-      const res = checkCredentialBinding(credential, "0x1234", { rateLimitKey: key });
+      const res = checkCredentialBinding(credential, "0x1234", {
+        rateLimitKey: key,
+      });
       assert.equal(res.ok, true);
     }
 
-    const resLimited = checkCredentialBinding(credential, "0x1234", { rateLimitKey: key });
+    const resLimited = checkCredentialBinding(credential, "0x1234", {
+      rateLimitKey: key,
+    });
     assert.equal(resLimited.ok, false);
     assert.equal(resLimited.code, "RATE_LIMIT_EXCEEDED");
   });

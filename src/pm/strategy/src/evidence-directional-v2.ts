@@ -1,6 +1,6 @@
 /**
  * evidence_directional_v2 — Directional Strategy from Evidence-Based Forecasts
- * 
+ *
  * Consumes a Forecast and order book, produces StrategyProposal or NO_TRADE.
  * Uses conservative probability (p_conservative) to compute edge after fees.
  */
@@ -24,7 +24,9 @@ export interface EvidenceDirectionalV2Input {
 export class EvidenceDirectionalV2 {
   constructor(private config: EvidenceDirectionalV2Config) {}
 
-  async run(input: EvidenceDirectionalV2Input): Promise<StrategyProposal | null> {
+  async run(
+    input: EvidenceDirectionalV2Input,
+  ): Promise<StrategyProposal | null> {
     const { forecast, book, fees } = input;
 
     // 1. Validate forecast has required fields
@@ -93,10 +95,7 @@ export class EvidenceDirectionalV2 {
     };
   }
 
-  private noTrade(
-    code: string,
-    forecastId: string,
-  ): StrategyProposal {
+  private noTrade(code: string, forecastId: string): StrategyProposal {
     return {
       schema_version: "1.0.0",
       proposal_id: randomUUID(),

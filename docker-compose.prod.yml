@@ -1,0 +1,109 @@
+# =============================================================================
+# PRODUCTION STAGING DOCKER COMPOSE CONFIGURATION
+# IMPORTANT SECURITY NOTICE:
+# Sensitive secrets such as WALLET_PRIVATE_KEY, POSTGRES_PASSWORD, and OWNER_API_KEY
+# MUST be supplied securely via an external secret manager (e.g., Docker Secrets,
+# Vault, AWS Secrets Manager) or environment variables injected at runtime.
+# NEVER commit raw private keys or production secrets to version control.
+# =============================================================================
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: polyroot-prod-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_postgres_password}
+      POSTGRES_DB: polyroot_prod
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - polyroot_prod_pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d polyroot_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - polyroot-prod-network
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  executor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: polyroot-prod-executor
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-secure_postgres_password}@postgres:5432/polyroot_prod
+      POLYMARKET_MODE: ${POLYMARKET_MODE:-PAPER}
+      WALLET_PRIVATE_KEY: ${WALLET_PRIVATE_KEY}
+      WALLET_ADDRESS: ${WALLET_ADDRESS}
+      CHAIN_ID: ${CHAIN_ID:-137}
+      RPC_URL: ${RPC_URL:-https://polygon-rpc.com}
+      EXECUTOR_PORT: 3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - polyroot-prod-network
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 1g
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: polyroot-prod-gateway
+    command: ["node", "src/pm/control/dist/index.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-secure_postgres_password}@postgres:5432/polyroot_prod
+      GATEWAY_PORT: 3000
+      GATEWAY_HOST: 0.0.0.0
+      EXECUTOR_URL: http://executor:3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      OWNER_API_KEY: ${OWNER_API_KEY}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      executor:
+        condition: service_started
+    networks:
+      - polyroot-prod-network
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 512m
+    restart: unless-stopped
+
+volumes:
+  polyroot_prod_pgdata:
+
+networks:
+  polyroot-prod-network:
+    driver: bridge

@@ -1,3 +1,11 @@
+PolyRoot Agent — fork of CloddsBot.
+Upstream project: https://github.com/alsk1992/CloddsBot
+Upstream commit adopted: 715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8
+Upstream license: MIT, Copyright (c) 2026 alsk1992. The full upstream
+license text is preserved for provenance at:
+docs/spec_pack/Polyroot_v1.1_Specification_Pack/LICENSE_CloddsBot.txt
+Renaming to PolyRoot does not remove the upstream MIT/copyright notice.
+
 MIT License
 
 Copyright (c) 2026 alsk1992

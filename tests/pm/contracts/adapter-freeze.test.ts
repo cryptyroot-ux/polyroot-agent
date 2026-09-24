@@ -38,8 +38,7 @@ describe("Phase 22: G0 adapter-freeze evidence pack (Blueprint G0)", () => {
       !String(venuePkg.dependencies["@polymarket/client"]).match(/^[\^~]/),
     );
     const lock = readJson("package-lock.json");
-    const entry =
-      lock.packages?.["node_modules/@polymarket/client"] ?? {};
+    const entry = lock.packages?.["node_modules/@polymarket/client"] ?? {};
     assert.equal(entry.version, FROZEN_PIN.version);
     assert.equal(entry.integrity, FROZEN_PIN.integrity);
   });
@@ -48,8 +47,13 @@ describe("Phase 22: G0 adapter-freeze evidence pack (Blueprint G0)", () => {
     // The narrowed SDK surface the adapter depends on
     // (PolymarketClientLike): pinning its key list here means any surface
     // widening breaks this test until explicitly re-frozen above.
-    const iface: Array<keyof import("@polyroot/venue").PolymarketClientLike> =
-      ["fetchOrderBook", "fetchMarket", "postOrder", "cancelOrder", "fetchOrder"];
+    const iface: Array<keyof import("@polyroot/venue").PolymarketClientLike> = [
+      "fetchOrderBook",
+      "fetchMarket",
+      "postOrder",
+      "cancelOrder",
+      "fetchOrder",
+    ];
     assert.deepEqual([...iface].sort(), [...FROZEN_PIN.surface].sort());
     // The public adapter exposes ONLY the canonical gated surface — never
     // wallet/key creation, and never a silent passthrough of SDK calls.
@@ -72,7 +76,11 @@ describe("Phase 22: G0 adapter-freeze evidence pack (Blueprint G0)", () => {
         `unexpected public adapter method: ${name}`,
       );
     }
-    for (const banned of ["createWallet", "deriveCredentials", "signArbitrary"]) {
+    for (const banned of [
+      "createWallet",
+      "deriveCredentials",
+      "signArbitrary",
+    ]) {
       assert.equal(typeof (adapter as any)[banned], "undefined");
     }
   });

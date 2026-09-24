@@ -24,7 +24,8 @@ const rateBuckets = new Map<string, RateBucket>();
 const RATE_LIMIT_CAPACITY = 60; // 60 requests per window
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute window
 
-export type CredentialAuthCode = "HMAC_MISMATCH" | "SIGNER_NOT_BOUND" | "RATE_LIMIT_EXCEEDED";
+export type CredentialAuthCode =
+  "HMAC_MISMATCH" | "SIGNER_NOT_BOUND" | "RATE_LIMIT_EXCEEDED";
 
 export type CredentialAuthResult =
   | { ok: true; note: string }

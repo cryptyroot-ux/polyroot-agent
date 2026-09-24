@@ -113,12 +113,17 @@ export function evaluateRealityGap(
       },
     };
   }
-  if (input.independentAttempts < 0 || input.cancelOverfill < 0 || input.invariantViolations < 0) {
+  if (
+    input.independentAttempts < 0 ||
+    input.cancelOverfill < 0 ||
+    input.invariantViolations < 0
+  ) {
     return {
       verdict: "INCONCLUSIVE",
       reasons: ["invalid measurement: counts must be non-negative"],
       metrics: {
-        fillRateGapPp: Math.abs(input.fillRatePaper - input.fillRateObserved) * 100,
+        fillRateGapPp:
+          Math.abs(input.fillRatePaper - input.fillRateObserved) * 100,
         absSlippageBias: Math.abs(input.meanSignedSlippage),
         independentAttempts: input.independentAttempts,
       },
@@ -170,5 +175,9 @@ export function evaluateRealityGap(
   if (reasons.length > 0) {
     return { verdict: "FAIL", reasons, metrics };
   }
-  return { verdict: "PASS", reasons: ["reality gap within tolerance"], metrics };
+  return {
+    verdict: "PASS",
+    reasons: ["reality gap within tolerance"],
+    metrics,
+  };
 }

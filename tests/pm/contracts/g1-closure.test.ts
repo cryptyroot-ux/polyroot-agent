@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import {
-  Executor,
-  type OrderLifecycleState,
-} from "@polyroot/executor";
+import { Executor, type OrderLifecycleState } from "@polyroot/executor";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import type {
   ExecutionPermit,
@@ -19,10 +16,7 @@ import {
   MemRecoveryLedger,
   MemLeaseStore,
 } from "@polyroot/venue";
-import {
-  InMemoryEventStore,
-  PgOutboxProcessor,
-} from "@polyroot/ledger";
+import { InMemoryEventStore, PgOutboxProcessor } from "@polyroot/ledger";
 
 class CountingAdapter implements VenueAdapter {
   mode: VenueMode = "NORMAL";

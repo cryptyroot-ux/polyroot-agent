@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import {
-  Executor,
-  type OrderLifecycleState,
-} from "@polyroot/executor";
+import { Executor, type OrderLifecycleState } from "@polyroot/executor";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import type {
   ExecutionPermit,
@@ -12,7 +9,11 @@ import type {
   VenueMode,
 } from "@polyroot/domain";
 import { randomUUID } from "crypto";
-import { MemPermitStore, MemRecoveryLedger, MemLeaseStore } from "@polyroot/venue";
+import {
+  MemPermitStore,
+  MemRecoveryLedger,
+  MemLeaseStore,
+} from "@polyroot/venue";
 
 class FakeAdapter implements VenueAdapter {
   mode: VenueMode = "NORMAL";
@@ -147,10 +148,10 @@ describe("Executor — crash safety: SUBMITTING state (PM-EXE-07)", () => {
     });
 
     const result = await executor.submit(order, permit);
-    
+
     // Verify state was SUBMITTING before the venue call
     assert.equal(preSubmitState, "SUBMITTING");
-    
+
     // Verify the final state after SUBMISSION_UNKNOWN
     assert.equal(result.state, "SUBMISSION_UNKNOWN");
     assert.equal(result.outcome, "NEEDS_RECONCILIATION");
@@ -179,7 +180,7 @@ describe("Executor — crash safety: SUBMITTING state (PM-EXE-07)", () => {
     });
 
     await executor.submit(order, permit);
-    
+
     // Verify recovery ledger had SUBMITTING state before venue call
     assert.equal(preSubmitLedgerState, "SUBMITTING");
   });
@@ -200,7 +201,7 @@ describe("Executor — crash safety: SUBMITTING state (PM-EXE-07)", () => {
 
     // Default adapter returns ACKNOWLEDGED
     const result = await executor.submit(order, permit);
-    
+
     assert.equal(preSubmitState, "SUBMITTING");
     assert.equal(result.state, "ACKNOWLEDGED");
     assert.equal(result.outcome, "SUBMITTED");
@@ -227,7 +228,7 @@ describe("Executor — crash safety: SUBMITTING state (PM-EXE-07)", () => {
     });
 
     const result = await executor.submit(order, permit);
-    
+
     assert.equal(preSubmitState, "SUBMITTING");
     assert.equal(result.state, "SUBMISSION_UNKNOWN");
     assert.equal(result.outcome, "NEEDS_RECONCILIATION");

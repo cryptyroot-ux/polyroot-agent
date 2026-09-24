@@ -27,8 +27,7 @@ export type DecodeBudgetCode =
   | "CONTENT_BOMB_RATIO";
 
 export type DecodeBudgetResult =
-  | { ok: true }
-  | { ok: false; code: DecodeBudgetCode; reason: string };
+  { ok: true } | { ok: false; code: DecodeBudgetCode; reason: string };
 
 export const DEFAULT_DECODE_BUDGET = {
   maxCompressedBytes: 5_000_000,
@@ -43,10 +42,12 @@ function isFiniteNonNegative(n: unknown): n is number {
 export function checkDecodeBudget(
   input: DecodeBudgetInput,
 ): DecodeBudgetResult {
-  const maxCompressed = input.maxCompressedBytes ?? DEFAULT_DECODE_BUDGET.maxCompressedBytes;
+  const maxCompressed =
+    input.maxCompressedBytes ?? DEFAULT_DECODE_BUDGET.maxCompressedBytes;
   const maxDecompressed =
     input.maxDecompressedBytes ?? DEFAULT_DECODE_BUDGET.maxDecompressedBytes;
-  const maxRatio = input.maxExpansionRatio ?? DEFAULT_DECODE_BUDGET.maxExpansionRatio;
+  const maxRatio =
+    input.maxExpansionRatio ?? DEFAULT_DECODE_BUDGET.maxExpansionRatio;
 
   if (
     !isFiniteNonNegative(input.compressedBytes) ||

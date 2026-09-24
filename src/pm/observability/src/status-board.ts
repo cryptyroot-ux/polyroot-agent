@@ -12,7 +12,8 @@
  * show what is NOT confirmed without ever declaring it safe.
  */
 
-export type SystemHealth = "READY" | "PAUSED" | "DEGRADED" | "BLOCKED" | "RECOVERING";
+export type SystemHealth =
+  "READY" | "PAUSED" | "DEGRADED" | "BLOCKED" | "RECOVERING";
 
 export interface SystemStatus {
   systemHealth: SystemHealth;
@@ -24,7 +25,11 @@ export interface SystemStatus {
 }
 
 const HALTED_HEALTH: readonly SystemHealth[] = ["BLOCKED"];
-const ATTENTION_HEALTH: readonly SystemHealth[] = ["PAUSED", "DEGRADED", "RECOVERING"];
+const ATTENTION_HEALTH: readonly SystemHealth[] = [
+  "PAUSED",
+  "DEGRADED",
+  "RECOVERING",
+];
 const HALTED_VENUE = ["UNAVAILABLE", "UNKNOWN"];
 const HALTED_ACCOUNT = ["BANNED", "AUTH_INVALID", "UNKNOWN"];
 
@@ -140,7 +145,10 @@ export interface UnconfirmedAction {
  * has no "all clear" return: an empty list reports zero unconfirmed, not
  * safety.
  */
-export function unconfirmedActions(actions: UnconfirmedAction[], now: Date = new Date()): {
+export function unconfirmedActions(
+  actions: UnconfirmedAction[],
+  now: Date = new Date(),
+): {
   count: number;
   lines: string[];
 } {

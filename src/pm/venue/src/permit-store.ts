@@ -28,13 +28,15 @@ export interface PermitStore {
     orderId: string,
     venueOrderId?: string,
   ): Promise<
-    | { ok: true; permitId: string }
-    | { ok: false; code: string; reason: string }
+    { ok: true; permitId: string } | { ok: false; code: string; reason: string }
   >;
   /** Check if a permit has been claimed (for read-only checks). */
   isClaimed(permitId: string): Promise<boolean>;
   /** Validate permit against current lease epoch for fencing. */
-  validatePermit(permitId: string, expectedLeaseEpoch: number): Promise<boolean>;
+  validatePermit(
+    permitId: string,
+    expectedLeaseEpoch: number,
+  ): Promise<boolean>;
   /** Get permit by ID for reconciliation. */
   get(permitId: string): Promise<ExecutionPermit | null>;
   /** Close underlying resources. */
@@ -119,7 +121,7 @@ export class PgPermitStore implements PermitStore {
     );
   }
 
-async claim(permitId: string, orderId: string): Promise<boolean> {
+  async claim(permitId: string, orderId: string): Promise<boolean> {
     return (await this.claimPermitAndRecordSubmission(permitId, orderId)).ok;
   }
 
@@ -129,8 +131,7 @@ async claim(permitId: string, orderId: string): Promise<boolean> {
     orderId: string,
     venueOrderId?: string,
   ): Promise<
-    | { ok: true; permitId: string }
-    | { ok: false; code: string; reason: string }
+    { ok: true; permitId: string } | { ok: false; code: string; reason: string }
   > {
     const client = await this.pool.connect();
     try {
@@ -145,7 +146,11 @@ async claim(permitId: string, orderId: string): Promise<boolean> {
       );
       if (upd.rowCount === 0) {
         await client.query("ROLLBACK");
-        return { ok: false, code: "PERMIT_USED", reason: "permit already used or expired" };
+        return {
+          ok: false,
+          code: "PERMIT_USED",
+          reason: "permit already used or expired",
+        };
       }
       // 2. Record SUBMITTING in recovery_ledger (same transaction).
       await client.query(
@@ -214,10 +219,13 @@ async claim(permitId: string, orderId: string): Promise<boolean> {
     await this.pool.end();
   }
 
-  async validatePermit(permitId: string, expectedLeaseEpoch: number): Promise<boolean> {
+  async validatePermit(
+    permitId: string,
+    expectedLeaseEpoch: number,
+  ): Promise<boolean> {
     const result = await this.pool.query(
       `SELECT lease_epoch FROM execution_permits WHERE permit_id = $1`,
-      [permitId]
+      [permitId],
     );
     if (result.rowCount === 0) return false;
     return result.rows[0].lease_epoch === expectedLeaseEpoch;
@@ -228,7 +236,7 @@ async claim(permitId: string, orderId: string): Promise<boolean> {
 export class MemPermitStore implements PermitStore {
   private readonly permits = new Map<
     string,
-    ExecutionPermit & { claimed: boolean }
+    ExecutionPermit & { claimed: boolean; claimedOrderId?: string }
   >();
   private readonly clock: () => Date;
 
@@ -255,7 +263,7 @@ export class MemPermitStore implements PermitStore {
     if (permit.claimed) return false;
     if (this.clock() > permit.expires_at) return false;
     permit.claimed = true;
-    (permit as any).claimedOrderId = orderId;
+    permit.claimedOrderId = orderId;
     return true;
   }
 
@@ -265,21 +273,28 @@ export class MemPermitStore implements PermitStore {
     orderId: string,
     _venueOrderId?: string,
   ): Promise<
-    | { ok: true; permitId: string }
-    | { ok: false; code: string; reason: string }
+    { ok: true; permitId: string } | { ok: false; code: string; reason: string }
   > {
     const permit = this.permits.get(permitId);
     if (!permit) {
-      return { ok: false, code: "PERMIT_NOT_FOUND", reason: "permit not found" };
+      return {
+        ok: false,
+        code: "PERMIT_NOT_FOUND",
+        reason: "permit not found",
+      };
     }
     if (permit.claimed) {
-      return { ok: false, code: "PERMIT_USED", reason: "permit already used or expired" };
+      return {
+        ok: false,
+        code: "PERMIT_USED",
+        reason: "permit already used or expired",
+      };
     }
     if (this.clock() > permit.expires_at) {
       return { ok: false, code: "PERMIT_EXPIRED", reason: "permit expired" };
     }
     permit.claimed = true;
-    (permit as any).claimedOrderId = orderId;
+    permit.claimedOrderId = orderId;
     return { ok: true, permitId };
   }
 
@@ -300,7 +315,10 @@ export class MemPermitStore implements PermitStore {
     // No-op
   }
 
-  async validatePermit(permitId: string, expectedLeaseEpoch: number): Promise<boolean> {
+  async validatePermit(
+    permitId: string,
+    expectedLeaseEpoch: number,
+  ): Promise<boolean> {
     const permit = this.permits.get(permitId);
     if (!permit) return false;
     return permit.lease_epoch === expectedLeaseEpoch;

@@ -81,7 +81,10 @@ export function validateWalletMapping(
       // Owner/funder/proxy mapping: the account wallet is the proxy, and
       // it must differ from both owner-signer and funder (checked above).
       // Presence of all three bound addresses is the G0 contract.
-      return { ok: true, note: "proxy mapping complete: owner/funder/proxy bound" };
+      return {
+        ok: true,
+        note: "proxy mapping complete: owner/funder/proxy bound",
+      };
     case "GNOSIS_SAFE":
       return { ok: true, note: "safe mapping complete: safe/funder bound" };
     case "POLY_1271":

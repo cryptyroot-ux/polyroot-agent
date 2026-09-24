@@ -33,7 +33,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
-      console.log("Usage: polyroot --mode PAPER --db <DATABASE_URL> --kms-key <KEY_ID> [--once]");
+      console.log(
+        "Usage: polyroot --mode PAPER --db <DATABASE_URL> --kms-key <KEY_ID> [--once]",
+      );
       process.exit(0);
     } else if (a === "--mode") {
       mode = parseMode(argv[++i], "--mode");
@@ -51,8 +53,10 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   const envMode = getEnv("RUNTIME_MODE");
   if (mode === "PAPER" && envMode) mode = parseMode(envMode, "RUNTIME_MODE");
 
-  if (!databaseUrl) throw new Error("DATABASE_URL required (--db or DATABASE_URL env)");
-  if (!kmsKeyId) throw new Error("KMS_KEY_ID required (--kms-key or KMS_KEY_ID env)");
+  if (!databaseUrl)
+    throw new Error("DATABASE_URL required (--db or DATABASE_URL env)");
+  if (!kmsKeyId)
+    throw new Error("KMS_KEY_ID required (--kms-key or KMS_KEY_ID env)");
 
   return { mode, databaseUrl, kmsKeyId, kmsEndpoint: "", kmsRegion: "", once };
 }
@@ -63,12 +67,23 @@ import { PolymarketVenueAdapter } from "@polyroot/venue";
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
   const isLive = config.mode === "MICRO_LIVE" || config.mode === "LIVE";
-  const agent = await bootstrapAgent(config.databaseUrl, config.mode, isLive
-    ? { cryptoSigner: createSignerFromEnv(), venueAdapter: new PolymarketVenueAdapter({}) }
-    : {});
+  const agent = await bootstrapAgent(
+    config.databaseUrl,
+    config.mode,
+    isLive
+      ? {
+          cryptoSigner: createSignerFromEnv(),
+          venueAdapter: new PolymarketVenueAdapter({}),
+        }
+      : {},
+  );
   const pipeline = agent.pipeline as unknown as {
     runContinuous: () => Promise<void>;
-    processMarket: (input: { market_id: string; bid: number; ask: number }) => Promise<unknown>;
+    processMarket: (input: {
+      market_id: string;
+      bid: number;
+      ask: number;
+    }) => Promise<unknown>;
   };
 
   if (config.once) {
@@ -115,12 +130,15 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   }
 }
 
-export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+export async function main(
+  argv: string[] = process.argv.slice(2),
+): Promise<void> {
   const config = parseArgs(argv);
   await startAgent(config);
 }
 
-const isMain = process.argv[1] !== undefined && process.argv[1].endsWith("cli.ts");
+const isMain =
+  process.argv[1] !== undefined && process.argv[1].endsWith("cli.ts");
 if (isMain) {
   main().catch((err: unknown) => {
     console.error("Fatal error:", err);

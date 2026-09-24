@@ -13,7 +13,22 @@
  */
 
 import type { PoolConfig } from "pg";
-import type { ExecutionPermit } from "@polyroot/domain";
+import type {
+  ExecutionPermit,
+  Forecast,
+  MarketSnapshot,
+  OrderResult,
+  RiskPolicy,
+  TradeIntent,
+  VenueMode,
+  WalletIdentity,
+} from "@polyroot/domain";
+import type { SignerVault } from "@polyroot/signer";
+import type {
+  PgPersistence,
+  ReconcilerLike,
+  SupervisorLike,
+} from "./persistence-pg.js";
 import { createPgStores, MoneyKernel } from "@polyroot/risk";
 import { createPgControlStores } from "@polyroot/control";
 import { Executor } from "@polyroot/executor";
@@ -24,16 +39,16 @@ import { buildSignedOrder } from "./order-builder.js";
 
 export interface OrchestratorPgDeps {
   /** Wallet whose funds are reserved. */
-  wallet: any;
+  wallet: WalletIdentity;
   /** Current risk policy. */
-  policy: any;
+  policy: RiskPolicy;
   policyHash: string;
   /** Venue adapter for the live venue (or mock for PAPER). */
   venue: VenueAdapter;
   /** Signer vault already wired with the real/mock CryptoSigner. */
-  signer: any;
+  signer: SignerVault;
   /** Venue mode observed immediately before each stage. */
-  venueMode: () => any;
+  venueMode: () => VenueMode;
   leaseEpoch: () => number;
   now: () => Date;
   /** PostgreSQL connection (string or PoolConfig). */
@@ -41,9 +56,9 @@ export interface OrchestratorPgDeps {
 }
 
 export interface OrchestrateInput {
-  forecast: any;
-  book: any;
-  intent: any;
+  forecast: Forecast;
+  book: MarketSnapshot;
+  intent: TradeIntent;
   currentMarketExposureUsd?: number;
   currentPortfolioExposureUsd?: number;
 }
@@ -55,7 +70,7 @@ export type OrchestrateOutcome =
       ok: true;
       outcome: "SUBMITTED" | "NEEDS_RECONCILIATION";
       state: import("@polyroot/executor").OrderLifecycleState;
-      order: any;
+      order: OrderResult | { order_id: string };
       permit: ExecutionPermit;
     }
   | {
@@ -67,10 +82,10 @@ export type OrchestrateOutcome =
 
 export interface WiredOrchestrator {
   orchestrate: (input: OrchestrateInput) => Promise<OrchestrateOutcome>;
-  supervisor: any;
-  reconciler: any;
+  supervisor: SupervisorLike;
+  reconciler: ReconcilerLike;
   kernel: MoneyKernel;
-  persistence: any;
+  persistence: PgPersistence;
   shutdown: () => Promise<void>;
 }
 

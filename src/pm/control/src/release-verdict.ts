@@ -52,9 +52,7 @@ export function releaseVerdict(ev: ReleaseEvidence): ReleaseVerdict {
       `SDK offline contracts ${ev.sdkOfflineCovered}/${ev.sdkOfflineTotal} incomplete`,
     );
   if (ev.tracePass < ev.traceTotal)
-    blockers.push(
-      `traceability ${ev.tracePass}/${ev.traceTotal} failing`,
-    );
+    blockers.push(`traceability ${ev.tracePass}/${ev.traceTotal} failing`);
   if (!ev.ciGreen) blockers.push("CI gate red (typecheck/lint/test/build)");
   if (blockers.length > 0) {
     return {

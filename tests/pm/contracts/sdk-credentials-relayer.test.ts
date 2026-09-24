@@ -66,10 +66,7 @@ describe("Phase 18 CT-09: L1/L2 credential auth (PM-WALLET-06)", () => {
   const tag = createHmac("sha256", secret).update(body, "utf8").digest("hex");
   it("valid typed HMAC authenticates; tampered body/tag refuse", () => {
     assert.equal(verifyBodyHmac(secret, body, tag).ok, true);
-    assert.equal(
-      verifyBodyHmac(secret, body + "x", tag).ok,
-      false,
-    );
+    assert.equal(verifyBodyHmac(secret, body + "x", tag).ok, false);
     const bad = verifyBodyHmac(secret, body, "00".repeat(32));
     assert.equal(bad.ok, false);
     if (!bad.ok) assert.equal(bad.code, "HMAC_MISMATCH");
@@ -77,10 +74,7 @@ describe("Phase 18 CT-09: L1/L2 credential auth (PM-WALLET-06)", () => {
   it("credentials bind to exactly one signer", () => {
     const cred = { credentialId: "cred_1", boundSignerAddress: "0xSIGNER" };
     assert.equal(checkCredentialBinding(cred, "0xSIGNER").ok, true);
-    assert.equal(
-      checkCredentialBinding(cred, "0xsigner").ok,
-      true,
-    );
+    assert.equal(checkCredentialBinding(cred, "0xsigner").ok, true);
     const cross = checkCredentialBinding(cred, "0xOTHER");
     assert.equal(cross.ok, false);
     if (!cross.ok) assert.equal(cross.code, "SIGNER_NOT_BOUND");
@@ -121,5 +115,33 @@ describe("No.3 coverage: credential-auth invalid branches", () => {
     );
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.code, "SIGNER_NOT_BOUND");
+  });
+});
+
+describe("credential-auth rate limiting (coverage gate)", () => {
+  it("checkRateLimit allows capacity then refuses; empty key passes", async () => {
+    const { checkRateLimit } = await import("@polyroot/signer");
+    const key = `rl-test-${Date.now()}-allow`;
+    for (let i = 0; i < 60; i++) {
+      assert.equal(checkRateLimit(key), true);
+    }
+    assert.equal(checkRateLimit(key), false);
+    assert.equal(checkRateLimit(""), true);
+  });
+  it("verifyBodyHmac surfaces RATE_LIMIT_EXCEEDED on exhausted key", async () => {
+    const { verifyBodyHmac } = await import("@polyroot/signer");
+    const key = `rl-test-${Date.now()}-hmac`;
+    const secret = "s3cr3t";
+    const body = "payload";
+    const tag = createHmac("sha256", secret).update(body).digest("hex");
+    for (let i = 0; i < 60; i++) {
+      assert.equal(
+        verifyBodyHmac(secret, body, tag, { rateLimitKey: key }).ok,
+        true,
+      );
+    }
+    const limited = verifyBodyHmac(secret, body, tag, { rateLimitKey: key });
+    assert.equal(limited.ok, false);
+    if (!limited.ok) assert.equal(limited.code, "RATE_LIMIT_EXCEEDED");
   });
 });

@@ -31,7 +31,12 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
     available = 1_000_000_000n;
     committed = 0n;
     async get() {
-      return { account: "0xFUNDER", asset: "pUSD", availableBase: this.available, committedBase: this.committed };
+      return {
+        account: "0xFUNDER",
+        asset: "pUSD",
+        availableBase: this.available,
+        committedBase: this.committed,
+      };
     }
     async reserveFunds(_a: string, _s: string, amount: bigint) {
       this.available -= amount;
@@ -74,7 +79,14 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
       };
     }
     async placeOrder(_o: SignedOrder): Promise<SubmitOutcome> {
-      return { ok: true, result: { success: true, submit_status: "ACKNOWLEDGED", timestamp: new Date() } };
+      return {
+        ok: true,
+        result: {
+          success: true,
+          submit_status: "ACKNOWLEDGED",
+          timestamp: new Date(),
+        },
+      };
     }
     async cancelOrder(_id: string): Promise<SubmitOutcome> {
       return { ok: true, result: { success: true, timestamp: new Date() } };
@@ -99,14 +111,20 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
     };
   }
 
-  function makeTestPipeline(initialMode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE") {
+  function makeTestPipeline(
+    initialMode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE",
+  ) {
     const balance = new FakeBalanceStore();
     const kernel = new MoneyKernel({
       balance,
       sink: { push: async () => {} },
       authority: {
         async reserve(): Promise<MoneyAuthorityResult> {
-          return { ok: true, reservationId: randomUUID(), permitId: randomUUID() };
+          return {
+            ok: true,
+            reservationId: randomUUID(),
+            permitId: randomUUID(),
+          };
         },
       },
       chainId: 137,
@@ -140,7 +158,11 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
       signer,
       executor,
       wallet: makeWallet(),
-      policy: { ...DEFAULT_RISK_POLICY, policy_version: "v0-bootstrap", capital_usd_cap: 10_000 },
+      policy: {
+        ...DEFAULT_RISK_POLICY,
+        policy_version: "v0-bootstrap",
+        capital_usd_cap: 10_000,
+      },
       policyHash: "ph_trans",
       venueMode: () => adapter.mode,
       leaseEpoch: () => 1,
@@ -173,7 +195,7 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
 
   it("accumulates metrics correctly across multiple market processing steps", async () => {
     const pipeline = makeTestPipeline("PAPER");
-    
+
     const initialMetrics = pipeline.getMetrics();
     assert.equal(initialMetrics.totalOrders, 0);
     assert.equal(initialMetrics.filledOrders, 0);

@@ -1,6 +1,6 @@
 /**
  * Strategy Arbiter — Deduplication + Netting via Market Graph
- * 
+ *
  * Consumes StrategyProposal[] from multiple strategies, produces bounded TradeIntent[]
  * after deduplication/netting using Market Graph relationships:
  * - NEG_RISK: net opposite sides
@@ -62,7 +62,9 @@ export class StrategyArbiter {
     return this.emitIntents(boundedExposures);
   }
 
-  private filterValidProposals(proposals: StrategyProposal[]): StrategyProposal[] {
+  private filterValidProposals(
+    proposals: StrategyProposal[],
+  ): StrategyProposal[] {
     const now = new Date();
     return proposals.filter((p) => {
       // Filter expired
@@ -70,7 +72,11 @@ export class StrategyArbiter {
         return false;
       }
       // Filter proposals without market_id
-      if (!p.strategy_params || typeof p.strategy_params !== "object" || !("market_id" in p.strategy_params)) {
+      if (
+        !p.strategy_params ||
+        typeof p.strategy_params !== "object" ||
+        !("market_id" in p.strategy_params)
+      ) {
         return false;
       }
       return true;
@@ -83,7 +89,10 @@ export class StrategyArbiter {
     const normalized: NormalizedProposal[] = [];
 
     for (const proposal of proposals) {
-      if (!proposal.strategy_params || typeof proposal.strategy_params !== "object") {
+      if (
+        !proposal.strategy_params ||
+        typeof proposal.strategy_params !== "object"
+      ) {
         continue;
       }
       const params = proposal.strategy_params as Record<string, unknown>;
@@ -137,10 +146,16 @@ export class StrategyArbiter {
 
       const edges = await this.graphStore.getEdgesByMarket(marketId);
       const negRiskEdges = edges.filter(
-        (e: GraphEdge) => e.relation_type === "NATIVE_NEG_RISK" && e.trust_level === "VERIFIED_PLATFORM",
+        (e: GraphEdge) =>
+          e.relation_type === "NATIVE_NEG_RISK" &&
+          e.trust_level === "VERIFIED_PLATFORM",
       );
-      const complementEdges = edges.filter((e: GraphEdge) => e.relation_type === "COMPLEMENT");
-      const correlatedEdges = edges.filter((e: GraphEdge) => e.relation_type === "CORRELATED");
+      const complementEdges = edges.filter(
+        (e: GraphEdge) => e.relation_type === "COMPLEMENT",
+      );
+      const correlatedEdges = edges.filter(
+        (e: GraphEdge) => e.relation_type === "CORRELATED",
+      );
 
       // Handle NEG_RISK: net with paired market
       let netQty = exposure.netQty;
@@ -148,7 +163,9 @@ export class StrategyArbiter {
 
       for (const edge of negRiskEdges) {
         const otherMarket =
-          edge.from_market_id === marketId ? edge.to_market_id : edge.from_market_id;
+          edge.from_market_id === marketId
+            ? edge.to_market_id
+            : edge.from_market_id;
         const otherExposure = exposures.get(otherMarket);
 
         if (otherExposure && !processed.has(otherMarket)) {
@@ -163,7 +180,9 @@ export class StrategyArbiter {
       // Handle COMPLEMENT: sum with complementary market
       for (const edge of complementEdges) {
         const otherMarket =
-          edge.from_market_id === marketId ? edge.to_market_id : edge.from_market_id;
+          edge.from_market_id === marketId
+            ? edge.to_market_id
+            : edge.from_market_id;
         const otherExposure = exposures.get(otherMarket);
 
         if (otherExposure && !processed.has(otherMarket)) {
@@ -178,7 +197,10 @@ export class StrategyArbiter {
       for (const edge of correlatedEdges) {
         if (edge.confidence !== undefined) {
           // Correlation reduces effective diversification
-          correlationDiscount = Math.min(correlationDiscount, 1 - edge.confidence * 0.5);
+          correlationDiscount = Math.min(
+            correlationDiscount,
+            1 - edge.confidence * 0.5,
+          );
         }
       }
       netQty = Math.round(netQty * correlationDiscount);
@@ -233,7 +255,8 @@ export class StrategyArbiter {
 
       // Use the first proposal's strategy as reference
       const strategy = exp.proposals[0]?.proposal?.strategy ?? "arbitrated";
-      const proposalId = exp.proposals[0]?.proposal?.proposal_id ?? randomUUID();
+      const proposalId =
+        exp.proposals[0]?.proposal?.proposal_id ?? randomUUID();
 
       intents.push({
         schema_version: "1.0.0",
@@ -244,7 +267,9 @@ export class StrategyArbiter {
         side,
         desired_qty: qty,
         strategy_ref: strategy,
-        forecast_refs: exp.proposals.flatMap((p) => p.proposal.forecast_refs ?? []),
+        forecast_refs: exp.proposals.flatMap(
+          (p) => p.proposal.forecast_refs ?? [],
+        ),
         evidence_ids: exp.proposals.flatMap((p) => p.proposal.graph_refs ?? []),
         status: "CREATED",
         created_at: new Date(),

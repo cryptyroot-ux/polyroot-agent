@@ -139,9 +139,8 @@ export class PolymarketVenueAdapter {
     const bestTimestamp = new Date();
 
     // If no venue status provided and no real order book data, status is UNKNOWN.
-    const status = hasRealBook && rawMarket
-      ? (marketStatus ?? "UNKNOWN")
-      : "UNKNOWN";
+    const status =
+      hasRealBook && rawMarket ? (marketStatus ?? "UNKNOWN") : "UNKNOWN";
 
     return {
       schema_version: "1.0.0",

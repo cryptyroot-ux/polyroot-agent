@@ -37,7 +37,12 @@ export interface CatalystBusInterface {
 
 export interface ResearchBudgetInterface {
   charge(tokens: number, costUsdFrac: number): Promise<void>;
-  check(tokensNeeded: number): Promise<{ ok: boolean; remainingTokens?: bigint; code?: string; reason?: string }>;
+  check(tokensNeeded: number): Promise<{
+    ok: boolean;
+    remainingTokens?: bigint;
+    code?: string;
+    reason?: string;
+  }>;
   reset(): Promise<void>;
 }
 
@@ -460,28 +465,34 @@ export class ResearchBudget {
 export class PgResearchBudget {
   constructor(
     private pool: {
-      query: (text: string, params?: unknown[]) => Promise<{ rowCount: number; rows?: unknown[] }>;
+      query: (
+        text: string,
+        params?: unknown[],
+      ) => Promise<{ rowCount: number; rows?: unknown[] }>;
     },
-    private quota: ResearchQuota
+    private quota: ResearchQuota,
   ) {}
 
   async charge(tokens: number, costUsdFrac: number): Promise<void> {
     await this.pool.query(
       `UPDATE research_budget SET tokens_used = tokens_used + $1, cost_used_usd_micro = cost_used_usd_micro + $2`,
-      [tokens, Math.round(costUsdFrac * 1e6)]
+      [tokens, Math.round(costUsdFrac * 1e6)],
     );
   }
 
   async check(tokensNeeded: number): Promise<QuotaCheck> {
-    const result = await this.pool.query(`SELECT tokens_used, cost_used_usd_micro FROM research_budget LIMIT 1`);
-    const row = result.rows && result.rows[0] as { tokens_used: string | number, cost_used_usd_micro: string | number } | undefined;
+    const result = await this.pool.query(
+      `SELECT tokens_used, cost_used_usd_micro FROM research_budget LIMIT 1`,
+    );
+    const row =
+      result.rows &&
+      (result.rows[0] as
+        | { tokens_used: string | number; cost_used_usd_micro: string | number }
+        | undefined);
     const tokensUsed = row ? BigInt(row.tokens_used) : 0n;
-    
+
     const quotaTokens = BigInt(this.quota.max_tokens.toString(10));
-    if (
-      tokensUsed + BigInt(Math.round(tokensNeeded)) >
-      quotaTokens
-    ) {
+    if (tokensUsed + BigInt(Math.round(tokensNeeded)) > quotaTokens) {
       return {
         ok: false,
         code: "BUDGET_EXHAUSTED",
@@ -492,7 +503,9 @@ export class PgResearchBudget {
   }
 
   async reset(): Promise<void> {
-    await this.pool.query(`UPDATE research_budget SET tokens_used = 0, cost_used_usd_micro = 0, last_reset = now()`);
+    await this.pool.query(
+      `UPDATE research_budget SET tokens_used = 0, cost_used_usd_micro = 0, last_reset = now()`,
+    );
   }
 }
 
@@ -506,7 +519,10 @@ type SourceRecordRow = {
 export class PgSourceRegistry {
   constructor(
     private pool: {
-      query: (text: string, params?: unknown[]) => Promise<{ rows: SourceRecordRow[] }>;
+      query: (
+        text: string,
+        params?: unknown[],
+      ) => Promise<{ rows: SourceRecordRow[] }>;
     },
   ) {}
 
@@ -556,7 +572,7 @@ export class PgSourceRegistry {
         record.latency_sec ?? null,
         record.specialization ?? null,
         record.registered_at,
-      ]
+      ],
     );
 
     return family;
@@ -565,7 +581,7 @@ export class PgSourceRegistry {
   async family(url: string): Promise<string | undefined> {
     const res = await this.pool.query(
       `SELECT url, syndication_parent FROM source_records WHERE url = $1`,
-      [url]
+      [url],
     );
     if (res.rows.length === 0) return undefined;
     const row = res.rows[0];
@@ -573,7 +589,8 @@ export class PgSourceRegistry {
     if (row.syndication_parent) return row.syndication_parent;
     const u = row.url;
     return (
-      u.replace(/^\w+:\/\//, "")
+      u
+        .replace(/^\w+:\/\//, "")
         .replace(/^www\./, "")
         .split("?")[0] ?? u
     );
@@ -584,7 +601,7 @@ export class PgSourceRegistry {
     if (urls.length === 0) return out;
     const res = await this.pool.query(
       `SELECT url, syndication_parent FROM source_records WHERE url = ANY($1::text[])`,
-      [urls]
+      [urls],
     );
     const map = new Map<string, SourceRecordRow>();
     for (const r of res.rows) {
@@ -595,10 +612,11 @@ export class PgSourceRegistry {
       if (hit && hit.syndication_parent) {
         out.add(hit.syndication_parent);
       } else {
-        const key = u
-          .replace(/^\w+:\/\//, "")
-          .replace(/^www\./, "")
-          .split("?")[0] ?? u;
+        const key =
+          u
+            .replace(/^\w+:\/\//, "")
+            .replace(/^www\./, "")
+            .split("?")[0] ?? u;
         out.add(hit ? key : u);
       }
     }
@@ -612,10 +630,25 @@ export class PgSourceRegistry {
  * Durable catalyst bus with watermark (PM-INTEL-08): PostgreSQL-backed
  * implementation that persists events and watermarks for replay across restarts.
  */
+/** Shape of a catalyst_outbox row as returned by pg (snake_case columns). */
+interface CatalystOutboxRow {
+  event_id: string;
+  category: CatalystEvent["category"];
+  subject: string;
+  payload_version: number;
+  event_at: Date | string;
+  received_at: Date | string;
+  dedupe_key: string;
+  payload: unknown;
+}
+
 export class PgCatalystBus {
   constructor(
     private pool: {
-      query: (text: string, params?: unknown[]) => Promise<{ rowCount: number; rows?: unknown[] }>;
+      query: (
+        text: string,
+        params?: unknown[],
+      ) => Promise<{ rowCount: number; rows?: unknown[] }>;
     },
   ) {}
 
@@ -634,8 +667,8 @@ export class PgCatalystBus {
         event.event_at,
         event.received_at,
         event.dedupe_key,
-        JSON.stringify(event.payload)
-      ]
+        JSON.stringify(event.payload),
+      ],
     );
 
     if (insertResult.rowCount && insertResult.rowCount > 0) {
@@ -645,15 +678,23 @@ export class PgCatalystBus {
     }
   }
 
-  async replay(consumer: string, fromEventId: string): Promise<CatalystEvent[]> {
+  async replay(
+    consumer: string,
+    fromEventId: string,
+  ): Promise<CatalystEvent[]> {
     const watermarkResult = await this.pool.query(
       `SELECT last_event_id FROM catalyst_watermarks WHERE consumer = $1`,
-      [consumer]
+      [consumer],
     );
 
     let lastEventId: string | null = null;
-    if (watermarkResult.rowCount && watermarkResult.rowCount > 0 && watermarkResult.rows) {
-      const row = watermarkResult.rows[0] as { last_event_id: string } | undefined;
+    if (
+      watermarkResult.rowCount &&
+      watermarkResult.rowCount > 0 &&
+      watermarkResult.rows
+    ) {
+      const row = watermarkResult.rows[0] as
+        { last_event_id: string } | undefined;
       if (row) lastEventId = row.last_event_id;
     }
 
@@ -663,12 +704,13 @@ export class PgCatalystBus {
          FROM catalyst_outbox 
          WHERE event_id >= $1 
          ORDER BY event_id`,
-        [fromEventId]
+        [fromEventId],
       );
-      
+
       if (!result.rows) return [];
-      
-      return result.rows.map((row: any) => ({
+
+      const rows = result.rows as CatalystOutboxRow[];
+      return rows.map((row) => ({
         event_id: row.event_id,
         category: row.category,
         subject: row.subject,
@@ -684,12 +726,13 @@ export class PgCatalystBus {
          FROM catalyst_outbox 
          WHERE event_id > $1 
          ORDER BY event_id`,
-        [lastEventId]
+        [lastEventId],
       );
-      
+
       if (!result.rows) return [];
-      
-      return result.rows.map((row: any) => ({
+
+      const rows = result.rows as CatalystOutboxRow[];
+      return rows.map((row) => ({
         event_id: row.event_id,
         category: row.category,
         subject: row.subject,
@@ -708,7 +751,7 @@ export class PgCatalystBus {
        VALUES ($1, $2, now())
        ON CONFLICT (consumer) 
        DO UPDATE SET last_event_id = EXCLUDED.last_event_id, updated_at = EXCLUDED.updated_at`,
-      [consumer, eventId]
+      [consumer, eventId],
     );
   }
 
