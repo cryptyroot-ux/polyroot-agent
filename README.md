@@ -122,7 +122,7 @@ npm run lint && npm run typecheck
 ```bash
 # Install Node.js 24 (via nvm or binary)
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-sudo apt-get install -e nodejs
+sudo apt-get install -y nodejs
 
 # Install PostgreSQL 15
 sudo apt-get install -y postgresql-15 postgresql-client-15
