@@ -71,21 +71,25 @@ async function main() {
   });
   const kmsKey = checkEnvPresence("KMS_KEY_ID");
   const awsKey = checkEnvPresence("AWS_ACCESS_KEY_ID");
+  const keystoreJson = checkEnvPresence("POLYROOT_KEYSTORE_JSON");
+  const keystoreFile = checkEnvPresence("POLYROOT_KEYSTORE_FILE");
+  const hasKeystore = keystoreJson || keystoreFile;
   rows.push(
-    kmsKey && awsKey
+    (kmsKey && awsKey) || hasKeystore
       ? {
-          blocker: "KMS/HSM signing path",
+          blocker: "Signing path (KMS/HSM or keystore)",
           status: "READY",
-          detail:
-            "KMS_KEY_ID + AWS credentials present (presence only, never printed)",
+          detail: hasKeystore
+            ? "POLYROOT_KEYSTORE_JSON/FILE present (keystore at rest)"
+            : "KMS_KEY_ID + AWS credentials present (presence only, never printed)",
           remediation: null,
         }
       : {
-          blocker: "KMS/HSM signing path",
+          blocker: "Signing path (KMS/HSM or keystore)",
           status: "BLOCKED",
-          detail: `KMS_KEY_ID ${kmsKey ? "present" : "missing"}, AWS credentials ${awsKey ? "present" : "missing"}`,
+          detail: `KMS_KEY_ID ${kmsKey ? "present" : "missing"}, AWS credentials ${awsKey ? "present" : "missing"}, Keystore ${hasKeystore ? "present" : "missing"}`,
           remediation:
-            "export KMS_KEY_ID + AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY via systemd credentials (never in chat/logs)",
+            "Option A: export KMS_KEY_ID + AWS credentials via systemd credentials\nOption B: seal key with 'polyroot wallet seal' and set POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE",
         },
   );
   let wrapper = "BLOCKED";

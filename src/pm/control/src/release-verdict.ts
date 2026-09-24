@@ -27,7 +27,7 @@ export interface ReleaseEvidence {
   shadowPlumbingProven: boolean;
   liveObservationDays: number;
   liveFillsObserved: number;
-  kmsWired: boolean;
+  keystoreWired: boolean;
   wrapper1271Present: boolean;
 }
 
@@ -69,7 +69,7 @@ export function releaseVerdict(ev: ReleaseEvidence): ReleaseVerdict {
     );
   if (ev.liveFillsObserved <= 0)
     liveOpen.push("no authenticated live fills observed");
-  if (!ev.kmsWired) liveOpen.push("KMS/HSM signing path not wired");
+  if (!ev.keystoreWired) liveOpen.push("Keystore signing path not wired");
   if (!ev.wrapper1271Present)
     liveOpen.push("POLY_1271 wrapper absent (fresh-install default)");
 

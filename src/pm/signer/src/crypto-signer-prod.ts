@@ -6,12 +6,12 @@
  *
  * SECURITY NOTES:
  * - Private key NEVER leaves this module's memory
- * - Key loaded from secure environment variable or HSM/KMS integration point
+ * - Key loaded from encrypted keystore, secure environment variable, or optional KMS/HSM
  * - All signing goes through deterministic ECDSA (RFC 6979) for reproducibility
  * - Payload hash verified before signing (defense in depth)
  *
- * For production with HSM/KMS: Replace this module with KMS-backed implementation
- * that calls AWS KMS SignCommand, HashiCorp Vault Transit, or Azure Key Vault.
+ * Optional KMS/HSM path: Replace or wrap this module with a remote signer implementation
+ * calling AWS KMS SignCommand, HashiCorp Vault Transit, or Azure Key Vault.
  */
 
 import keccak256 from "keccak256";

@@ -125,7 +125,7 @@ export function buildWalletIdentity(
 
 export interface BootstrapAgentOptions {
   /**
-   * Real KMS/HSM-backed signer. REQUIRED for MICRO_LIVE/LIVE.
+   * Production signer (KMS, HSM, or encrypted keystore). REQUIRED for MICRO_LIVE/LIVE.
    * When omitted, a PAPER/SHADOW-only placeholder signer is used that
    * rejects unhashed requests and must never touch real funds.
    */
@@ -167,7 +167,7 @@ export async function bootstrapAgent(
   if (isLive && (!opts.cryptoSigner || !opts.venueAdapter)) {
     await pool.end().catch(() => undefined);
     throw new Error(
-      "REFUSE_LIVE_WITH_STUBS: MICRO_LIVE/LIVE requires explicit cryptoSigner (KMS/HSM) " +
+      "REFUSE_LIVE_WITH_STUBS: MICRO_LIVE/LIVE requires explicit cryptoSigner (keystore/KMS/HSM) " +
         "and venueAdapter; the placeholder signer and mock venue are PAPER/SHADOW-only",
     );
   }

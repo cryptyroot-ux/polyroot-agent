@@ -42,16 +42,33 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
   });
 
   it("parseArgs rejects an invalid RUNTIME_MODE", () => {
-    const prev = process.env["RUNTIME_MODE"];
-    process.env["RUNTIME_MODE"] = "PROD";
+    const orig = process.env["RUNTIME_MODE"];
     try {
+      process.env["RUNTIME_MODE"] = "BOGUS";
       assert.throws(
         () => parseArgs(["--db", "x", "--kms-key", "y"]),
-        /Invalid mode/,
+        /Invalid mode "BOGUS"/,
       );
     } finally {
-      if (prev === undefined) delete process.env["RUNTIME_MODE"];
-      else process.env["RUNTIME_MODE"] = prev;
+      if (orig === undefined) delete process.env["RUNTIME_MODE"];
+      else process.env["RUNTIME_MODE"] = orig;
+    }
+  });
+
+  it("parseArgs accepts keystore env without requiring KMS_KEY_ID", () => {
+    const origKey = process.env["KMS_KEY_ID"];
+    const origKeystore = process.env["POLYROOT_KEYSTORE_JSON"];
+    try {
+      delete process.env["KMS_KEY_ID"];
+      process.env["POLYROOT_KEYSTORE_JSON"] = '{"v":1}';
+      const parsed = parseArgs(["--db", "postgresql://localhost/polyroot"]);
+      assert.equal(parsed.kmsKeyId, "");
+      assert.equal(parsed.databaseUrl, "postgresql://localhost/polyroot");
+    } finally {
+      if (origKey === undefined) delete process.env["KMS_KEY_ID"];
+      else process.env["KMS_KEY_ID"] = origKey;
+      if (origKeystore === undefined) delete process.env["POLYROOT_KEYSTORE_JSON"];
+      else process.env["POLYROOT_KEYSTORE_JSON"] = origKeystore;
     }
   });
 

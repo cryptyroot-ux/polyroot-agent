@@ -100,7 +100,7 @@ Kill criteria (hentikan saat salah satu terjadi):
    restart), dan gerbang startup SHADOW 30d/100-cluster. Buka latch hanya
    via `polyroot guard reset --loss <pusd>` saat loss kembali di bawah cap.
    Kill criteria manual di poin 5 tetap berlaku sebagai lapisan kedua.
-2. **Signer = hot key dari env** (KMS/HSM belum diimplementasikan). Batasi
+2. **Signer = encrypted keystore atau KMS/HSM** (keystore: `wallet seal` + `POLYROOT_KEYSTORE_JSON` + `POLYROOT_KEYSTORE_PASSPHRASE`; KMS/HSM: opsional). Batasi
    dana di dompet uji; anggap key bisa bocor.
 3. **LIVE penuh butuh Autonomy Charter + G5 gates.** MICRO_LIVE bukan jalan
    pintas ke LIVE.
