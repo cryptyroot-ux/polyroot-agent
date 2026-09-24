@@ -88,14 +88,14 @@ clone_repo() {
 install_deps() {
   log "Installing dependencies (this may take a minute)..."
   cd "${INSTALL_DIR}"
-  npm ci --omit=dev 2>/dev/null || npm ci
+  npm ci
   ok "Dependencies installed"
 }
 
 build() {
   log "Building all packages..."
   cd "${INSTALL_DIR}"
-  npm run build
+  npx turbo run build
   ok "Build complete"
 }
 
@@ -105,7 +105,8 @@ link_binary() {
   cat > "${BIN_DIR}/polyroot" <<'EOF'
 #!/usr/bin/env bash
 # PolyRoot Agent launcher — delegates to installed copy
-exec "${HOME}/.polyroot/node_modules/.bin/tsx" "${HOME}/.polyroot/src/pm/runtime/src/cli.ts" "$@"
+# Use npx to ensure tsx is found regardless of PATH
+exec npx --yes tsx "${HOME}/.polyroot/src/pm/runtime/src/cli.ts" "$@"
 EOF
   chmod +x "${BIN_DIR}/polyroot"
   # Ensure ~/.local/bin is in PATH

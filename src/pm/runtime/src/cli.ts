@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync, chmodSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
 import { Pool } from "pg";
 import { deriveAddressFromPrivateKey, sealPrivateKey } from "@polyroot/signer";
 import { randomBytes } from "node:crypto";
@@ -162,57 +162,103 @@ function isFirstRun(): boolean {
   return !existsSync(ENV_PATH);
 }
 
-function prompt(message: string): Promise<string> {
+// Single readline instance for all prompts - avoids stdin conflicts
+let _rl: any = null;
+
+async function getRL(): Promise<any> {
+  if (!_rl) {
+    const readline = await import("readline");
+    _rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      terminal: true,
+    });
+    // Handle Ctrl+C gracefully
+    _rl.on("SIGINT", () => {
+      process.exit(1);
+    });
+  }
+  return _rl;
+}
+
+function closeRL(): void {
+  if (_rl) {
+    _rl.close();
+    _rl = null;
+  }
+}
+
+async function prompt(message: string): Promise<string> {
+  const rl = await getRL();
   return new Promise((resolve) => {
-    process.stdout.write(message);
-    process.stdin.once("data", (data) => {
-      resolve(data.toString().trim());
+    rl.question(message, (answer: string) => {
+      resolve(answer.trim());
     });
   });
 }
 
-function promptSecret(message: string): Promise<string> {
-  return new Promise((resolve) => {
-    const stdin = process.stdin;
-    const stdout = process.stdout;
-    stdin.setRawMode(true);
-    stdout.write(message);
-    let input = "";
-    stdin.on("data", (char) => {
+async function promptSecret(message: string): Promise<string> {
+  const stdin = process.stdin;
+  const isTTY = stdin.isTTY;
+
+  // Piped/non-TTY input cannot mask: fall back to a normal prompt instead of hanging.
+  if (!isTTY) {
+    return prompt(message);
+  }
+
+  // The shared readline instance and raw-mode byte reading must never both
+  // own stdin: drop the shared instance before taking over the stream.
+  closeRL();
+  stdin.setRawMode(true);
+  
+  let input = "";
+  
+  return new Promise<string>((resolve) => {
+    const onData = (char: Buffer) => {
       const c = char.toString();
       if (c === "\n" || c === "\r") {
-        stdin.setRawMode(false);
-        stdout.write("\n");
-        stdin.pause();
+        stdin.removeListener("data", onData);
+        if (isTTY) {
+          stdin.setRawMode(false);
+          console.log("");
+        }
         resolve(input);
         return;
       }
       if (c === "\u0003") {
-        stdin.setRawMode(false);
         process.exit(1);
       }
       if (c === "\u007f" || c === "\b") {
         if (input.length > 0) {
           input = input.slice(0, -1);
-          stdout.write("\b \b");
+          if (isTTY) process.stdout.write("\b \b");
         }
         return;
       }
       input += c;
-      stdout.write("*");
-    });
-    stdin.resume();
+      if (isTTY) process.stdout.write("*");
+    };
+    
+    if (isTTY) {
+      stdin.on("data", onData);
+    }
+    
+    // Show prompt
+    process.stdout.write(message);
   });
 }
 
-function selectOption(message: string, options: string[]): Promise<string> {
+async function selectOption(message: string, options: string[]): Promise<string> {
+  const rl = await getRL();
   return new Promise((resolve) => {
     console.log(message);
     options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt}`));
     const ask = () => {
-      process.stdout.write("Select [1-" + options.length + "]: ");
-      process.stdin.once("data", (data) => {
-        const idx = parseInt(data.toString().trim(), 10) - 1;
+      rl.question("Select [1-" + options.length + "]: ", (answer: string) => {
+        if (answer === null || answer === undefined) {
+          throw new Error("Setup cancelled (no input)");
+        }
+        const idx = parseInt(answer.trim(), 10) - 1;
         if (idx >= 0 && idx < options.length) {
           const selected = options[idx];
           if (selected) resolve(selected);
@@ -226,6 +272,11 @@ function selectOption(message: string, options: string[]): Promise<string> {
     ask();
   });
 }
+
+// Cleanup on exit
+process.on("exit", closeRL);
+process.on("SIGINT", () => { closeRL(); process.exit(1); });
+process.on("SIGTERM", () => { closeRL(); process.exit(1); });
 
 async function runOnboarding(): Promise<OnboardingConfig> {
   console.log("\n═══════════════════════════════════════════════");
@@ -245,14 +296,14 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let baseUrl = "";
   let apiKey = "";
 
-  if (provider.includes("OpenAI")) {
+  if (provider === "OpenAI (GPT-4o, GPT-4o-mini)") {
     model = await selectOption("Select model:", ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"]);
     apiKey = await promptSecret("Enter OpenAI API Key (sk-...): ");
-  } else if (provider.includes("9Router")) {
+  } else if (provider === "9Router / OpenAI-compatible") {
     model = await prompt("Model name (e.g., gpt-4o-mini): ");
     baseUrl = await prompt("Base URL [https://files.pango.fun/v1]: ") || "https://files.pango.fun/v1";
     apiKey = await promptSecret("Enter 9Router API Key: ");
-  } else if (provider.includes("Ollama")) {
+  } else if (provider === "Ollama (local)") {
     model = await prompt("Model name (e.g., llama3.1): ");
     baseUrl = await prompt("Base URL [http://localhost:11434/v1]: ") || "http://localhost:11434/v1";
     apiKey = "ollama"; // dummy
@@ -260,6 +311,13 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     model = await prompt("Model name: ");
     baseUrl = await prompt("Base URL: ");
     apiKey = await promptSecret("API Key: ");
+  }
+
+  if (!model.trim()) {
+    throw new Error("Model name is required");
+  }
+  if (!apiKey.trim()) {
+    throw new Error("API key is required (Ollama local uses any placeholder)");
   }
 
   // 2. Wallet
@@ -321,7 +379,7 @@ function writeEnv(config: OnboardingConfig): void {
     `WALLET_ADDRESS=${deriveAddressFromPrivateKey(config.privateKey!)}`,
     `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
     `RPC_URL=https://polygon-rpc.com`,
-    `POLYROOT_FORECAST_PROVIDER=${config.provider.includes("OpenAI") ? "openai" : "custom"}`,
+    `POLYROOT_FORECAST_PROVIDER=${config.provider === "OpenAI (GPT-4o, GPT-4o-mini)" ? "openai" : "custom"}`,
     `POLYROOT_FORECAST_MODEL=${config.model}`,
     `OPENAI_API_KEY=${config.apiKey}`,
     ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
@@ -339,13 +397,12 @@ function writeEnv(config: OnboardingConfig): void {
   console.log(`\n✅ Configuration saved to ${ENV_PATH} (600 perms)`);
 }
 
-async function runFirstTimeSetup(): Promise<void> {
-  if (!isFirstRun()) return;
-
-  console.log("\n🎉 First run detected — launching interactive setup...\n");
+async function runOnboardingFlow(): Promise<void> {
   try {
     const config = await runOnboarding();
     writeEnv(config);
+    // Release stdin before the agent run so no prompt listener leaks into it.
+    closeRL();
     console.log("\n═══════════════════════════════════════════════");
     console.log("  Setup complete! Starting PolyRoot Agent...");
     console.log("═══════════════════════════════════════════════\n");
@@ -353,9 +410,17 @@ async function runFirstTimeSetup(): Promise<void> {
     // Reload env for current process
     process.loadEnvFile(ENV_PATH as string);
   } catch (err) {
+    closeRL();
     console.error("\n❌ Setup failed:", (err as Error).message);
     process.exit(1);
   }
+}
+
+async function runFirstTimeSetup(): Promise<void> {
+  if (!isFirstRun()) return;
+
+  console.log("\n🎉 First run detected — launching interactive setup...\n");
+  await runOnboardingFlow();
 }
 
 import { createSignerFromEnv } from "@polyroot/signer";
@@ -516,6 +581,184 @@ export async function runGuardReset(
     return { ok: true, detail: verdict.reason };
   } finally {
     await pool.end().catch(() => undefined);
+  }
+}
+
+/** Status command - shows current configuration and health. */
+async function runStatus(): Promise<void> {
+  loadDotEnv();
+  const env = process.env;
+  console.log("\n═══════════════════════════════════════════════");
+  console.log("  PolyRoot Agent — Status");
+  console.log("═══════════════════════════════════════════════\n");
+
+  // Config
+  const mode = env["RUNTIME_MODE"] || "PAPER";
+  const dbUrl = env["DATABASE_URL"] ? "✅ Set" : "❌ Missing";
+  const rpc = env["RPC_URL"] || "https://polygon-rpc.com";
+  const metricsKey = env["POLYROOT_METRICS_OWNER_KEY"] ? "✅ Set" : "❌ Missing (metrics disabled)";
+
+  // Wallet
+  const hasKeystore = Boolean(env["POLYROOT_KEYSTORE_JSON"]);
+  const hasPassphrase = Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]);
+  const hasRawKey = Boolean(env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]);
+  const walletAddr = env["WALLET_ADDRESS"] || "Not set";
+  const account = env["WALLET_ACCOUNT"] || "Not set";
+  const funder = env["WALLET_FUNDER"] || "Not set";
+
+  // Venue
+  const venueKey = env["POLYMARKET_API_KEY"] ? "✅ Set" : "❌ Missing";
+  const venueSecret = env["POLYMARKET_API_SECRET"] ? "✅ Set" : "❌ Missing";
+  const venuePassphrase = env["POLYMARKET_API_PASSPHRASE"] ? "✅ Set" : "❌ Missing";
+
+  // Live caps
+  const lossCap = env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] || "Not set";
+  const expCap = env["POLYROOT_MICRO_LIVE_CAP_USD"] || "500 (default)";
+
+  console.log("📋 Configuration:");
+  console.log(`  Mode:              ${mode}`);
+  console.log(`  Database:          ${dbUrl}`);
+  console.log(`  RPC URL:           ${rpc}`);
+  console.log(`  Metrics:           ${metricsKey}`);
+  console.log("");
+  console.log("🔐 Wallet:");
+  console.log(`  Keystore:          ${hasKeystore ? "✅ Set" : "❌ Missing"}`);
+  console.log(`  Passphrase:        ${hasPassphrase ? "✅ Set" : "❌ Missing"}`);
+  console.log(`  Raw Key:           ${hasRawKey ? "✅ Set" : "❌ Missing"}`);
+  console.log(`  Address:           ${walletAddr}`);
+  console.log(`  Account:           ${account}`);
+  console.log(`  Funder:            ${funder}`);
+  console.log("");
+  console.log("🏪 Venue (Polymarket):");
+  console.log(`  API Key:           ${venueKey}`);
+  console.log(`  API Secret:        ${venueSecret}`);
+  console.log(`  Passphrase:        ${venuePassphrase}`);
+  console.log("");
+  console.log("🛡️  Live Caps:");
+  console.log(`  Loss Cap (pUSD):   ${lossCap}`);
+  console.log(`  Exposure Cap (pUSD): ${expCap}`);
+  console.log("");
+  console.log("📁 Config: ~/.polyroot/.env");
+  console.log("🔐 Keystore: ~/.polyroot/keystore.json");
+  console.log("\n═══════════════════════════════════════════════\n");
+}
+
+/** Update command - git pull and rebuild. */
+async function runUpdate(): Promise<void> {
+  console.log("\n🔄 Updating PolyRoot Agent...\n");
+  const { execSync } = await import("node:child_process");
+  const installDir = process.env["HOME"] ? `${process.env["HOME"]}/.polyroot` : "/tmp/.polyroot";
+
+  try {
+    console.log("📥 Pulling latest changes...");
+    execSync("git pull", { cwd: installDir, stdio: "inherit" });
+
+    console.log("\n📦 Installing dependencies...");
+    execSync("npm ci", { cwd: installDir, stdio: "inherit" });
+
+    console.log("\n🔨 Building...");
+    execSync("npx turbo run build", { cwd: installDir, stdio: "inherit" });
+
+    console.log("\n✅ Update complete!");
+  } catch (err) {
+    console.error("❌ Update failed:", (err as Error).message);
+    process.exit(1);
+  }
+}
+
+/** Doctor command - health checks. */
+async function runDoctor(): Promise<void> {
+  console.log("\n🏥 PolyRoot Agent — Doctor\n");
+  let allOk = true;
+
+  // 1. Check DATABASE_URL
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"];
+  if (!dbUrl) {
+    console.log("❌ DATABASE_URL not set");
+    allOk = false;
+  } else {
+    console.log("✅ DATABASE_URL set");
+    // Test connection
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: dbUrl });
+    try {
+      await pool.query("SELECT 1");
+      await pool.end();
+      console.log("✅ Database connection OK");
+    } catch (e) {
+      console.log("❌ Database connection failed:", (e as Error).message);
+      allOk = false;
+    }
+  }
+
+  // 2. Check wallet
+  const hasKeystore = Boolean(process.env["POLYROOT_KEYSTORE_JSON"]);
+  const hasPassphrase = Boolean(process.env["POLYROOT_KEYSTORE_PASSPHRASE"]);
+  const hasRawKey = Boolean(process.env["PRIVATE_KEY_HEX"] ?? process.env["WALLET_PRIVATE_KEY"]);
+  if (!hasKeystore && !hasRawKey) {
+    console.log("❌ No wallet key configured (keystore or raw)");
+    allOk = false;
+  } else {
+    console.log("✅ Wallet key present");
+    if (hasKeystore && !hasPassphrase) {
+      console.log("⚠️  Keystore set but passphrase missing");
+      allOk = false;
+    }
+  }
+
+  // 3. Check RPC
+  const rpc = process.env["RPC_URL"] || "https://polygon-rpc.com";
+  try {
+    const res = await fetch(rpc, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
+    });
+    if (res.ok) console.log("✅ RPC reachable");
+    else { console.log("❌ RPC unreachable"); allOk = false; }
+  } catch {
+    console.log("❌ RPC unreachable");
+    allOk = false;
+  }
+
+  // 4. Venue credentials (only for live modes)
+  const mode = process.env["RUNTIME_MODE"] || "PAPER";
+  if (mode !== "PAPER") {
+    const venueOk = Boolean(process.env["POLYMARKET_API_KEY"] && process.env["POLYMARKET_API_SECRET"] && process.env["POLYMARKET_API_PASSPHRASE"]);
+    if (!venueOk) {
+      console.log("⚠️  Polymarket API credentials incomplete (required for " + mode + ")");
+    } else {
+      console.log("✅ Polymarket API credentials present");
+    }
+  }
+
+  // 5. Live caps
+  if (mode !== "PAPER") {
+    const lossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+    if (!lossCap) {
+      console.log("⚠️  POLYROOT_MICRO_LIVE_LOSS_CAP_USD not set (required for " + mode + ")");
+      allOk = false;
+    } else {
+      console.log("✅ Loss cap configured: " + lossCap + " pUSD");
+    }
+  }
+
+  console.log("\n" + (allOk ? "✅ All checks passed" : "❌ Some checks failed"));
+  if (!allOk) process.exit(1);
+}
+
+/** Docker fix - restart postgres container. */
+async function runDockerFix(): Promise<void> {
+  console.log("\n🐳 Fixing Docker PostgreSQL...\n");
+  const { execSync } = await import("node:child_process");
+  try {
+    console.log("🔄 Restarting postgres container...");
+    execSync("docker compose restart postgres", { stdio: "inherit" });
+    console.log("\n✅ PostgreSQL restarted");
+  } catch (e) {
+    console.error("❌ Failed:", (e as Error).message);
+    process.exit(1);
   }
 }
 
@@ -686,8 +929,31 @@ export async function main(
     return;
   }
 
+  if (argv[0] === "status") {
+    await runStatus();
+    return;
+  }
+  if (argv[0] === "update") {
+    await runUpdate();
+    return;
+  }
+  if (argv[0] === "doctor") {
+    await runDoctor();
+    return;
+  }
+  if (argv[0] === "docker-fix") {
+    await runDockerFix();
+    return;
+  }
+  if (argv[0] === "onboard") {
+    await runOnboardingFlow();
+    return;
+  }
+
   // First-run onboarding (skip for subcommands)
-  if (argv[0] !== "wallet" && argv[0] !== "venue" && argv[0] !== "guard") {
+  if (argv[0] !== "wallet" && argv[0] !== "venue" && argv[0] !== "guard" &&
+      argv[0] !== "status" && argv[0] !== "update" && argv[0] !== "doctor" && argv[0] !== "docker-fix" &&
+      argv[0] !== "onboard") {
     await runFirstTimeSetup();
   }
 
