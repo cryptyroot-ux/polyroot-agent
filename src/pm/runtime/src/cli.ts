@@ -4,11 +4,23 @@ import { bootstrapAgent } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
 
-/** Load .env via Node's native loader when present (never overrides real env). */
-export function loadDotEnv(dotenvPath = ".env"): void {
-  if (existsSync(dotenvPath)) {
-    process.loadEnvFile(dotenvPath);
+/**
+ * Load .env via Node's native loader when present (never overrides real env).
+ * Resolves from the current directory upward so `npm start` (workspace cwd)
+ * and repo-root invocations both find the repo .env.
+ */
+export function loadDotEnv(dotenvPath?: string): string | undefined {
+  const candidates =
+    dotenvPath !== undefined
+      ? [dotenvPath]
+      : [".env", "../.env", "../../.env", "../../../.env"];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      process.loadEnvFile(candidate);
+      return candidate;
+    }
   }
+  return undefined;
 }
 
 /**

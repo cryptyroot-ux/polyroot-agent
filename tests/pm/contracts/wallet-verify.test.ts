@@ -1,6 +1,33 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { runWalletVerify } from "@polyroot/runtime";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { loadDotEnv, runWalletVerify } from "@polyroot/runtime";
+
+describe("loadDotEnv resolution", () => {
+  it("loads an explicit path and returns it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "polyroot-env-"));
+    try {
+      const path = join(dir, "custom.env");
+      writeFileSync(path, "POLYROOT_TEST_LOAD_DOTENV=yes\n");
+      delete process.env["POLYROOT_TEST_LOAD_DOTENV"];
+      assert.equal(loadDotEnv(path), path);
+      assert.equal(process.env["POLYROOT_TEST_LOAD_DOTENV"], "yes");
+    } finally {
+      delete process.env["POLYROOT_TEST_LOAD_DOTENV"];
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("returns undefined when nothing exists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "polyroot-env-"));
+    try {
+      assert.equal(loadDotEnv(join(dir, "missing.env")), undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 const KEY = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const ADDR = "0x8fd379246834eac74b8419ffda202cf8051f7a03";
