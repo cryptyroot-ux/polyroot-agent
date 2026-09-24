@@ -1,6 +1,6 @@
 /**
  * @polyroot/strategy — QuoteEngine: Adjusts intent quotes based on order book and fees.
- * 
+ *
  * Ensures the target edge is maintained after accounting for:
  * - Bid/ask spread
  * - Maker/taker fees
@@ -33,11 +33,11 @@ export class QuoteEngine {
    */
   adjustQuote(
     intent: TradeIntent,
-    book: { yes_price?: number; no_price?: number; depth?: number }
+    book: { yes_price?: number; no_price?: number; depth?: number },
   ): AdjustedQuote {
     const { price, size, side } = intent;
     const isBuy = side === "BUY" || side === "YES";
-    const bookPrice = isBuy ? book.no_price ?? 0 : book.yes_price ?? 0;
+    const bookPrice = isBuy ? (book.no_price ?? 0) : (book.yes_price ?? 0);
     // Ensure price and size are defined
     const intentPrice = price ?? 0;
     const intentSize = size ?? 0;
@@ -87,7 +87,10 @@ export class QuoteEngine {
         size: intentSize,
         edgeAfterCost: clampedEdgeAfterCost,
         valid: clampedEdgeAfterCost >= this.config.minEdgeAfterCost,
-        reason: clampedEdgeAfterCost >= this.config.minEdgeAfterCost ? "SLIPPAGE_CLAMPED" : "MIN_EDGE_AFTER_CLAMP",
+        reason:
+          clampedEdgeAfterCost >= this.config.minEdgeAfterCost
+            ? "SLIPPAGE_CLAMPED"
+            : "MIN_EDGE_AFTER_CLAMP",
       };
     }
 

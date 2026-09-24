@@ -18,7 +18,8 @@ async function checkObservationDays() {
       blocker: "prospective observation",
       status: "BLOCKED",
       detail: "no database URL configured",
-      remediation: "export TEST_DATABASE_URL=postgresql://... (read-only user is enough)",
+      remediation:
+        "export TEST_DATABASE_URL=postgresql://... (read-only user is enough)",
     };
   }
   let pool = null;
@@ -29,12 +30,18 @@ async function checkObservationDays() {
     );
     const days = r.rows.length > 0 ? Number(r.rows[0].observed_days) : 0;
     return days >= 30
-      ? { blocker: "prospective observation", status: "READY", detail: `${days}/30 days`, remediation: null }
+      ? {
+          blocker: "prospective observation",
+          status: "READY",
+          detail: `${days}/30 days`,
+          remediation: null,
+        }
       : {
           blocker: "prospective observation",
           status: "BLOCKED",
           detail: `${days}/30 days`,
-          remediation: "keep the SHADOW loop running; re-run this rehearsal daily",
+          remediation:
+            "keep the SHADOW loop running; re-run this rehearsal daily",
         };
   } catch (e) {
     return {
@@ -59,7 +66,8 @@ async function main() {
     blocker: "authenticated live fills",
     status: "BLOCKED",
     detail: "no fill evidence supplied to this rehearsal",
-    remediation: "run micro-LIVE calibration, then point FILL_EVIDENCE_REF at its journal",
+    remediation:
+      "run micro-LIVE calibration, then point FILL_EVIDENCE_REF at its journal",
   });
   const kmsKey = checkEnvPresence("KMS_KEY_ID");
   const awsKey = checkEnvPresence("AWS_ACCESS_KEY_ID");
@@ -68,25 +76,33 @@ async function main() {
       ? {
           blocker: "KMS/HSM signing path",
           status: "READY",
-          detail: "KMS_KEY_ID + AWS credentials present (presence only, never printed)",
+          detail:
+            "KMS_KEY_ID + AWS credentials present (presence only, never printed)",
           remediation: null,
         }
       : {
           blocker: "KMS/HSM signing path",
           status: "BLOCKED",
           detail: `KMS_KEY_ID ${kmsKey ? "present" : "missing"}, AWS credentials ${awsKey ? "present" : "missing"}`,
-          remediation: "export KMS_KEY_ID + AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY via systemd credentials (never in chat/logs)",
+          remediation:
+            "export KMS_KEY_ID + AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY via systemd credentials (never in chat/logs)",
         },
   );
   let wrapper = "BLOCKED";
   let wrapperDetail = "eip712 module missing";
   try {
     const m = await import("@polyroot/signer");
-    const fns = ["encodeField", "hashStruct", "signingDigest", "hashNested1271"];
+    const fns = [
+      "encodeField",
+      "hashStruct",
+      "signingDigest",
+      "hashNested1271",
+    ];
     const missing = fns.filter((f) => typeof m[f] !== "function");
     if (missing.length === 0) {
       wrapper = "READY";
-      wrapperDetail = "offline EIP-712/7739 encoding present; on-chain validator call stays G4";
+      wrapperDetail =
+        "offline EIP-712/7739 encoding present; on-chain validator call stays G4";
     } else {
       wrapperDetail = `missing exports: ${missing.join(", ")}`;
     }
@@ -109,10 +125,14 @@ async function main() {
   }
   console.log("blocker | status | detail | remediation");
   for (const r of rows) {
-    console.log(`${r.blocker} | ${r.status} | ${r.detail} | ${r.remediation ?? "-"}`);
+    console.log(
+      `${r.blocker} | ${r.status} | ${r.detail} | ${r.remediation ?? "-"}`,
+    );
   }
   const blocked = rows.filter((r) => r.status === "BLOCKED").length;
-  console.log(`live-readiness: ${rows.length - blocked}/${rows.length} ready (${blocked} blocked)`);
+  console.log(
+    `live-readiness: ${rows.length - blocked}/${rows.length} ready (${blocked} blocked)`,
+  );
 }
 
 await main();

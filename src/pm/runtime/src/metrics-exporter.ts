@@ -9,28 +9,35 @@ export class MetricsExporter {
 
   getMetrics(): string {
     const snapshot = this.metrics.snapshot();
-    let output = "# HELP g4_total_orders_total Total orders processed\n# TYPE g4_total_orders_total counter\n";
+    let output =
+      "# HELP g4_total_orders_total Total orders processed\n# TYPE g4_total_orders_total counter\n";
     output += `g4_total_orders_total ${snapshot.counters["totalOrders"] ?? 0}\n\n`;
-    
-    output += "# HELP g4_filled_orders_total Total filled orders\n# TYPE g4_filled_orders_total counter\n";
+
+    output +=
+      "# HELP g4_filled_orders_total Total filled orders\n# TYPE g4_filled_orders_total counter\n";
     output += `g4_filled_orders_total ${snapshot.counters["filledOrders"] ?? 0}\n\n`;
 
-    output += "# HELP g4_total_pnl_total Total PnL\n# TYPE g4_total_pnl_total gauge\n";
+    output +=
+      "# HELP g4_total_pnl_total Total PnL\n# TYPE g4_total_pnl_total gauge\n";
     output += `g4_total_pnl_total ${snapshot.counters["totalPnl"] ?? 0}\n\n`;
 
-    output += "# HELP g4_total_fees_total Total fees\n# TYPE g4_total_fees_total gauge\n";
+    output +=
+      "# HELP g4_total_fees_total Total fees\n# TYPE g4_total_fees_total gauge\n";
     output += `g4_total_fees_total ${snapshot.counters["totalFees"] ?? 0}\n\n`;
 
-    output += "# HELP g4_max_drawdown Max drawdown\n# TYPE g4_max_drawdown gauge\n";
+    output +=
+      "# HELP g4_max_drawdown Max drawdown\n# TYPE g4_max_drawdown gauge\n";
     output += `g4_max_drawdown ${snapshot.gauges["maxDrawdown"] ?? 0}\n\n`;
 
     output += "# HELP g4_fill_ratio Fill ratio\n# TYPE g4_fill_ratio gauge\n";
     output += `g4_fill_ratio ${snapshot.gauges["fillRatio"] ?? 0}\n\n`;
 
-    output += "# HELP g4_current_exposure_usd Current exposure USD\n# TYPE g4_current_exposure_usd gauge\n";
+    output +=
+      "# HELP g4_current_exposure_usd Current exposure USD\n# TYPE g4_current_exposure_usd gauge\n";
     output += `g4_current_exposure_usd ${snapshot.gauges["currentExposureUsd"] ?? 0}\n\n`;
 
-    output += "# HELP g4_max_exposure_usd Max exposure USD\n# TYPE g4_max_exposure_usd gauge\n";
+    output +=
+      "# HELP g4_max_exposure_usd Max exposure USD\n# TYPE g4_max_exposure_usd gauge\n";
     output += `g4_max_exposure_usd ${snapshot.gauges["maxExposureUsd"] ?? 0}\n\n`;
 
     // Histograms

@@ -29,7 +29,11 @@ export class EffectiveAuthorityResolver {
    * Resolves the effective authority by walking the lineage chain upwards,
    * applying strict attenuation (child max <= parent max, domains intersect).
    */
-  resolve(context: EffectiveAuthContext, targetDomain: string, requestedNotional: bigint): AuthResolutionResult {
+  resolve(
+    context: EffectiveAuthContext,
+    targetDomain: string,
+    requestedNotional: bigint,
+  ): AuthResolutionResult {
     if (!context.lineage || context.lineage.length === 0) {
       return {
         ok: false,
@@ -45,7 +49,7 @@ export class EffectiveAuthorityResolver {
 
     for (let i = 0; i < context.lineage.length; i++) {
       const node = context.lineage[i];
-      
+
       // Attenuation check: node cannot exceed parent's allowance if parent exists
       if (i > 0) {
         const parent = context.lineage[i - 1];
@@ -60,10 +64,13 @@ export class EffectiveAuthorityResolver {
         }
       }
 
-      currentMax = node.maxNotionalBase < currentMax ? node.maxNotionalBase : currentMax;
-      
+      currentMax =
+        node.maxNotionalBase < currentMax ? node.maxNotionalBase : currentMax;
+
       const nodeDomainSet = new Set(node.allowedDomains);
-      currentDomains = new Set([...currentDomains].filter(d => nodeDomainSet.has(d)));
+      currentDomains = new Set(
+        [...currentDomains].filter((d) => nodeDomainSet.has(d)),
+      );
     }
 
     if (!currentDomains.has(targetDomain)) {

@@ -138,7 +138,9 @@ export interface WalletDiscovery {
  * canonical address) or ABSENT. ABSENT never fabricates an address —
  * creation is a separate, owner-authorized step.
  */
-export function discoverWallet(reportedAddress: string | null): WalletDiscovery {
+export function discoverWallet(
+  reportedAddress: string | null,
+): WalletDiscovery {
   if (reportedAddress && reportedAddress.length > 0) {
     return {
       presence: "EXISTING",
@@ -374,7 +376,11 @@ export function advanceWalletLifecycle(
           reason: "setup requires explicit owner authorization",
         };
       }
-      return { ok: true, state: "SETUP_AUTHORIZED", note: "owner authorized setup" };
+      return {
+        ok: true,
+        state: "SETUP_AUTHORIZED",
+        note: "owner authorized setup",
+      };
     case "SETUP_AUTHORIZED":
       if (event.kind !== "CREATED" || !event.txReceipt) {
         return bad("creation requires a transaction receipt");
@@ -389,12 +395,20 @@ export function advanceWalletLifecycle(
       if (event.kind !== "APPROVALS_SUBMITTED") {
         return bad("expected approvals submission");
       }
-      return { ok: true, state: "APPROVAL_PENDING", note: "approvals submitted" };
+      return {
+        ok: true,
+        state: "APPROVAL_PENDING",
+        note: "approvals submitted",
+      };
     case "APPROVAL_PENDING":
       if (event.kind !== "APPROVALS_VERIFIED") {
         return bad("expected approvals verification");
       }
-      return { ok: true, state: "READY", note: "wallet ready for mandate binding" };
+      return {
+        ok: true,
+        state: "READY",
+        note: "wallet ready for mandate binding",
+      };
     case "READY":
       return bad("READY is terminal for setup; bind a mandate to proceed");
     default:

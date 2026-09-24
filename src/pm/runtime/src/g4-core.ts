@@ -8,7 +8,11 @@ import type {
   WalletIdentity,
 } from "@polyroot/domain";
 import { simulateFill } from "./paper-engine.js";
-import { evaluateEdge, validateAndReserve, buildSignedOrder } from "@polyroot/control";
+import {
+  evaluateEdge,
+  validateAndReserve,
+  buildSignedOrder,
+} from "@polyroot/control";
 import type { MoneyKernel } from "@polyroot/risk";
 import type { SignerVault } from "@polyroot/signer";
 import type { Executor } from "@polyroot/executor";
@@ -45,9 +49,16 @@ export interface G4CoreConfig {
 
 export interface G4CoreDeps {
   /** Intelligence: produces forecast from market data. */
-  forecast: (market: { market_id: string; bid: number; ask: number }) => Promise<number | null>;
+  forecast: (market: {
+    market_id: string;
+    bid: number;
+    ask: number;
+  }) => Promise<number | null>;
   /** Strategy: produces intent from forecast + market. */
-  sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number;
+  sizeIntent: (
+    market: { market_id: string; bid: number; ask: number },
+    p: number,
+  ) => number;
   /** Money Kernel for reservations & permits. */
   kernel: MoneyKernel;
   /** Signer Vault for signing orders. */
@@ -91,14 +102,16 @@ export interface G4CoreResult {
   decision: "NO_TRADE" | "BUY" | "SELL";
   reason: string | undefined;
   /** For simulated/real fills. */
-  fill?: {
-    status: "FILLED" | "PARTIAL" | "CANCELLED";
-    filledSize: number;
-    fillPrice: number;
-    makerFee: number;
-    takerFee: number;
-    latencyMs: number;
-  } | undefined;
+  fill?:
+    | {
+        status: "FILLED" | "PARTIAL" | "CANCELLED";
+        filledSize: number;
+        fillPrice: number;
+        makerFee: number;
+        takerFee: number;
+        latencyMs: number;
+      }
+    | undefined;
   pnl?: number;
   /** For real execution. */
   orderId?: string | undefined;
@@ -111,7 +124,11 @@ export interface G4CoreResult {
 export interface G4CoreObservability {
   emitStepStart?(input: G4CoreInput, mode: G4Mode): void;
   emitStepComplete?(input: G4CoreInput, result: G4CoreResult): void;
-  emitFinancialGate?(gate: "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED", mode: G4Mode, venue: VenueMode): void;
+  emitFinancialGate?(
+    gate: "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED",
+    mode: G4Mode,
+    venue: VenueMode,
+  ): void;
   emitError?(error: Error, context: unknown): void;
   emitMetrics?(metrics: G4CoreMetrics): void;
   emitModeTransition?(from: G4Mode, to: G4Mode, reason: string): void;
@@ -148,8 +165,15 @@ export interface CreateG4CoreOptions {
   venueMode: () => VenueMode;
   leaseEpoch: () => number;
   now: () => Date;
-  forecast: (market: { market_id: string; bid: number; ask: number }) => Promise<number | null>;
-  sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number;
+  forecast: (market: {
+    market_id: string;
+    bid: number;
+    ask: number;
+  }) => Promise<number | null>;
+  sizeIntent: (
+    market: { market_id: string; bid: number; ask: number },
+    p: number,
+  ) => number;
   observability?: G4CoreObservability;
 }
 
@@ -183,15 +207,25 @@ export const G4_MODE_TRANSITIONS: Record<G4Mode, G4Mode[]> = {
   LIVE: ["SHADOW"],
 };
 
-export function isValidModeTransition(current: G4Mode, target: G4Mode): boolean {
+export function isValidModeTransition(
+  current: G4Mode,
+  target: G4Mode,
+): boolean {
   return G4_MODE_TRANSITIONS[current].includes(target);
 }
 
-export function getDefaultModeConfig(mode: G4Mode, baseConfig: Partial<G4CoreConfig>): G4CoreConfig {
+export function getDefaultModeConfig(
+  mode: G4Mode,
+  baseConfig: Partial<G4CoreConfig>,
+): G4CoreConfig {
   const defaults: Partial<G4CoreConfig> = {
     microLiveCapUsd: 500,
     shadowCriteria: { minDays: 30, minResolvedClusters: 100 },
-    paperFillConfig: { cancelProbability: 0.05, partialFraction: 0.8, latencyMs: 50 },
+    paperFillConfig: {
+      cancelProbability: 0.05,
+      partialFraction: 0.8,
+      latencyMs: 50,
+    },
     microLiveCapBase: 100_000_000n,
     minEdgeAfterCost: 0.03,
     paperConfig: {
@@ -221,7 +255,11 @@ export function computeFinancialGate(
 
   if (mode === "MICRO_LIVE" || mode === "SHADOW") {
     const venue = venueMode();
-    if (venue === "UNAVAILABLE" || venue === "UNKNOWN" || venue === "READ_ONLY") {
+    if (
+      venue === "UNAVAILABLE" ||
+      venue === "UNKNOWN" ||
+      venue === "READ_ONLY"
+    ) {
       return "ENTRY_BLOCKED";
     }
 
@@ -257,7 +295,11 @@ export async function executeG4Step(
     deps.venueMode,
     config.minEdgeAfterCost,
   );
-  core.deps.observability?.emitFinancialGate?.(gate, config.mode, deps.venueMode());
+  core.deps.observability?.emitFinancialGate?.(
+    gate,
+    config.mode,
+    deps.venueMode(),
+  );
   if (gate !== "ALLOW") {
     core.deps.observability?.emitStepComplete?.(input, {
       market_id,
@@ -331,7 +373,7 @@ export async function executeG4Step(
         schema_version: "1.1",
       },
     },
-    { minEdge: config.minEdgeAfterCost ?? 0.03 }
+    { minEdge: config.minEdgeAfterCost ?? 0.03 },
   );
   if (edge.action === "NO_TRADE") {
     return {
@@ -354,31 +396,34 @@ export async function executeG4Step(
 
   // 5. Risk gate + reservation
   const now = deps.now();
-  const gateResult = await validateAndReserve({
-    intent: {
-      schema_version: "1.1",
-      intent_id: crypto.randomUUID(),
-      dedupe_key: `${market_id}_${Date.now()}`,
-      purpose: "ENTRY",
-      market_id,
-      side: intentSide,
-      desired_qty: size,
-      limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
-      created_at: now,
-      evidence_ids: [],
-      forecast_refs: [],
-      status: "CREATED",
-      expiration_sec: 300,
+  const gateResult = await validateAndReserve(
+    {
+      intent: {
+        schema_version: "1.1",
+        intent_id: crypto.randomUUID(),
+        dedupe_key: `${market_id}_${Date.now()}`,
+        purpose: "ENTRY",
+        market_id,
+        side: intentSide,
+        desired_qty: size,
+        limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
+        created_at: now,
+        evidence_ids: [],
+        forecast_refs: [],
+        status: "CREATED",
+        expiration_sec: 300,
+      },
+      policy: deps.policy,
+      wallet: deps.wallet,
+      venueMode: deps.venueMode(),
+      leaseEpoch: deps.leaseEpoch(),
+      now,
+      policyHash: deps.policyHash,
+      currentMarketExposureUsd: currentMarketExposureUsd ?? 0,
+      currentPortfolioExposureUsd: currentPortfolioExposureUsd ?? 0,
     },
-    policy: deps.policy,
-    wallet: deps.wallet,
-    venueMode: deps.venueMode(),
-    leaseEpoch: deps.leaseEpoch(),
-    now,
-    policyHash: deps.policyHash,
-    currentMarketExposureUsd: currentMarketExposureUsd ?? 0,
-    currentPortfolioExposureUsd: currentPortfolioExposureUsd ?? 0,
-  }, deps.kernel);
+    deps.kernel,
+  );
 
   if (!gateResult.ok) {
     return {
@@ -389,27 +434,30 @@ export async function executeG4Step(
   }
 
   // 6. Build signed order
-  const built = await buildSignedOrder({
-    intent: {
-      schema_version: "1.1",
-      intent_id: crypto.randomUUID(),
-      dedupe_key: `${market_id}_${Date.now()}`,
-      purpose: "ENTRY",
-      market_id,
-      side: intentSide,
-      desired_qty: size,
-      limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
-      created_at: now,
-      evidence_ids: [],
-      forecast_refs: [],
-      status: "CREATED",
-      expiration_sec: 300,
+  const built = await buildSignedOrder(
+    {
+      intent: {
+        schema_version: "1.1",
+        intent_id: crypto.randomUUID(),
+        dedupe_key: `${market_id}_${Date.now()}`,
+        purpose: "ENTRY",
+        market_id,
+        side: intentSide,
+        desired_qty: size,
+        limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
+        created_at: now,
+        evidence_ids: [],
+        forecast_refs: [],
+        status: "CREATED",
+        expiration_sec: 300,
+      },
+      permit: gateResult.permit,
+      wallet: deps.wallet,
+      venueMode: deps.venueMode(),
+      now,
     },
-    permit: gateResult.permit,
-    wallet: deps.wallet,
-    venueMode: deps.venueMode(),
-    now,
-  }, deps.signer);
+    deps.signer,
+  );
 
   if (!built.ok) {
     return {
@@ -449,7 +497,10 @@ export async function executeG4Step(
     };
   } else if (config.mode === "MICRO_LIVE" || config.mode === "LIVE") {
     // Submit to executor
-    const submitted = await deps.executor.submit(built.order, gateResult.permit);
+    const submitted = await deps.executor.submit(
+      built.order,
+      gateResult.permit,
+    );
     if (submitted.outcome === "SUBMITTED") {
       orderId = built.order.order_id;
       permitId = gateResult.permit.permit_id;
@@ -468,14 +519,17 @@ export async function executeG4Step(
   let decision: G4CoreResult["decision"] = "NO_TRADE";
   if (fill) {
     decision = p > 0.5 ? "BUY" : "SELL";
-  } else if ((config.mode === "MICRO_LIVE" || config.mode === "LIVE") && (outcome === "SUBMITTED" || outcome === "NEEDS_RECONCILIATION")) {
+  } else if (
+    (config.mode === "MICRO_LIVE" || config.mode === "LIVE") &&
+    (outcome === "SUBMITTED" || outcome === "NEEDS_RECONCILIATION")
+  ) {
     decision = p > 0.5 ? "BUY" : "SELL";
   }
 
   // Calculate PnL
   const pnl = fill
-    ? (fill.status === "FILLED" || fill.status === "PARTIAL")
-      ? (fill.filledSize * (p - 0.5) - (fill.makerFee + fill.takerFee))
+    ? fill.status === "FILLED" || fill.status === "PARTIAL"
+      ? fill.filledSize * (p - 0.5) - (fill.makerFee + fill.takerFee)
       : 0
     : 0;
 

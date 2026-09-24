@@ -384,7 +384,17 @@ jobs:
   notify:
     name: Notify on Failure
     runs-on: ubuntu-latest
-    needs: [validate, test, property-test, security, build, docker, manifest, coverage]
+    needs:
+      [
+        validate,
+        test,
+        property-test,
+        security,
+        build,
+        docker,
+        manifest,
+        coverage,
+      ]
     if: failure()
     timeout-minutes: 10
     steps:

@@ -201,17 +201,17 @@ npm run migrate:latest
 
 ## Troubleshooting
 
-| Symptom | Likely Cause | Fix |
-|---------|--------------|-----|
-| `npm run ci` fails on typecheck | Strict TS config | Ensure `verbatimModuleSyntax: true`, `exactOptionalPropertyTypes: true` in `tsconfig.json` |
-| Database connection refused | Postgres not running or wrong URL | Verify `docker compose ps` or local service, check `DATABASE_URL` in `.env` |
-| Wallet errors: invalid key | Incorrect private key format | Must be 0x-prefixed 64 hex bytes (32 bytes) |
-| RPC timeout/failure | Network or endpoint issue | Test RPC URL with curl, verify Polygon Mainnet reachable |
-| Gateway fails to start | Port already in use | Kill existing process on 3000/8080/9090 or change ports |
-| MICRO_LIVE rejects orders | Capital cap exceeded | Reduce intent size or increase `G4_MICRO_LIVE_CAP_USD` |
-| SHADOW→MICRO promotion blocked | Reality gap or slippage bias too high | Wait for more evidence, adjust tolerances |
-| Gitleaks detects secrets | Accidental credential in code/logs | Remove secrets, run `git reset --hard`, add to `.gitleaksignore` if false positive |
-| Observability metrics missing | Metrics server not started | Ensure `METRICS_PORT` and `HEALTH_PORT` are set and not firewalled |
+| Symptom                         | Likely Cause                          | Fix                                                                                        |
+| ------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `npm run ci` fails on typecheck | Strict TS config                      | Ensure `verbatimModuleSyntax: true`, `exactOptionalPropertyTypes: true` in `tsconfig.json` |
+| Database connection refused     | Postgres not running or wrong URL     | Verify `docker compose ps` or local service, check `DATABASE_URL` in `.env`                |
+| Wallet errors: invalid key      | Incorrect private key format          | Must be 0x-prefixed 64 hex bytes (32 bytes)                                                |
+| RPC timeout/failure             | Network or endpoint issue             | Test RPC URL with curl, verify Polygon Mainnet reachable                                   |
+| Gateway fails to start          | Port already in use                   | Kill existing process on 3000/8080/9090 or change ports                                    |
+| MICRO_LIVE rejects orders       | Capital cap exceeded                  | Reduce intent size or increase `G4_MICRO_LIVE_CAP_USD`                                     |
+| SHADOW→MICRO promotion blocked  | Reality gap or slippage bias too high | Wait for more evidence, adjust tolerances                                                  |
+| Gitleaks detects secrets        | Accidental credential in code/logs    | Remove secrets, run `git reset --hard`, add to `.gitleaksignore` if false positive         |
+| Observability metrics missing   | Metrics server not started            | Ensure `METRICS_PORT` and `HEALTH_PORT` are set and not firewalled                         |
 
 ### Common Commands
 
@@ -258,22 +258,22 @@ See [`docs/PUBLIC_API.md`](docs/PUBLIC_API.md) for full API reference, runtime m
 
 ### Environment Variables (`.env`)
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://polyroot:secure_password@localhost:5432/polyroot` |
-| `WALLET_PRIVATE_KEY` | Deposit wallet private key (0x-prefixed) | `0xa1b2c3d4...` |
-| `WALLET_ADDRESS` | Derived wallet address (0x-prefixed) | `0xAbCdEf12...` |
-| `CHAIN_ID` | Polygon = 137 | `137` |
-| `RPC_URL` | Polygon RPC endpoint (HTTPS) | `https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY` |
-| `NODE_ENV` | `development` \| `production` | `production` |
-| `LOG_LEVEL` | `debug` \| `info` \| `warn` \| `error` | `info` |
-| `RUNTIME_MODE` | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE` | `PAPER` |
-| `G4_MICRO_LIVE_CAP_USD` | Max capital in MICRO_LIVE (USDC) | `500` |
-| `G4_MIN_EDGE_AFTER_COST` | Min probability edge after fees | `0.03` |
-| `G4_SHADOW_MIN_DAYS` | Min SHADOW baseline days | `30` |
-| `G4_SHADOW_MIN_CLUSTERS` | Min resolved clusters for SHADOW | `100` |
-| `METRICS_PORT` | Prometheus metrics port | `9090` |
-| `HEALTH_PORT` | Health check port | `8080` |
+| Variable                 | Description                                   | Example                                                         |
+| ------------------------ | --------------------------------------------- | --------------------------------------------------------------- |
+| `DATABASE_URL`           | PostgreSQL connection string                  | `postgresql://polyroot:secure_password@localhost:5432/polyroot` |
+| `WALLET_PRIVATE_KEY`     | Deposit wallet private key (0x-prefixed)      | `0xa1b2c3d4...`                                                 |
+| `WALLET_ADDRESS`         | Derived wallet address (0x-prefixed)          | `0xAbCdEf12...`                                                 |
+| `CHAIN_ID`               | Polygon = 137                                 | `137`                                                           |
+| `RPC_URL`                | Polygon RPC endpoint (HTTPS)                  | `https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY`             |
+| `NODE_ENV`               | `development` \| `production`                 | `production`                                                    |
+| `LOG_LEVEL`              | `debug` \| `info` \| `warn` \| `error`        | `info`                                                          |
+| `RUNTIME_MODE`           | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE` | `PAPER`                                                         |
+| `G4_MICRO_LIVE_CAP_USD`  | Max capital in MICRO_LIVE (USDC)              | `500`                                                           |
+| `G4_MIN_EDGE_AFTER_COST` | Min probability edge after fees               | `0.03`                                                          |
+| `G4_SHADOW_MIN_DAYS`     | Min SHADOW baseline days                      | `30`                                                            |
+| `G4_SHADOW_MIN_CLUSTERS` | Min resolved clusters for SHADOW              | `100`                                                           |
+| `METRICS_PORT`           | Prometheus metrics port                       | `9090`                                                          |
+| `HEALTH_PORT`            | Health check port                             | `8080`                                                          |
 
 ---
 
@@ -282,4 +282,5 @@ See [`docs/PUBLIC_API.md`](docs/PUBLIC_API.md) for full API reference, runtime m
 MIT License with upstream CloddsBot attribution. See [`LICENSE`](LICENSE).
 
 ---
-*Status: Production-ready. Live deployment requires Autonomy Charter sign-off and G5 promotion gates passing.*
+
+_Status: Production-ready. Live deployment requires Autonomy Charter sign-off and G5 promotion gates passing._

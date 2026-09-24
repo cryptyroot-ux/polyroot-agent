@@ -32,7 +32,7 @@ describe("P0-8: EffectiveAuthorityResolver", () => {
     const result = resolver.resolve(
       { identity: "user", lineage: [root, child1, child2] },
       "trading",
-      5_000_000_000n
+      5_000_000_000n,
     );
     assert.equal(result.ok, true);
     assert.equal(result.effectiveMaxNotional, 10_000_000_000n);
@@ -43,7 +43,7 @@ describe("P0-8: EffectiveAuthorityResolver", () => {
     const result = resolver.resolve(
       { identity: "user", lineage: [root, child1, child2] },
       "trading",
-      20_000_000_000n
+      20_000_000_000n,
     );
     assert.equal(result.ok, false);
     assert.equal(result.code, "EXCEEDS_EFFECTIVE_NOTIONAL");
@@ -53,7 +53,7 @@ describe("P0-8: EffectiveAuthorityResolver", () => {
     const result = resolver.resolve(
       { identity: "user", lineage: [root, child1, child2] },
       "governance",
-      1_000_000_000n
+      1_000_000_000n,
     );
     assert.equal(result.ok, false);
     assert.equal(result.code, "DOMAIN_NOT_ALLOWED");
@@ -70,7 +70,7 @@ describe("P0-8: EffectiveAuthorityResolver", () => {
     const result = resolver.resolve(
       { identity: "user", lineage: [root, child1, badChild] },
       "trading",
-      1_000_000_000n
+      1_000_000_000n,
     );
     assert.equal(result.ok, false);
     assert.equal(result.code, "ATTENUATION_VIOLATION");
@@ -80,7 +80,7 @@ describe("P0-8: EffectiveAuthorityResolver", () => {
     const result = resolver.resolve(
       { identity: "user", lineage: [] },
       "trading",
-      1_000_000_000n
+      1_000_000_000n,
     );
     assert.equal(result.ok, false);
     assert.equal(result.code, "EMPTY_LINEAGE");
@@ -90,18 +90,21 @@ describe("P0-8: EffectiveAuthorityResolver", () => {
     const result = resolver.resolve(
       { identity: "user", lineage: [root] },
       "staking",
-      50_000_000_000n
+      50_000_000_000n,
     );
     assert.equal(result.ok, true);
     assert.equal(result.effectiveMaxNotional, 100_000_000_000n);
-    assert.deepEqual(result.effectiveDomains.sort(), ["trading", "staking", "governance"].sort());
+    assert.deepEqual(
+      result.effectiveDomains.sort(),
+      ["trading", "staking", "governance"].sort(),
+    );
   });
 
   it("should intersect domains across lineage (child removes domain)", () => {
     const result = resolver.resolve(
       { identity: "user", lineage: [root, child1] },
       "governance",
-      10_000_000_000n
+      10_000_000_000n,
     );
     assert.equal(result.ok, false);
     assert.equal(result.code, "DOMAIN_NOT_ALLOWED");

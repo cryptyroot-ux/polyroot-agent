@@ -57,7 +57,10 @@ describe("Phase 10: execution reality gap gate (Blueprint §13.2, PRD G3/G4)", (
   });
 
   it("INCONCLUSIVE on non-finite or out-of-range measurements (never a fake verdict)", () => {
-    const bad = evaluateRealityGap({ ...HEALTHY, meanSignedSlippage: Number.NaN });
+    const bad = evaluateRealityGap({
+      ...HEALTHY,
+      meanSignedSlippage: Number.NaN,
+    });
     assert.equal(bad.verdict, "INCONCLUSIVE");
     const outOfRange = evaluateRealityGap({
       ...HEALTHY,

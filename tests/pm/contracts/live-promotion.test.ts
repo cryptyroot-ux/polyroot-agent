@@ -67,7 +67,9 @@ describe("Phase 24 G5 LIVE promotion pack (PRD G5)", () => {
 
   it("monitoring gaps and incomplete rollback BLOCK", () => {
     const mon = evaluateLivePromotion(
-      pack({ monitoring: { systemHealth: true, venueMode: false, accountMode: true } }),
+      pack({
+        monitoring: { systemHealth: true, venueMode: false, accountMode: true },
+      }),
     );
     assert.equal(mon.decision, "BLOCKED");
     const rb = evaluateLivePromotion(

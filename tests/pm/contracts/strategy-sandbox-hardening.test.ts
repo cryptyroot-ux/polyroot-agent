@@ -8,7 +8,9 @@ import {
   MAX_BUFFER_BYTES,
 } from "@polyroot/strategy/sandbox-supervisor";
 
-function fakeSocket(opts: { destroyed?: boolean; throwOnWrite?: boolean } = {}) {
+function fakeSocket(
+  opts: { destroyed?: boolean; throwOnWrite?: boolean } = {},
+) {
   const emitter = new EventEmitter() as EventEmitter & {
     setEncoding: (enc: string) => void;
     write: (data: string) => boolean;
@@ -76,10 +78,7 @@ describe("Take-over audit: socket hardening (#8 buffer cap, #9 writeLine guard)"
   it("normal newline-delimited input is still processed (no false positive)", async () => {
     const socket = fakeSocket();
     await handleConnection(socket as any);
-    socket.emit(
-      "data",
-      JSON.stringify({ id: 1, code: "return 1" }) + "\n",
-    );
+    socket.emit("data", JSON.stringify({ id: 1, code: "return 1" }) + "\n");
     // Poll for the reply instead of a fixed sleep: worker spawn time
     // varies under parallel-suite load; a fixed timeout flakes.
     const deadline = Date.now() + 30_000;
@@ -94,7 +93,10 @@ describe("Take-over audit: socket hardening (#8 buffer cap, #9 writeLine guard)"
   });
 
   it("writeLine on a destroyed socket returns false instead of throwing", () => {
-    assert.equal(writeLine(fakeSocket({ destroyed: true }) as any, { id: 1 }), false);
+    assert.equal(
+      writeLine(fakeSocket({ destroyed: true }) as any, { id: 1 }),
+      false,
+    );
   });
 
   it("writeLine swallows a throwing write and returns false", () => {

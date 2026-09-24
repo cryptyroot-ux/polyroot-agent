@@ -1,24 +1,24 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
-import { Client } from 'pg';
+import { Client } from "pg";
 import { PgSourceRegistry } from "@polyroot/intelligence";
 
 const pgConfig = {
-  user: 'postgres',
-  host: 'localhost',
-  database: 'polyroot_test',
-  password: 'postgres',
+  user: "postgres",
+  host: "localhost",
+  database: "polyroot_test",
+  password: "postgres",
   port: 5432,
 };
 
-describe('SourceRegistry Persistence (PgSourceRegistry)', () => {
+describe("SourceRegistry Persistence (PgSourceRegistry)", () => {
   let testClient: Client;
   let registry: PgSourceRegistry;
 
   beforeEach(async () => {
     testClient = new Client(pgConfig);
     await testClient.connect();
-    await testClient.query('DROP TABLE IF EXISTS source_records');
+    await testClient.query("DROP TABLE IF EXISTS source_records");
     await testClient.query(`
       CREATE TABLE source_records (
         source_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -37,20 +37,20 @@ describe('SourceRegistry Persistence (PgSourceRegistry)', () => {
         UNIQUE (url)
       )
     `);
-    
-    registry = new PgSourceRegistry(testClient as any); 
+
+    registry = new PgSourceRegistry(testClient as any);
   });
 
   afterEach(async () => {
     if (testClient) {
-      await testClient.query('DROP TABLE IF EXISTS source_records');
+      await testClient.query("DROP TABLE IF EXISTS source_records");
       await testClient.end();
     }
   });
 
   it("persists sources across restarts", async () => {
     const sourceRecord = {
-      source_id: '00000000-0000-0000-0000-000000000000',
+      source_id: "00000000-0000-0000-0000-000000000000",
       url: "https://new.example.com",
       epistemic_class: "PRIMARY" as const,
       domain: "example.com",
@@ -58,17 +58,19 @@ describe('SourceRegistry Persistence (PgSourceRegistry)', () => {
       reliability: {
         score: 0.95,
         sample_count: 42,
-        window: "90d"
+        window: "90d",
       },
       correction_history: [],
       syndication_parent: null,
-      registered_at: new Date()
+      registered_at: new Date(),
     };
 
     await registry.register(sourceRecord);
 
     const reg2 = new PgSourceRegistry(testClient as any);
-    const families = await reg2.independentFamilies(["https://new.example.com"]);
+    const families = await reg2.independentFamilies([
+      "https://new.example.com",
+    ]);
     assert.strictEqual(families.size, 1);
   });
 });

@@ -34,8 +34,18 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     constructor(available: bigint) {
       this.available = available;
     }
-    async get(): Promise<{ account: string; asset: string; availableBase: bigint; committedBase: bigint }> {
-      return { account: "0xFUNDER", asset: "pUSD", availableBase: this.available, committedBase: this.committed };
+    async get(): Promise<{
+      account: string;
+      asset: string;
+      availableBase: bigint;
+      committedBase: bigint;
+    }> {
+      return {
+        account: "0xFUNDER",
+        asset: "pUSD",
+        availableBase: this.available,
+        committedBase: this.committed,
+      };
     }
     async reserveFunds(_a: string, _s: string, amount: bigint): Promise<void> {
       this.reserveCalled = true;
@@ -70,13 +80,23 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
       asset: string,
       cashNeededBase: bigint,
     ): Promise<MoneyAuthorityResult> {
-      const balanceStore = (globalThis as unknown as { __fakeBalanceStore?: FakeBalanceStore }).__fakeBalanceStore;
+      const balanceStore = (
+        globalThis as unknown as { __fakeBalanceStore?: FakeBalanceStore }
+      ).__fakeBalanceStore;
       if (balanceStore) {
         try {
           await balanceStore.reserveFunds(account, asset, cashNeededBase);
-          return { ok: true, reservationId: randomUUID(), permitId: randomUUID() };
+          return {
+            ok: true,
+            reservationId: randomUUID(),
+            permitId: randomUUID(),
+          };
         } catch {
-          return { ok: false, code: "INSUFFICIENT_FUNDS", reason: "insufficient available balance" };
+          return {
+            ok: false,
+            code: "INSUFFICIENT_FUNDS",
+            reason: "insufficient available balance",
+          };
         }
       }
       return { ok: true, reservationId: randomUUID(), permitId: randomUUID() };
@@ -110,7 +130,14 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     }
     async placeOrder(_o: SignedOrder): Promise<SubmitOutcome> {
       this.placeOrderCalls += 1;
-      return { ok: true, result: { success: true, submit_status: "ACKNOWLEDGED", timestamp: new Date() } };
+      return {
+        ok: true,
+        result: {
+          success: true,
+          submit_status: "ACKNOWLEDGED",
+          timestamp: new Date(),
+        },
+      };
     }
     async cancelOrder(_id: string): Promise<SubmitOutcome> {
       return { ok: true, result: { success: true, timestamp: new Date() } };
@@ -135,9 +162,14 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     };
   }
 
-  function makeShadowPipeline(forecastP: number | null, customAdapter?: VenueAdapter) {
+  function makeShadowPipeline(
+    forecastP: number | null,
+    customAdapter?: VenueAdapter,
+  ) {
     const balance = new FakeBalanceStore(1_000_000_000n);
-    (globalThis as unknown as { __fakeBalanceStore?: FakeBalanceStore }).__fakeBalanceStore = balance;
+    (
+      globalThis as unknown as { __fakeBalanceStore?: FakeBalanceStore }
+    ).__fakeBalanceStore = balance;
     const kernel = new MoneyKernel({
       balance,
       sink: new FakeSink(),
@@ -173,7 +205,11 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
       signer,
       executor,
       wallet: makeWallet(),
-      policy: { ...DEFAULT_RISK_POLICY, policy_version: "v0-bootstrap", capital_usd_cap: 10_000 },
+      policy: {
+        ...DEFAULT_RISK_POLICY,
+        policy_version: "v0-bootstrap",
+        capital_usd_cap: 10_000,
+      },
       policyHash: "ph_shadow",
       venueMode: () => adapter.mode,
       leaseEpoch: () => 1,
@@ -194,7 +230,11 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
 
   it("tradable market in SHADOW produces decision + simulated fill (no venue financial I/O)", async () => {
     const { pipeline, venueAdapter } = makeShadowPipeline(0.65);
-    const result = await pipeline.processMarket({ market_id: "mkt_shadow_1", bid: 0.45, ask: 0.55 });
+    const result = await pipeline.processMarket({
+      market_id: "mkt_shadow_1",
+      bid: 0.45,
+      ask: 0.55,
+    });
 
     assert.equal(result.decision, "BUY");
     assert.ok(result.fill !== undefined);
@@ -202,12 +242,20 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     assert.equal(pipeline.getFinancialGate(), "ALLOW");
 
     // Critical: NO real venue financial I/O should have occurred (SHADOW uses simulator)
-    assert.equal(venueAdapter.placeOrderCalls, 0, "SHADOW mode should not call placeOrder on venue adapter");
+    assert.equal(
+      venueAdapter.placeOrderCalls,
+      0,
+      "SHADOW mode should not call placeOrder on venue adapter",
+    );
   });
 
   it("uncertain forecast in SHADOW abstains with NO_TRADE (no venue financial I/O)", async () => {
     const { pipeline, venueAdapter } = makeShadowPipeline(0.5);
-    const result = await pipeline.processMarket({ market_id: "mkt_shadow_2", bid: 0.45, ask: 0.55 });
+    const result = await pipeline.processMarket({
+      market_id: "mkt_shadow_2",
+      bid: 0.45,
+      ask: 0.55,
+    });
 
     assert.equal(result.decision, "NO_TRADE");
     assert.equal(result.reason, "forecast uncertain or unavailable");
@@ -219,8 +267,15 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     const unavailableAdapter = new ShadowVenueAdapter();
     unavailableAdapter.mode = "UNAVAILABLE";
 
-    const { pipeline, venueAdapter } = makeShadowPipeline(0.65, unavailableAdapter);
-    const result = await pipeline.processMarket({ market_id: "mkt_shadow_3", bid: 0.45, ask: 0.55 });
+    const { pipeline, venueAdapter } = makeShadowPipeline(
+      0.65,
+      unavailableAdapter,
+    );
+    const result = await pipeline.processMarket({
+      market_id: "mkt_shadow_3",
+      bid: 0.45,
+      ask: 0.55,
+    });
 
     assert.equal(result.decision, "NO_TRADE");
     assert.equal(result.reason, "Financial gate: ENTRY_BLOCKED");

@@ -24,7 +24,11 @@ import type {
   WalletIdentity,
 } from "@polyroot/domain";
 import type { SignerVault } from "@polyroot/signer";
-import type { PgPersistence, ReconcilerLike, SupervisorLike } from "./persistence-pg.js";
+import type {
+  PgPersistence,
+  ReconcilerLike,
+  SupervisorLike,
+} from "./persistence-pg.js";
 import { createPgStores, MoneyKernel } from "@polyroot/risk";
 import { createPgControlStores } from "@polyroot/control";
 import { Executor } from "@polyroot/executor";

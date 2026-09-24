@@ -35,25 +35,37 @@ function makeActivities(
   wallet: string,
   actions: Array<{ action: "BUY" | "SELL"; days_ago: number; outcome: string }>,
 ): WalletActivity[] {
-  return actions.map((a, i) => ({
-    wallet_address: wallet,
-    chain_id: 137,
-    market_id: "mkt_test",
-    action: a.action,
-    size_base: 1_000_000n * BigInt(i + 1),
-    price: 0.5,
-    executed_at: new Date(Date.now() - a.days_ago * 86400000),
-    tx_hash: `0x${String(i).padStart(64, "0")}`,
-    maker_taker: "TAKER" as const,
-    // Cast with outcome info for scoring
-    ...({ outcome: a.outcome, realized_edge_bps: a.outcome === "WIN" ? 150 : -50 }),
-  } as any));
+  return actions.map(
+    (a, i) =>
+      ({
+        wallet_address: wallet,
+        chain_id: 137,
+        market_id: "mkt_test",
+        action: a.action,
+        size_base: 1_000_000n * BigInt(i + 1),
+        price: 0.5,
+        executed_at: new Date(Date.now() - a.days_ago * 86400000),
+        tx_hash: `0x${String(i).padStart(64, "0")}`,
+        maker_taker: "TAKER" as const,
+        // Cast with outcome info for scoring
+        ...{
+          outcome: a.outcome,
+          realized_edge_bps: a.outcome === "WIN" ? 150 : -50,
+        },
+      }) as any,
+  );
 }
 
 describe("PR-STR-05 — Smart Money Consensus (reproducible, causal, anti-leakage)", () => {
   it("selectQualifyingWallets filters by trade count, age, and volume", () => {
     const now = new Date("2026-01-15T00:00:00Z");
-    const criteria = { ...DEFAULT_SELECTION_CRITERIA, selection_lookback_days: 60, min_historical_trades: 10, min_wallet_age_days: 10, min_volume_base: 10_000_000n };
+    const criteria = {
+      ...DEFAULT_SELECTION_CRITERIA,
+      selection_lookback_days: 60,
+      min_historical_trades: 10,
+      min_wallet_age_days: 10,
+      min_volume_base: 10_000_000n,
+    };
     const activities: WalletActivity[] = [
       // Wallet 1: passes all criteria
       ...Array.from({ length: 20 }, (_, i) => ({
@@ -88,7 +100,12 @@ describe("PR-STR-05 — Smart Money Consensus (reproducible, causal, anti-leakag
 
   it("selectQualifyingWallets excludes activities beyond lookback window", () => {
     const now = new Date("2026-01-15T00:00:00Z");
-    const criteria = { ...DEFAULT_SELECTION_CRITERIA, selection_lookback_days: 30, min_historical_trades: 3, min_wallet_age_days: 10 };
+    const criteria = {
+      ...DEFAULT_SELECTION_CRITERIA,
+      selection_lookback_days: 30,
+      min_historical_trades: 3,
+      min_wallet_age_days: 10,
+    };
     const activities = [
       // All trades outside 30-day window
       ...Array.from({ length: 10 }, (_, i) => ({
@@ -109,7 +126,10 @@ describe("PR-STR-05 — Smart Money Consensus (reproducible, causal, anti-leakag
 
   it("scoreWallet produces deterministic score with full lineage", () => {
     const now = new Date("2026-01-15T00:00:00Z");
-    const scoringParams: WalletScoringParams = { ...DEFAULT_SCORING_PARAMS, min_trades: 3 };
+    const scoringParams: WalletScoringParams = {
+      ...DEFAULT_SCORING_PARAMS,
+      min_trades: 3,
+    };
     const acts = makeActivities("0xW1", [
       { action: "BUY", days_ago: 1, outcome: "WIN" },
       { action: "BUY", days_ago: 2, outcome: "WIN" },
@@ -136,7 +156,17 @@ describe("PR-STR-05 — Smart Money Consensus (reproducible, causal, anti-leakag
 
   it("generateConsensus returns null when wallet count is too low", () => {
     const scores = [
-      { wallet_address: "0xW1", score: 0.8, trade_count: 10, win_rate: 0.8, avg_edge_bps: 200, lookback_days: 90, model_version: "v1", scoring_params: DEFAULT_SCORING_PARAMS, computed_at: new Date() },
+      {
+        wallet_address: "0xW1",
+        score: 0.8,
+        trade_count: 10,
+        win_rate: 0.8,
+        avg_edge_bps: 200,
+        lookback_days: 90,
+        model_version: "v1",
+        scoring_params: DEFAULT_SCORING_PARAMS,
+        computed_at: new Date(),
+      },
     ];
     const signal = generateConsensus("mkt", scores, 5);
     assert.equal(signal, null, "too few wallets for consensus");
@@ -190,7 +220,7 @@ describe("PR-STR-05 — Smart Money Consensus (reproducible, causal, anti-leakag
           executed_at: new Date(now.getTime() - (i + 1) * 86400000),
           tx_hash: `0x${String(w).padStart(4, "0")}${String(i).padStart(4, "0")}`,
           maker_taker: "TAKER" as const,
-          ...({ outcome: "WIN" as const, realized_edge_bps: 100 }),
+          ...{ outcome: "WIN" as const, realized_edge_bps: 100 },
         } as any);
       }
     }
@@ -199,7 +229,13 @@ describe("PR-STR-05 — Smart Money Consensus (reproducible, causal, anti-leakag
       "mkt_test",
       asset,
       all_activities,
-      { ...DEFAULT_SELECTION_CRITERIA, selection_lookback_days: 60, min_historical_trades: 10, min_wallet_age_days: 1, min_volume_base: 1_000_000n },
+      {
+        ...DEFAULT_SELECTION_CRITERIA,
+        selection_lookback_days: 60,
+        min_historical_trades: 10,
+        min_wallet_age_days: 1,
+        min_volume_base: 1_000_000n,
+      },
       DEFAULT_SCORING_PARAMS,
       10,
       now,
@@ -217,19 +253,30 @@ describe("PR-STR-05 — Smart Money Consensus (reproducible, causal, anti-leakag
 
   it("anti-leakage: activities after 'now' are excluded from selection", () => {
     const now = new Date("2026-01-01T00:00:00Z");
-    const future_activities: WalletActivity[] = Array.from({ length: 20 }, (_, i) => ({
-      wallet_address: "0xFUTURE",
-      chain_id: 137,
-      market_id: "mkt",
-      action: "BUY" as const,
-      size_base: 1_000_000n,
-      price: 0.5,
-      executed_at: new Date(2026, 0, 5 + i), // future: Jan 5-24
-      tx_hash: `0x${i}`,
-      maker_taker: "TAKER" as const,
-    }));
-    const qualifying = selectQualifyingWallets(future_activities, DEFAULT_SELECTION_CRITERIA, now);
-    assert.equal(qualifying.size, 0, "future activities must be excluded (no leakage)");
+    const future_activities: WalletActivity[] = Array.from(
+      { length: 20 },
+      (_, i) => ({
+        wallet_address: "0xFUTURE",
+        chain_id: 137,
+        market_id: "mkt",
+        action: "BUY" as const,
+        size_base: 1_000_000n,
+        price: 0.5,
+        executed_at: new Date(2026, 0, 5 + i), // future: Jan 5-24
+        tx_hash: `0x${i}`,
+        maker_taker: "TAKER" as const,
+      }),
+    );
+    const qualifying = selectQualifyingWallets(
+      future_activities,
+      DEFAULT_SELECTION_CRITERIA,
+      now,
+    );
+    assert.equal(
+      qualifying.size,
+      0,
+      "future activities must be excluded (no leakage)",
+    );
   });
 
   it("wallet with high turnover gets penalized score", () => {
@@ -245,10 +292,23 @@ describe("PR-STR-05 — Smart Money Consensus (reproducible, causal, anti-leakag
       { action: "SELL", days_ago: 1, outcome: "WIN" },
     ]);
 
-    const scoredLow = scoreWallet("0xLOW", lowTurnover, DEFAULT_SCORING_PARAMS, now);
-    const scoredHigh = scoreWallet("0xHIGH", highTurnover, DEFAULT_SCORING_PARAMS, now);
+    const scoredLow = scoreWallet(
+      "0xLOW",
+      lowTurnover,
+      DEFAULT_SCORING_PARAMS,
+      now,
+    );
+    const scoredHigh = scoreWallet(
+      "0xHIGH",
+      highTurnover,
+      DEFAULT_SCORING_PARAMS,
+      now,
+    );
 
     // High turnover wallet should have lower score (penalty applied)
-    assert.ok(scoredHigh.score <= scoredLow.score, "turnover penalty must reduce score");
+    assert.ok(
+      scoredHigh.score <= scoredLow.score,
+      "turnover penalty must reduce score",
+    );
   });
 });

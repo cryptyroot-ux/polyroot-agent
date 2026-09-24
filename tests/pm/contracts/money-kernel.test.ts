@@ -40,7 +40,7 @@ const fakeAuthority: MoneyAuthority = {
     }
     // Also push RESERVATION_CREATED event to sink (test-only)
     const sink = (globalThis as any).__fakeSink;
-    console.log('[DEBUG] fakeAuthority: sink available:', !!sink);
+    console.log("[DEBUG] fakeAuthority: sink available:", !!sink);
     if (sink) {
       await sink.push("RESERVATION_CREATED", {
         reservationId: "test-reservation-id",
@@ -50,16 +50,16 @@ const fakeAuthority: MoneyAuthority = {
         cashBase: "0",
         leaseEpoch: 1,
       });
-      console.log('[DEBUG] fakeAuthority: pushed RESERVATION_CREATED');
+      console.log("[DEBUG] fakeAuthority: pushed RESERVATION_CREATED");
     } else {
-      console.log('[DEBUG] fakeAuthority: NO SINK AVAILABLE');
+      console.log("[DEBUG] fakeAuthority: NO SINK AVAILABLE");
     }
     return {
       ok: true,
       reservationId: randomUUID(),
       permitId: randomUUID(),
     };
-  }
+  },
 };
 
 class FakeBalanceStore implements BalanceStore {

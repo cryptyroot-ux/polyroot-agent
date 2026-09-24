@@ -17,35 +17,59 @@ describe("PM-AI-04: Untrusted Content Boundary — Runtime Enforcement", () => {
   });
 
   it("throws when untrusted evidence attempts SHELL", () => {
-    const evidence = { untrusted: true } as Pick<{ untrusted: boolean }, "untrusted">;
+    const evidence = { untrusted: true } as Pick<
+      { untrusted: boolean },
+      "untrusted"
+    >;
     const boundary = new UntrustedContentBoundary();
 
     assert.throws(() => boundary.enforce(evidence, "SHELL"), /untrusted/i);
   });
 
   it("throws when untrusted evidence attempts SECRET_READ", () => {
-    const evidence = { untrusted: true } as Pick<{ untrusted: boolean }, "untrusted">;
+    const evidence = { untrusted: true } as Pick<
+      { untrusted: boolean },
+      "untrusted"
+    >;
     const boundary = new UntrustedContentBoundary();
 
-    assert.throws(() => boundary.enforce(evidence, "SECRET_READ"), /untrusted/i);
+    assert.throws(
+      () => boundary.enforce(evidence, "SECRET_READ"),
+      /untrusted/i,
+    );
   });
 
   it("throws when untrusted evidence attempts POLICY_WRITE", () => {
-    const evidence = { untrusted: true } as Pick<{ untrusted: boolean }, "untrusted">;
+    const evidence = { untrusted: true } as Pick<
+      { untrusted: boolean },
+      "untrusted"
+    >;
     const boundary = new UntrustedContentBoundary();
 
-    assert.throws(() => boundary.enforce(evidence, "POLICY_WRITE"), /untrusted/i);
+    assert.throws(
+      () => boundary.enforce(evidence, "POLICY_WRITE"),
+      /untrusted/i,
+    );
   });
 
   it("throws when untrusted evidence attempts MANDATE_WRITE", () => {
-    const evidence = { untrusted: true } as Pick<{ untrusted: boolean }, "untrusted">;
+    const evidence = { untrusted: true } as Pick<
+      { untrusted: boolean },
+      "untrusted"
+    >;
     const boundary = new UntrustedContentBoundary();
 
-    assert.throws(() => boundary.enforce(evidence, "MANDATE_WRITE"), /untrusted/i);
+    assert.throws(
+      () => boundary.enforce(evidence, "MANDATE_WRITE"),
+      /untrusted/i,
+    );
   });
 
   it("allows trusted evidence to perform privileged actions", () => {
-    const evidence = { untrusted: false } as Pick<{ untrusted: boolean }, "untrusted">;
+    const evidence = { untrusted: false } as Pick<
+      { untrusted: boolean },
+      "untrusted"
+    >;
     const boundary = new UntrustedContentBoundary();
 
     assert.doesNotThrow(() => boundary.enforce(evidence, "SIGN"));
@@ -56,10 +80,17 @@ describe("PM-AI-04: Untrusted Content Boundary — Runtime Enforcement", () => {
   });
 
   it("allows untrusted evidence for non-privileged actions", () => {
-    const evidence = { untrusted: true } as Pick<{ untrusted: boolean }, "untrusted">;
+    const evidence = { untrusted: true } as Pick<
+      { untrusted: boolean },
+      "untrusted"
+    >;
     const boundary = new UntrustedContentBoundary();
 
-    assert.doesNotThrow(() => boundary.enforce(evidence, "READ" as PrivilegedAction));
-    assert.doesNotThrow(() => boundary.enforce(evidence, "QUERY" as PrivilegedAction));
+    assert.doesNotThrow(() =>
+      boundary.enforce(evidence, "READ" as PrivilegedAction),
+    );
+    assert.doesNotThrow(() =>
+      boundary.enforce(evidence, "QUERY" as PrivilegedAction),
+    );
   });
 });

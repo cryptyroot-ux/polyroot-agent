@@ -146,7 +146,14 @@ export type TrySubmitResult =
   | { outcome: "DUPLICATE"; reason: string; code: string }
   | { outcome: "PERMIT_INVALID"; reason: string; code: string }
   | { outcome: "MODE_FORBIDS"; reason: string; code: string }
-  | { outcome: "NEEDS_RECONCILIATION"; orderId: string; ok: true; state: "SUBMISSION_UNKNOWN"; order: import("@polyroot/domain").SignedOrder; permit: import("@polyroot/domain").ExecutionPermit };
+  | {
+      outcome: "NEEDS_RECONCILIATION";
+      orderId: string;
+      ok: true;
+      state: "SUBMISSION_UNKNOWN";
+      order: import("@polyroot/domain").SignedOrder;
+      permit: import("@polyroot/domain").ExecutionPermit;
+    };
 
 /* ── Executor ───────────────────────────────────────────────────────────── */
 
@@ -222,7 +229,9 @@ export class Executor {
     // 0b. Single-use permit already claimed check — check store for claimed status BEFORE saving.
     // This must happen BEFORE save to avoid overwriting the claimed status in the store.
     if (permit.single_use) {
-      const alreadyClaimed = await this.deps.permitStore.isClaimed(permit.permit_id);
+      const alreadyClaimed = await this.deps.permitStore.isClaimed(
+        permit.permit_id,
+      );
       if (alreadyClaimed) {
         return {
           outcome: "PERMIT_INVALID",
@@ -249,7 +258,8 @@ export class Executor {
       return {
         outcome: "PERMIT_INVALID",
         code: "LEASE_EPOCH_MISMATCH",
-        reason: "permit lease epoch does not match current executor lease epoch",
+        reason:
+          "permit lease epoch does not match current executor lease epoch",
       };
     }
 
@@ -258,7 +268,9 @@ export class Executor {
     // This should be checked AFTER the duplicate order_id check so that resubmitting
     // the exact same order returns DUPLICATE rather than PERMIT_REUSED.
     if (permit.single_use) {
-      const alreadyClaimed = await this.deps.permitStore.isClaimed(permit.permit_id);
+      const alreadyClaimed = await this.deps.permitStore.isClaimed(
+        permit.permit_id,
+      );
       if (alreadyClaimed) {
         return {
           outcome: "PERMIT_INVALID",
@@ -390,11 +402,12 @@ export class Executor {
     // 7. ATOMIC PERMIT CLAIM + SUBMISSION RECORDING (P0-8)
     // Single database transaction: claim permit AND record SUBMITTING state.
     // This eliminates the crash window between permit claim and recovery ledger write.
-    const claimResult = await this.deps.permitStore.claimPermitAndRecordSubmission(
-      permit.permit_id,
-      order.order_id,
-      undefined, // venueOrderId unknown until ACK
-    );
+    const claimResult =
+      await this.deps.permitStore.claimPermitAndRecordSubmission(
+        permit.permit_id,
+        order.order_id,
+        undefined, // venueOrderId unknown until ACK
+      );
     if (!claimResult.ok) {
       // Release lease since claim failed
       await this.deps.leaseStore.releaseExecutorLease(
@@ -521,7 +534,12 @@ export class Executor {
       this.deps.leaseEpoch,
       30, // 30 seconds TTL
     );
-    if (!leaseAcquired) { console.log("DEBUG: LEASE_NOT_ACQUIRED", {walletId: this.deps.walletId, holder: this.deps.holder, leaseEpoch: this.deps.leaseEpoch});
+    if (!leaseAcquired) {
+      console.log("DEBUG: LEASE_NOT_ACQUIRED", {
+        walletId: this.deps.walletId,
+        holder: this.deps.holder,
+        leaseEpoch: this.deps.leaseEpoch,
+      });
       return {
         ok: false,
         code: "LEASE_NOT_ACQUIRED",
@@ -559,7 +577,12 @@ export class Executor {
       this.deps.leaseEpoch,
       30, // 30 seconds TTL
     );
-    if (!leaseAcquired) { console.log("DEBUG: LEASE_NOT_ACQUIRED", {walletId: this.deps.walletId, holder: this.deps.holder, leaseEpoch: this.deps.leaseEpoch});
+    if (!leaseAcquired) {
+      console.log("DEBUG: LEASE_NOT_ACQUIRED", {
+        walletId: this.deps.walletId,
+        holder: this.deps.holder,
+        leaseEpoch: this.deps.leaseEpoch,
+      });
       // If we can't acquire lease, we still return the current state but log this
       // In practice, this might indicate a lease issue but we can still reconcile
       // based on existing state

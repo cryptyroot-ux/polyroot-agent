@@ -1,4 +1,9 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import type { MetricsExporter } from "./metrics-exporter.js";
 
@@ -66,7 +71,9 @@ export class MetricsServer {
   ): Promise<void> {
     try {
       if (req.method !== "GET") {
-        res.writeHead(405, { "content-type": "text/plain" }).end("method not allowed");
+        res
+          .writeHead(405, { "content-type": "text/plain" })
+          .end("method not allowed");
         return;
       }
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -80,7 +87,9 @@ export class MetricsServer {
       }
       if (url.pathname === "/metrics") {
         if (!this.hasValidBearer(req.headers.authorization)) {
-          res.writeHead(401, { "content-type": "text/plain" }).end("unauthorized");
+          res
+            .writeHead(401, { "content-type": "text/plain" })
+            .end("unauthorized");
           return;
         }
         res
@@ -90,7 +99,9 @@ export class MetricsServer {
       }
       res.writeHead(404, { "content-type": "text/plain" }).end("not found");
     } catch {
-      res.writeHead(500, { "content-type": "text/plain" }).end("internal error");
+      res
+        .writeHead(500, { "content-type": "text/plain" })
+        .end("internal error");
     }
   }
 

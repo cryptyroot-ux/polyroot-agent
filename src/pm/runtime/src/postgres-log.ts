@@ -297,7 +297,9 @@ export class PgShadowLog {
   }
 
   async count(): Promise<number> {
-    const r = await this.pool.query("SELECT COUNT(*)::int AS c FROM shadow_log");
+    const r = await this.pool.query(
+      "SELECT COUNT(*)::int AS c FROM shadow_log",
+    );
     return r.rows[0].c as number;
   }
 
@@ -433,7 +435,9 @@ export class PgShadowGateEvaluation {
     );
   }
 
-  async getLatest(account = "default"): Promise<ShadowGateEvaluationRow | undefined> {
+  async getLatest(
+    account = "default",
+  ): Promise<ShadowGateEvaluationRow | undefined> {
     const r = await this.pool.query(
       `SELECT * FROM shadow_gate_evaluations WHERE account = $1 ORDER BY evaluated_at DESC LIMIT 1`,
       [account],
@@ -450,7 +454,10 @@ export class PgShadowGateEvaluation {
     };
   }
 
-  async list(account = "default", limit = 50): Promise<ShadowGateEvaluationRow[]> {
+  async list(
+    account = "default",
+    limit = 50,
+  ): Promise<ShadowGateEvaluationRow[]> {
     const r = await this.pool.query(
       `SELECT * FROM shadow_gate_evaluations WHERE account = $1 ORDER BY evaluated_at DESC LIMIT $2`,
       [account, limit],

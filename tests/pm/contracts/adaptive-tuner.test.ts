@@ -24,7 +24,9 @@ const config = {
   significance_threshold: 0.05,
 };
 
-function makeEnvelope(over: Partial<ParameterEnvelope> = {}): ParameterEnvelope {
+function makeEnvelope(
+  over: Partial<ParameterEnvelope> = {},
+): ParameterEnvelope {
   return {
     envelope_id: "env_test",
     envelope_version: "1.0.0",
@@ -59,7 +61,10 @@ function makeState(over: Partial<ParameterState> = {}): ParameterState {
 
 describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-weakening)", () => {
   it("bootstrap creates a state from the envelope with pinned params protected", () => {
-    const policy: RiskPolicy = { ...DEFAULT_RISK_POLICY, capital_usd_cap: 10_000 };
+    const policy: RiskPolicy = {
+      ...DEFAULT_RISK_POLICY,
+      capital_usd_cap: 10_000,
+    };
     const env = makeEnvelope();
     const state = bootstrapParameterState(policy, env);
 
@@ -70,7 +75,10 @@ describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-wea
     // Values within envelope bounds
     for (const [p, range] of Object.entries(env.allowed_ranges)) {
       const v = state.values[p]!;
-      assert.ok(v >= range.min && v <= range.max, `param ${p}=${v} out of [${range.min}, ${range.max}]`);
+      assert.ok(
+        v >= range.min && v <= range.max,
+        `param ${p}=${v} out of [${range.min}, ${range.max}]`,
+      );
     }
   });
 
@@ -95,12 +103,23 @@ describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-wea
     assert.equal(res.ok, true);
     if (res.ok) {
       assert.equal(res.proposal.status, "PENDING");
-      assert.ok(res.proposal.proposed_values.max_order_pct! < 0.005, "should tighten");
+      assert.ok(
+        res.proposal.proposed_values.max_order_pct! < 0.005,
+        "should tighten",
+      );
       // Within step limit: |delta| <= 10% * current
-      const delta = Math.abs(res.proposal.proposed_values.max_order_pct! - 0.005);
-      assert.ok(delta <= 0.005 * env.max_step_pct, `delta ${delta} exceeds step limit`);
+      const delta = Math.abs(
+        res.proposal.proposed_values.max_order_pct! - 0.005,
+      );
+      assert.ok(
+        delta <= 0.005 * env.max_step_pct,
+        `delta ${delta} exceeds step limit`,
+      );
       // New state reflects proposal
-      assert.equal(res.new_state.values.max_order_pct, res.proposal.proposed_values.max_order_pct);
+      assert.equal(
+        res.new_state.values.max_order_pct,
+        res.proposal.proposed_values.max_order_pct,
+      );
     }
   });
 
@@ -136,16 +155,41 @@ describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-wea
       },
     });
     const state = makeState({
-      values: { ...makeState().values, capital_usd_cap: 10000, max_open_orders: 10 },
+      values: {
+        ...makeState().values,
+        capital_usd_cap: 10000,
+        max_open_orders: 10,
+      },
     });
 
     const res = await proposeAdaptation(
       state,
       env,
       [
-        { parameter_name: "capital_usd_cap", sample_mean: 50000, sample_std: 1000, sample_count: 100, p_value: 0.001, effect_size: 1 },
-        { parameter_name: "max_open_orders", sample_mean: 3, sample_std: 1, sample_count: 100, p_value: 0.001, effect_size: 1 },
-        { parameter_name: "min_edge_after_cost", sample_mean: 0.031, sample_std: 0.001, sample_count: 100, p_value: 0.02, effect_size: 0.5 },
+        {
+          parameter_name: "capital_usd_cap",
+          sample_mean: 50000,
+          sample_std: 1000,
+          sample_count: 100,
+          p_value: 0.001,
+          effect_size: 1,
+        },
+        {
+          parameter_name: "max_open_orders",
+          sample_mean: 3,
+          sample_std: 1,
+          sample_count: 100,
+          p_value: 0.001,
+          effect_size: 1,
+        },
+        {
+          parameter_name: "min_edge_after_cost",
+          sample_mean: 0.031,
+          sample_std: 0.001,
+          sample_count: 100,
+          p_value: 0.02,
+          effect_size: 0.5,
+        },
       ],
       config,
     );
@@ -153,8 +197,14 @@ describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-wea
     assert.equal(res.ok, true);
     if (res.ok) {
       const proposedKeys = Object.keys(res.proposal.proposed_values);
-      assert.ok(!proposedKeys.includes("capital_usd_cap"), "capital_usd_cap must be pinned");
-      assert.ok(!proposedKeys.includes("max_open_orders"), "max_open_orders must be pinned");
+      assert.ok(
+        !proposedKeys.includes("capital_usd_cap"),
+        "capital_usd_cap must be pinned",
+      );
+      assert.ok(
+        !proposedKeys.includes("max_open_orders"),
+        "max_open_orders must be pinned",
+      );
     }
   });
 
@@ -180,7 +230,9 @@ describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-wea
     if (res.ok) {
       // Clamped to step limit: 5% of 0.005 = 0.00025
       const expected = 0.005 - 0.005 * 0.05;
-      assert.ok(Math.abs(res.proposal.proposed_values.max_order_pct! - expected) < 1e-6);
+      assert.ok(
+        Math.abs(res.proposal.proposed_values.max_order_pct! - expected) < 1e-6,
+      );
     }
   });
 
@@ -191,7 +243,14 @@ describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-wea
       state,
       env,
       [
-        { parameter_name: "max_order_pct", sample_mean: 0.004, sample_std: 0.001, sample_count: 5, p_value: 0.01, effect_size: 0.2 },
+        {
+          parameter_name: "max_order_pct",
+          sample_mean: 0.004,
+          sample_std: 0.001,
+          sample_count: 5,
+          p_value: 0.01,
+          effect_size: 0.2,
+        },
       ],
       config,
     );
@@ -213,7 +272,11 @@ describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-wea
       status: "ACCEPTED" as const,
     };
     const state = makeState();
-    const { new_state, audit_entries } = applyAdaptation(proposal, state, "owner_1");
+    const { new_state, audit_entries } = applyAdaptation(
+      proposal,
+      state,
+      "owner_1",
+    );
 
     assert.equal(new_state.values.max_order_pct, 0.0045);
     assert.ok(audit_entries.length === 1);
@@ -238,7 +301,10 @@ describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-wea
       status: "PENDING" as const,
     };
     const state = makeState();
-    assert.throws(() => applyAdaptation(proposal, state, "owner_1"), /non-accepted/);
+    assert.throws(
+      () => applyAdaptation(proposal, state, "owner_1"),
+      /non-accepted/,
+    );
   });
 
   it("hard policy cannot self-weaken: proposal outside envelope is impossible", async () => {
@@ -247,12 +313,21 @@ describe("PR-AUT-07 — Adaptive parameter tuner (bounded, audited, non-self-wea
       allowed_ranges: { max_order_pct: { min: 0.005, max: 0.01 } }, // floor = current
       max_step_pct: 0.5,
     });
-    const state = makeState({ values: { ...makeState().values, max_order_pct: 0.005 } });
+    const state = makeState({
+      values: { ...makeState().values, max_order_pct: 0.005 },
+    });
     const res = await proposeAdaptation(
       state,
       env,
       [
-        { parameter_name: "max_order_pct", sample_mean: 0.001, sample_std: 0.001, sample_count: 100, p_value: 0.001, effect_size: 1 },
+        {
+          parameter_name: "max_order_pct",
+          sample_mean: 0.001,
+          sample_std: 0.001,
+          sample_count: 100,
+          p_value: 0.001,
+          effect_size: 1,
+        },
       ],
       config,
     );

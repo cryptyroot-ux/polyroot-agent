@@ -20,12 +20,7 @@
  */
 
 export type SettlementStatus =
-  | "OPEN"
-  | "MATCHED"
-  | "MINED"
-  | "RETRYING"
-  | "CONFIRMED"
-  | "FAILED";
+  "OPEN" | "MATCHED" | "MINED" | "RETRYING" | "CONFIRMED" | "FAILED";
 
 export interface SettlementState {
   status: SettlementStatus;
@@ -36,8 +31,7 @@ export interface SettlementState {
 }
 
 export type SettlementCode =
-  | "SETTLEMENT_INVALID_TRANSITION"
-  | "DUPLICATE_SUPPRESSED";
+  "SETTLEMENT_INVALID_TRANSITION" | "DUPLICATE_SUPPRESSED";
 
 export type SettlementResult =
   | { ok: true; state: SettlementState; note: string }
@@ -54,7 +48,10 @@ const VALID_TRANSITIONS: Record<SettlementStatus, SettlementStatus[]> = {
 
 export function applySettlementEvent(
   state: SettlementState,
-  event: { kind: "MATCH" | "MINE" | "RETRY" | "CONFIRM" | "FAIL"; entry: string },
+  event: {
+    kind: "MATCH" | "MINE" | "RETRY" | "CONFIRM" | "FAIL";
+    entry: string;
+  },
 ): SettlementResult {
   const target: SettlementStatus =
     event.kind === "MATCH"
@@ -88,7 +85,8 @@ export function applySettlementEvent(
       // Provisional inventory is spendable ONLY once CONFIRMED.
       spendable: target === "CONFIRMED",
     },
-    note: target === "FAILED" ? "compensating entry posted" : `${target} recorded`,
+    note:
+      target === "FAILED" ? "compensating entry posted" : `${target} recorded`,
   };
 }
 

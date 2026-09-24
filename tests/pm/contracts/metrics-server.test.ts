@@ -36,10 +36,7 @@ describe("MetricsServer HTTP contract", () => {
         headers: { authorization: `Bearer ${OWNER_KEY}` },
       });
       assert.equal(res.status, 200);
-      assert.match(
-        res.headers.get("content-type") ?? "",
-        /text\/plain/,
-      );
+      assert.match(res.headers.get("content-type") ?? "", /text\/plain/);
       const body = await res.text();
       assert.match(body, /g4_total_orders_total 3/);
     } finally {

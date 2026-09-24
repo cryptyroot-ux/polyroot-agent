@@ -73,7 +73,7 @@ const fakeAuthority: MoneyAuthority = {
       reservationId: randomUUID(),
       permitId: randomUUID(),
     };
-  }
+  },
 };
 import {
   planCancelOpen,

@@ -41,7 +41,12 @@ describe("Phase 17 CT-04/05/06: wallet mapping, G0 half (PM-WALLET-01)", () => {
   });
 
   it("WAL-03 distinctness is enforced for every wallet type", () => {
-    for (const t of ["EOA", "POLY_PROXY", "GNOSIS_SAFE", "POLY_1271"] as const) {
+    for (const t of [
+      "EOA",
+      "POLY_PROXY",
+      "GNOSIS_SAFE",
+      "POLY_1271",
+    ] as const) {
       const r = validateWalletMapping({
         wallet: wallet({ wallet_type: t, funder: "0xSIGNER" }),
       });
@@ -51,7 +56,9 @@ describe("Phase 17 CT-04/05/06: wallet mapping, G0 half (PM-WALLET-01)", () => {
   });
 
   it("CT-06 POLY_1271 refuses without a 1271 wrapper (unsupported-for-LIVE)", () => {
-    const r = validateWalletMapping({ wallet: wallet({ wallet_type: "POLY_1271" }) });
+    const r = validateWalletMapping({
+      wallet: wallet({ wallet_type: "POLY_1271" }),
+    });
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.code, "POLY_1271_UNSUPPORTED");
     const withWrapper = validateWalletMapping({

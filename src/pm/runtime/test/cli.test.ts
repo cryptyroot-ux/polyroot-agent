@@ -7,7 +7,8 @@ describe("Task 1 — CLI live mode signer/venue wiring", () => {
   it("bootstrapAgent receives real signer and venue in MICRO_LIVE mode from cli wiring", async () => {
     // Set a dummy private key so createSignerFromEnv succeeds
     const prev = process.env["PRIVATE_KEY_HEX"];
-    process.env["PRIVATE_KEY_HEX"] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    process.env["PRIVATE_KEY_HEX"] =
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     try {
       // We test that bootstrapAgent in MICRO_LIVE with valid env does not throw REFUSE_LIVE_WITH_STUBS
       // Instead it successfully initializes with the auto-wired signer/venue.

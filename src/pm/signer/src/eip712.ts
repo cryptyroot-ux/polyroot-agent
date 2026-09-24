@@ -18,12 +18,7 @@
 import keccak256 from "keccak256";
 
 export type Eip712FieldType =
-  | "address"
-  | "uint256"
-  | "bytes32"
-  | "string"
-  | "bytes"
-  | "bool";
+  "address" | "uint256" | "bytes32" | "string" | "bytes" | "bool";
 
 export interface Eip712Field {
   name: string;
@@ -49,7 +44,10 @@ function toBigInt(value: string | number | bigint | boolean): bigint {
 }
 
 /** ABI-encode one atomic value to a 32-byte word (EIP-712 encodeData). */
-export function encodeField(type: Eip712FieldType, value: Eip712Field["value"]): Buffer {
+export function encodeField(
+  type: Eip712FieldType,
+  value: Eip712Field["value"],
+): Buffer {
   // Built‑in stricter runtime guards – ensure the supplied value truly matches the declared type
   switch (type) {
     case "address": {
@@ -62,11 +60,18 @@ export function encodeField(type: Eip712FieldType, value: Eip712Field["value"]):
       return leftPad32(Buffer.from(value.slice(2), "hex"));
     }
     case "uint256": {
-      if (typeof value !== "bigint" && typeof value !== "number" && typeof value !== "string") {
-        throw new Error("EIP712: uint256 value must be bigint, number, or numeric string");
+      if (
+        typeof value !== "bigint" &&
+        typeof value !== "number" &&
+        typeof value !== "string"
+      ) {
+        throw new Error(
+          "EIP712: uint256 value must be bigint, number, or numeric string",
+        );
       }
       const n = toBigInt(value);
-      if (n < 0n || n >= 2n ** 256n) throw new Error("EIP712: uint256 out of range");
+      if (n < 0n || n >= 2n ** 256n)
+        throw new Error("EIP712: uint256 out of range");
       return leftPad32(Buffer.from(n.toString(16).padStart(64, "0"), "hex"));
     }
     case "bytes32": {
@@ -88,7 +93,9 @@ export function encodeField(type: Eip712FieldType, value: Eip712Field["value"]):
       if (typeof value !== "string") {
         throw new Error("EIP712: bytes value must be a hex string");
       }
-      const bytes = value.startsWith("0x") ? Buffer.from(value.slice(2), "hex") : Buffer.from(value, "utf8");
+      const bytes = value.startsWith("0x")
+        ? Buffer.from(value.slice(2), "hex")
+        : Buffer.from(value, "utf8");
       return keccak256(bytes);
     }
     case "bool": {
@@ -119,11 +126,16 @@ export function hashStruct(primaryType: string, fields: Eip712Field[]): Buffer {
 }
 
 /** EIP-712 signing digest: keccak256(0x1901 ‖ domainSeparator ‖ messageHash). */
-export function signingDigest(domainSeparator: Buffer, messageHash: Buffer): Buffer {
+export function signingDigest(
+  domainSeparator: Buffer,
+  messageHash: Buffer,
+): Buffer {
   if (domainSeparator.length !== 32 || messageHash.length !== 32) {
     throw new Error("EIP712: separator and message hash must be 32 bytes");
   }
-  return keccak256(Buffer.concat([Buffer.from([0x19, 0x01]), domainSeparator, messageHash]));
+  return keccak256(
+    Buffer.concat([Buffer.from([0x19, 0x01]), domainSeparator, messageHash]),
+  );
 }
 
 export interface Nested1271Input {

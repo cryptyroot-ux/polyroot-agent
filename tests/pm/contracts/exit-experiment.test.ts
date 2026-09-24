@@ -12,7 +12,13 @@ describe("Task 8 — ExitEngine and ExperimentRegistry", () => {
     const engine = new ExitEngine({ minHoldEV: 0 });
 
     const result = await engine.evaluate({
-      position: { market_id: "mkt_1", side: "YES", size: 100, avg_price: 0.6, updated_at: new Date() },
+      position: {
+        market_id: "mkt_1",
+        side: "YES",
+        size: 100,
+        avg_price: 0.6,
+        updated_at: new Date(),
+      },
       book: {
         schema_version: "1.0.0",
         market_id: "mkt_1",
@@ -58,12 +64,18 @@ describe("Task 8 — ExitEngine and ExperimentRegistry", () => {
     const engine = new ExitEngine({ minHoldEV: 0 });
 
     const result = await engine.evaluate({
-      position: { market_id: "mkt_1", side: "YES", size: 100, avg_price: 0.4, updated_at: new Date() },
+      position: {
+        market_id: "mkt_1",
+        side: "YES",
+        size: 100,
+        avg_price: 0.4,
+        updated_at: new Date(),
+      },
       book: {
         schema_version: "1.0.0",
         market_id: "mkt_1",
         bids: [[0.65, 100]],
-        asks: [[0.70, 100]],
+        asks: [[0.7, 100]],
         received_at: new Date(),
         source_at: new Date(),
       },
@@ -102,7 +114,13 @@ describe("Task 8 — ExitEngine and ExperimentRegistry", () => {
     const engine = new ExitEngine({ minHoldEV: 0 });
 
     const result = await engine.evaluate({
-      position: { market_id: "mkt_2", side: "NO", size: 100, avg_price: 0.6, updated_at: new Date() },
+      position: {
+        market_id: "mkt_2",
+        side: "NO",
+        size: 100,
+        avg_price: 0.6,
+        updated_at: new Date(),
+      },
       book: {
         schema_version: "1.0.0",
         market_id: "mkt_2",
@@ -150,8 +168,30 @@ describe("Task 8 — ExitEngine and ExperimentRegistry", () => {
     const mockPool: any = {
       async query(text: string, params?: any[]) {
         if (text.includes("INSERT INTO experiments")) {
-          const [id, spec_hash, strategy, version, params_json, envelope_json, status, gate_report_json, created_at, updated_at] = params!;
-          records.set(id, { id, spec_hash, strategy, version, params_json, envelope_json, status, gate_report_json, created_at, updated_at });
+          const [
+            id,
+            spec_hash,
+            strategy,
+            version,
+            params_json,
+            envelope_json,
+            status,
+            gate_report_json,
+            created_at,
+            updated_at,
+          ] = params!;
+          records.set(id, {
+            id,
+            spec_hash,
+            strategy,
+            version,
+            params_json,
+            envelope_json,
+            status,
+            gate_report_json,
+            created_at,
+            updated_at,
+          });
           return { rows: [{ id }] };
         }
         if (text.includes("UPDATE experiments")) {
@@ -203,8 +243,18 @@ describe("Task 8 — ExitEngine and ExperimentRegistry", () => {
     await registry.promote(expId, {
       all_passed: true,
       gates: [
-        { gate_name: "backtest_sharpe", passed: true, score: 1.8, threshold: 1.0 },
-        { gate_name: "max_drawdown", passed: true, score: 0.04, threshold: 0.1 },
+        {
+          gate_name: "backtest_sharpe",
+          passed: true,
+          score: 1.8,
+          threshold: 1.0,
+        },
+        {
+          gate_name: "max_drawdown",
+          passed: true,
+          score: 0.04,
+          threshold: 0.1,
+        },
       ],
     });
 
@@ -222,7 +272,12 @@ describe("Task 8 — ExitEngine and ExperimentRegistry", () => {
     await registry.promote(expId2, {
       all_passed: false,
       gates: [
-        { gate_name: "backtest_sharpe", passed: false, score: 0.5, threshold: 1.0 },
+        {
+          gate_name: "backtest_sharpe",
+          passed: false,
+          score: 0.5,
+          threshold: 1.0,
+        },
       ],
     });
 

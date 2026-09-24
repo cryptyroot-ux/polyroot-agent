@@ -47,7 +47,11 @@ export interface HeartbeatObservation {
 
 export type HeartbeatVerdict =
   | { ok: true; reconciled: string[]; stillUnknown: string[] }
-  | { ok: false; code: "HEARTBEAT_STALE" | "HEARTBEAT_CONFLICT"; reason: string };
+  | {
+      ok: false;
+      code: "HEARTBEAT_STALE" | "HEARTBEAT_CONFLICT";
+      reason: string;
+    };
 
 /**
  * Reconcile one heartbeat against observation. Success is NEVER fabricated:
@@ -110,7 +114,9 @@ export function reconcileHeartbeat(
   }
   const observed = new Set(observation.observedCancelled);
   const reconciled = record.expectedCancelled.filter((id) => observed.has(id));
-  const stillUnknown = record.expectedCancelled.filter((id) => !observed.has(id));
+  const stillUnknown = record.expectedCancelled.filter(
+    (id) => !observed.has(id),
+  );
   return { ok: true, reconciled, stillUnknown };
 }
 
@@ -145,7 +151,12 @@ export function onEngineRestarting(detail?: string): RestartDirective {
 
 export type FeeVerdict =
   | { ok: true; feeToRetain: number; note: string }
-  | { ok: false; code: "FEE_BOUND_EXCEEDED"; reason: string; feeToRetain: number };
+  | {
+      ok: false;
+      code: "FEE_BOUND_EXCEEDED";
+      reason: string;
+      feeToRetain: number;
+    };
 
 /**
  * The fee observed at matching time must fit the quoted bound. When it does

@@ -1,20 +1,21 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { 
-  proposeAdaptation, 
-  ParameterState, 
-  ParameterEnvelope, 
-  AdaptiveTunerConfig 
+import {
+  proposeAdaptation,
+  ParameterState,
+  ParameterEnvelope,
+  AdaptiveTunerConfig,
 } from "../../../src/pm/strategy/src/adaptive-tuner.ts";
 import type { RiskPolicy } from "@polyroot/domain";
 
 describe("AdaptiveTuner — max-entries cap", () => {
-  const makePolicy = (): RiskPolicy => ({
-    policy_version: "1.0.0",
-    // minimal RiskPolicy fields needed for bootstrap
-    // only fields used: none; we'll create envelope manually
-    // Actually RiskPolicy has many fields, but we can cast
-  }) as RiskPolicy;
+  const makePolicy = (): RiskPolicy =>
+    ({
+      policy_version: "1.0.0",
+      // minimal RiskPolicy fields needed for bootstrap
+      // only fields used: none; we'll create envelope manually
+      // Actually RiskPolicy has many fields, but we can cast
+    }) as RiskPolicy;
 
   const baseEnvelope = (): ParameterEnvelope => ({
     envelope_id: "env_test",

@@ -32,8 +32,18 @@ class FakeBalanceStore implements BalanceStore {
   constructor(available: bigint) {
     this.available = available;
   }
-  async get(): Promise<{ account: string; asset: string; availableBase: bigint; committedBase: bigint }> {
-    return { account: "0xFUNDER", asset: "pUSD", availableBase: this.available, committedBase: this.committed };
+  async get(): Promise<{
+    account: string;
+    asset: string;
+    availableBase: bigint;
+    committedBase: bigint;
+  }> {
+    return {
+      account: "0xFUNDER",
+      asset: "pUSD",
+      availableBase: this.available,
+      committedBase: this.committed,
+    };
   }
   async reserveFunds(_a: string, _s: string, amount: bigint): Promise<void> {
     if (this.available < amount) throw new Error("INSUFFICIENT_AVAILABLE");
@@ -67,12 +77,18 @@ const fakeAuthority: MoneyAuthority = {
     asset: string,
     cashNeededBase: bigint,
   ): Promise<MoneyAuthorityResult> {
-    const balanceStore = (globalThis as unknown as { __fakeBalanceStore?: FakeBalanceStore }).__fakeBalanceStore;
+    const balanceStore = (
+      globalThis as unknown as { __fakeBalanceStore?: FakeBalanceStore }
+    ).__fakeBalanceStore;
     if (balanceStore) {
       try {
         await balanceStore.reserveFunds(account, asset, cashNeededBase);
       } catch {
-        return { ok: false, code: "INSUFFICIENT_FUNDS", reason: "insufficient available balance" };
+        return {
+          ok: false,
+          code: "INSUFFICIENT_FUNDS",
+          reason: "insufficient available balance",
+        };
       }
     }
     return { ok: true, reservationId: randomUUID(), permitId: randomUUID() };
@@ -87,7 +103,14 @@ class FakeAdapter implements VenueAdapter {
   }
   async placeOrder(_o: SignedOrder): Promise<SubmitOutcome> {
     this.placeOrderCalls += 1;
-    return { ok: true, result: { success: true, submit_status: "ACKNOWLEDGED", timestamp: new Date() } };
+    return {
+      ok: true,
+      result: {
+        success: true,
+        submit_status: "ACKNOWLEDGED",
+        timestamp: new Date(),
+      },
+    };
   }
   async cancelOrder(_id: string): Promise<SubmitOutcome> {
     return { ok: true, result: { success: true, timestamp: new Date() } };
@@ -114,7 +137,9 @@ function makeWallet(): WalletIdentity {
 
 function makePipeline(forecastP: number | null) {
   const balance = new FakeBalanceStore(1_000_000_000n);
-  (globalThis as unknown as { __fakeBalanceStore?: FakeBalanceStore }).__fakeBalanceStore = balance;
+  (
+    globalThis as unknown as { __fakeBalanceStore?: FakeBalanceStore }
+  ).__fakeBalanceStore = balance;
   const kernel = new MoneyKernel({
     balance,
     sink: new FakeSink(),
@@ -149,7 +174,11 @@ function makePipeline(forecastP: number | null) {
     signer,
     executor,
     wallet: makeWallet(),
-    policy: { ...DEFAULT_RISK_POLICY, policy_version: "v0-bootstrap", capital_usd_cap: 10_000 },
+    policy: {
+      ...DEFAULT_RISK_POLICY,
+      policy_version: "v0-bootstrap",
+      capital_usd_cap: 10_000,
+    },
     policyHash: "ph_e2e",
     venueMode: () => "NORMAL" as VenueMode,
     leaseEpoch: () => 1,
@@ -163,7 +192,11 @@ function makePipeline(forecastP: number | null) {
 describe("Runtime E2E — G4 PAPER pipeline with in-memory fakes (P0-5)", () => {
   it("tradable market produces a decision with simulated fill and metrics", async () => {
     const { pipeline } = makePipeline(0.65);
-    const result = await pipeline.processMarket({ market_id: "mkt_e2e_1", bid: 0.45, ask: 0.55 });
+    const result = await pipeline.processMarket({
+      market_id: "mkt_e2e_1",
+      bid: 0.45,
+      ask: 0.55,
+    });
     assert.equal(result.decision, "BUY");
     assert.ok(result.fill !== undefined);
     assert.equal(pipeline.getMetrics().totalOrders, 1);
@@ -171,7 +204,11 @@ describe("Runtime E2E — G4 PAPER pipeline with in-memory fakes (P0-5)", () => 
 
   it("uncertain forecast abstains with NO_TRADE", async () => {
     const { pipeline } = makePipeline(0.5);
-    const result = await pipeline.processMarket({ market_id: "mkt_e2e_2", bid: 0.45, ask: 0.55 });
+    const result = await pipeline.processMarket({
+      market_id: "mkt_e2e_2",
+      bid: 0.45,
+      ask: 0.55,
+    });
     assert.equal(result.decision, "NO_TRADE");
   });
 

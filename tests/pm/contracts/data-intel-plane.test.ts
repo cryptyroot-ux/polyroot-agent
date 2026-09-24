@@ -289,10 +289,12 @@ describe("PM-INTEL-02 — source registry & syndication", () => {
     await reg.register(wire("https://news.example/a/1"));
     await reg.register(wire("https://wire.example/b/2"));
     assert.equal(
-      (await reg.independentFamilies([
-        "https://news.example/a/1",
-        "https://wire.example/b/2",
-      ])).size,
+      (
+        await reg.independentFamilies([
+          "https://news.example/a/1",
+          "https://wire.example/b/2",
+        ])
+      ).size,
       2,
     );
   });

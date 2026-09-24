@@ -49,12 +49,15 @@ export function checkCatalystFreshness(input: {
     return {
       fresh: false,
       code: "WATERMARK_MISSING",
-      reason: "no consumer watermark recorded; initialize explicitly before acting",
+      reason:
+        "no consumer watermark recorded; initialize explicitly before acting",
       invalidating: [...input.outbox],
       cancelRestingPerPolicy: true,
     };
   }
-  const idx = input.outbox.findIndex((e) => e.event_id === input.watermarkEventId);
+  const idx = input.outbox.findIndex(
+    (e) => e.event_id === input.watermarkEventId,
+  );
   // Unknown watermark id (trimmed outbox, new consumer, forked stream):
   // nothing after it can be proven fresh.
   if (idx < 0) {

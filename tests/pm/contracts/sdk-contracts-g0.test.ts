@@ -42,7 +42,10 @@ describe("Phase 16 CT-02: public client purity (PM-WALLET-03, G0)", () => {
     const fake = {
       fetchOrderBook: async (req: unknown) => {
         calls.push("fetchOrderBook");
-        return { bids: [{ price: "0.55", size: "100" }], asks: [{ price: "0.6", size: "100" }] };
+        return {
+          bids: [{ price: "0.55", size: "100" }],
+          asks: [{ price: "0.6", size: "100" }],
+        };
       },
     };
     const adapter = new PolymarketVenueAdapter(fake, "NORMAL");
@@ -147,8 +150,7 @@ describe("Phase 16 CT-03: EOA signing golden (PM-WALLET-01, G0)", () => {
       .keyFromPublic(pub, "array" as any)
       .verify(hash, { r: sigBytes.slice(0, 32), s: sigBytes.slice(32, 64) });
     assert.equal(ok, true);
-    const derived =
-      "0x" + keccak256(pub.slice(1)).slice(-20).toString("hex");
+    const derived = "0x" + keccak256(pub.slice(1)).slice(-20).toString("hex");
     assert.equal(derived.toLowerCase(), EXPECTED_ADDRESS.toLowerCase());
   });
 
@@ -209,10 +211,7 @@ describe("Phase 16 CT-16: GTC/GTD expiration (PM-PROTO-05, G0)", () => {
     }
   });
   it("GTD without future expiry refuses (no silent GTC fallback)", () => {
-    assert.equal(
-      validateOrderExpiry({ tif: "GTD", now }).ok,
-      false,
-    );
+    assert.equal(validateOrderExpiry({ tif: "GTD", now }).ok, false);
     const past = validateOrderExpiry({
       tif: "GTD",
       expiresAt: new Date("2025-12-31T23:59:00Z"),
@@ -241,7 +240,12 @@ describe("Phase 16 CT-16: GTC/GTD expiration (PM-PROTO-05, G0)", () => {
 describe("Phase 16 CT-32: narrow signer surface (PM-SEC-01, G0/G1)", () => {
   it("SignerVault exposes no arbitrary-bytes signing", async () => {
     const { SignerVault } = await import("@polyroot/signer");
-    for (const banned of ["signArbitrary", "signBytes", "signRaw", "signMessage"]) {
+    for (const banned of [
+      "signArbitrary",
+      "signBytes",
+      "signRaw",
+      "signMessage",
+    ]) {
       assert.equal(
         typeof (SignerVault.prototype as any)[banned],
         "undefined",

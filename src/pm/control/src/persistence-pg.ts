@@ -110,10 +110,7 @@ export class PgReconciler implements ReconcilerLike {
   private readonly pool: Pool;
   private readonly executor: Executor;
 
-  constructor(
-    executor: Executor,
-    config: PoolConfig | string | Pool,
-  ) {
+  constructor(executor: Executor, config: PoolConfig | string | Pool) {
     const pool =
       config instanceof Pool
         ? config
@@ -170,7 +167,9 @@ export interface SupervisorLike {
     totalOrderCount: number;
     unresolvedIntents: number;
   }>;
-  onOrchestrateResult(res: import("./orchestrator.js").OrchestrateResult): Promise<void>;
+  onOrchestrateResult(
+    res: import("./orchestrator.js").OrchestrateResult,
+  ): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -196,7 +195,9 @@ export class PgSupervisor implements SupervisorLike {
     this.policy = policy;
   }
 
-  async onOrchestrateResult(res: import("./orchestrator.js").OrchestrateResult): Promise<void> {
+  async onOrchestrateResult(
+    res: import("./orchestrator.js").OrchestrateResult,
+  ): Promise<void> {
     if (!res.ok) return;
     // State is already set by Executor via recovery_ledger
     // Just update supervisor counters

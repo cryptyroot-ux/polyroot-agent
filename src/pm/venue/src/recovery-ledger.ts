@@ -127,7 +127,9 @@ export class PgRecoveryLedger implements IRecoveryLedger {
     permitId: string,
     orderId: string,
     venueOrderId?: string,
-  ): Promise<{ ok: true; permitId: string } | { ok: false; code: string; reason: string }> {
+  ): Promise<
+    { ok: true; permitId: string } | { ok: false; code: string; reason: string }
+  > {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -145,7 +147,11 @@ export class PgRecoveryLedger implements IRecoveryLedger {
       );
       if (claimResult.rowCount === 0) {
         await client.query("ROLLBACK");
-        return { ok: false, code: "PERMIT_INVALID", reason: "permit already used or expired" };
+        return {
+          ok: false,
+          code: "PERMIT_INVALID",
+          reason: "permit already used or expired",
+        };
       }
 
       // 2. Record the SUBMITTING state in the recovery ledger (same transaction)
@@ -338,8 +344,7 @@ export class MemRecoveryLedger implements IRecoveryLedger {
     orderId: string,
     venueOrderId?: string,
   ): Promise<
-    | { ok: true; permitId: string }
-    | { ok: false; code: string; reason: string }
+    { ok: true; permitId: string } | { ok: false; code: string; reason: string }
   > {
     // In-memory: the caller (executor) has already validated the permit is
     // single-use and claimable; record SUBMITTING and report success.

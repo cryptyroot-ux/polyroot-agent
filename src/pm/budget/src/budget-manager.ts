@@ -5,13 +5,20 @@
 
 import type { ReservationManager } from "../risk/src/reservation-manager.js";
 import type { EffectiveAuthorityResolver } from "../auth/src/effective-authority-resolver.js";
-import type { BudgetReservation, BudgetConstraint, BudgetAccountResult } from "./types.js";
+import type {
+  BudgetReservation,
+  BudgetConstraint,
+  BudgetAccountResult,
+} from "./types.js";
 
 export class BudgetManager {
   private reservationManager: ReservationManager;
   private authResolver: EffectiveAuthorityResolver;
 
-  constructor(deps: { reservationManager: ReservationManager; authResolver: EffectiveAuthorityResolver }) {
+  constructor(deps: {
+    reservationManager: ReservationManager;
+    authResolver: EffectiveAuthorityResolver;
+  }) {
     this.reservationManager = deps.reservationManager;
     this.authResolver = deps.authResolver;
   }
@@ -25,29 +32,59 @@ export class BudgetManager {
   ): Promise<BudgetAccountResult> {
     // 1. Effective authority check
     const authContext = await this.buildAuthContext(account);
-    const authResult = this.authResolver.resolve(authContext, domain, requestedNotional);
+    const authResult = this.authResolver.resolve(
+      authContext,
+      domain,
+      requestedNotional,
+    );
     if (!authResult.ok) {
-      return { ok: false, code: authResult.code, reason: authResult.reason, effectiveBudget: authResult.effectiveMaxNotional, effectiveCapacity: 0n };
+      return {
+        ok: false,
+        code: authResult.code,
+        reason: authResult.reason,
+        effectiveBudget: authResult.effectiveMaxNotional,
+        effectiveCapacity: 0n,
+      };
     }
 
     // 2. Accounting invariants (P0-3) – ensure no double spend / over‑consumption.
     if (reservationId) {
       const status = await this.reservationManager.get(reservationId);
       if (!status) {
-        return { ok: false, code: "RES_NOT_FOUND", reason: "reservation not found" }; // placeholder
+        return {
+          ok: false,
+          code: "RES_NOT_FOUND",
+          reason: "reservation not found",
+        }; // placeholder
       }
       // Check if the reservation already fully consumed or released.
-      if (status.consumed_amount >= status.amount || status.released_amount >= status.amount) {
-        return { ok: false, code: "RES_EXHAUSTED", reason: "reservation already fully consumed or released" };
+      if (
+        status.consumed_amount >= status.amount ||
+        status.released_amount >= status.amount
+      ) {
+        return {
+          ok: false,
+          code: "RES_EXHAUSTED",
+          reason: "reservation already fully consumed or released",
+        };
       }
       // Ensure requested notional does not exceed remaining capacity.
-      const remaining = status.amount - status.consumed_amount - status.released_amount;
+      const remaining =
+        status.amount - status.consumed_amount - status.released_amount;
       if (requestedNotional > remaining) {
-        return { ok: false, code: "OVER_CONSUME", reason: `requested ${requestedNotional} > remaining ${remaining}` };
+        return {
+          ok: false,
+          code: "OVER_CONSUME",
+          reason: `requested ${requestedNotional} > remaining ${remaining}`,
+        };
       }
     }
 
-    return { ok: true, effectiveBudget: authResult.effectiveMaxNotional, effectiveCapacity: authResult.effectiveMaxNotional };
+    return {
+      ok: true,
+      effectiveBudget: authResult.effectiveMaxNotional,
+      effectiveCapacity: authResult.effectiveMaxNotional,
+    };
   }
 
   /**

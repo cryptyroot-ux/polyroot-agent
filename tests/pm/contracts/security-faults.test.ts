@@ -4,10 +4,7 @@ import {
   spawnStrategyWorker,
   DEFAULT_WORKER_RESOURCE_LIMITS,
 } from "@polyroot/strategy/sandbox-rpc";
-import {
-  checkDecodeBudget,
-  EgressGuard,
-} from "@polyroot/security";
+import { checkDecodeBudget, EgressGuard } from "@polyroot/security";
 
 describe("Phase 13 FT-16: worker resource quota is applied (PM-SEC-03)", () => {
   it("spawned workers carry the conservative V8 heap caps", async () => {
@@ -73,8 +70,10 @@ describe("Phase 13 FT-19: content-bomb decode budgets (PM-SEC-05)", () => {
 
   it("healthy payloads pass all three budgets", () => {
     assert.equal(
-      checkDecodeBudget({ compressedBytes: 100_000, decompressedBytes: 500_000 })
-        .ok,
+      checkDecodeBudget({
+        compressedBytes: 100_000,
+        decompressedBytes: 500_000,
+      }).ok,
       true,
     );
   });

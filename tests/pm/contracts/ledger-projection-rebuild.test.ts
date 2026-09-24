@@ -17,7 +17,9 @@ import { createPgStores } from "@polyroot/risk";
  * Test requires a PostgreSQL connection.
  * Set DATABASE_URL or pass via env.
  */
-const pgConfig = process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/polyroot_test";
+const pgConfig =
+  process.env.DATABASE_URL ??
+  "postgresql://postgres:postgres@localhost:5432/polyroot_test";
 
 function ev(type: any, payload: any, over: Record<string, unknown> = {}) {
   return {
@@ -42,7 +44,9 @@ describe("ProjectionEngine — rebuild from events (PM-LED-03)", () => {
   before(async () => {
     pool = new Pool({ connectionString: pgConfig });
     // Ensure clean schema
-    await pool.query(`TRUNCATE kernel_events, balance_entries, balance_projections, projection_checkpoints CASCADE`);
+    await pool.query(
+      `TRUNCATE kernel_events, balance_entries, balance_projections, projection_checkpoints CASCADE`,
+    );
 
     const stores = createPgStores(pgConfig);
     eventStore = new PgEventStore(pool);
@@ -59,11 +63,33 @@ describe("ProjectionEngine — rebuild from events (PM-LED-03)", () => {
     const asset = "pUSD";
 
     const events = [
-      ev("RESERVATION_CREATED", { account, asset, cashBase: "1000000", intentId: randomUUID(), reservationId: randomUUID(), permitId: randomUUID(), leaseEpoch: 1 }),
-      ev("RESERVATION_CREATED", { account, asset, cashBase: "500000", intentId: randomUUID(), reservationId: randomUUID(), permitId: randomUUID(), leaseEpoch: 1 }),
+      ev("RESERVATION_CREATED", {
+        account,
+        asset,
+        cashBase: "1000000",
+        intentId: randomUUID(),
+        reservationId: randomUUID(),
+        permitId: randomUUID(),
+        leaseEpoch: 1,
+      }),
+      ev("RESERVATION_CREATED", {
+        account,
+        asset,
+        cashBase: "500000",
+        intentId: randomUUID(),
+        reservationId: randomUUID(),
+        permitId: randomUUID(),
+        leaseEpoch: 1,
+      }),
       ev("RESERVATION_CONSUMED", { account, asset, cashBase: "300000" }),
       ev("RESERVATION_RELEASED", { account, asset, cashBase: "200000" }),
-      ev("ORDER_FILLED", { account, asset, cashBase: "400000", feeBase: "10000", rebateBase: "5000" }),
+      ev("ORDER_FILLED", {
+        account,
+        asset,
+        cashBase: "400000",
+        feeBase: "10000",
+        rebateBase: "5000",
+      }),
     ];
 
     for (const e of events) {
@@ -71,17 +97,29 @@ describe("ProjectionEngine — rebuild from events (PM-LED-03)", () => {
     }
 
     // Incremental process (simulating live)
-    await projectionEngine.process({ projectionName: "balance_projections", fromSequence: 1n });
+    await projectionEngine.process({
+      projectionName: "balance_projections",
+      fromSequence: 1n,
+    });
     const balAfterIncremental = await balanceStore.get(account, asset);
 
     // TRUNCATE projections and REBUILD from scratch
-    await projectionEngine.rebuild({ projectionName: "balance_projections", fromSequence: 1n });
+    await projectionEngine.rebuild({
+      projectionName: "balance_projections",
+      fromSequence: 1n,
+    });
     const balAfterRebuild = await balanceStore.get(account, asset);
 
     // Expect exact match
-    assert.equal(balAfterRebuild.availableBase, balAfterIncremental.availableBase);
-    assert.equal(balAfterRebuild.committedBase, balAfterIncremental.committedBase);
-    // available = +200000 (released) + Rebate... 
+    assert.equal(
+      balAfterRebuild.availableBase,
+      balAfterIncremental.availableBase,
+    );
+    assert.equal(
+      balAfterRebuild.committedBase,
+      balAfterIncremental.committedBase,
+    );
+    // available = +200000 (released) + Rebate...
     // For exact expectation, assert equality between the two methods is the key
   });
 
@@ -90,16 +128,30 @@ describe("ProjectionEngine — rebuild from events (PM-LED-03)", () => {
     const asset = "pUSD";
 
     const events = [
-      ev("RESERVATION_CREATED", { account, asset, cashBase: "1000000", intentId: randomUUID(), reservationId: randomUUID(), permitId: randomUUID(), leaseEpoch: 1 }),
+      ev("RESERVATION_CREATED", {
+        account,
+        asset,
+        cashBase: "1000000",
+        intentId: randomUUID(),
+        reservationId: randomUUID(),
+        permitId: randomUUID(),
+        leaseEpoch: 1,
+      }),
     ];
     for (const e of events) {
       await eventStore.append(e as any);
     }
 
-    await projectionEngine.rebuild({ projectionName: "balance_projections", fromSequence: 1n });
+    await projectionEngine.rebuild({
+      projectionName: "balance_projections",
+      fromSequence: 1n,
+    });
     const bal1 = await balanceStore.get(account, asset);
 
-    await projectionEngine.rebuild({ projectionName: "balance_projections", fromSequence: 1n });
+    await projectionEngine.rebuild({
+      projectionName: "balance_projections",
+      fromSequence: 1n,
+    });
     const bal2 = await balanceStore.get(account, asset);
 
     assert.equal(bal2.availableBase, bal1.availableBase);
@@ -111,18 +163,33 @@ describe("ProjectionEngine — rebuild from events (PM-LED-03)", () => {
     const asset = "pUSD";
 
     const events = [
-      ev("RESERVATION_CREATED", { account, asset, cashBase: "1000000", intentId: randomUUID(), reservationId: randomUUID(), permitId: randomUUID(), leaseEpoch: 1 }),
-      ev("CORRECTION", {
-        correctionOfEventId: "00000000-0000-0000-0000-000000000001",
-        reversalType: "RESERVATION_RELEASED",
-        reversal: { account, asset, cashBase: "1000000" },
-      }, { metadata: { corrected: true } }),
+      ev("RESERVATION_CREATED", {
+        account,
+        asset,
+        cashBase: "1000000",
+        intentId: randomUUID(),
+        reservationId: randomUUID(),
+        permitId: randomUUID(),
+        leaseEpoch: 1,
+      }),
+      ev(
+        "CORRECTION",
+        {
+          correctionOfEventId: "00000000-0000-0000-0000-000000000001",
+          reversalType: "RESERVATION_RELEASED",
+          reversal: { account, asset, cashBase: "1000000" },
+        },
+        { metadata: { corrected: true } },
+      ),
     ];
     for (const e of events) {
       await eventStore.append(e as any);
     }
 
-    await projectionEngine.rebuild({ projectionName: "balance_projections", fromSequence: 1n });
+    await projectionEngine.rebuild({
+      projectionName: "balance_projections",
+      fromSequence: 1n,
+    });
     const bal = await balanceStore.get(account, asset);
     // Correction reverses the reservation → net zero
     assert.equal(bal.availableBase, 0n);
@@ -131,9 +198,51 @@ describe("ProjectionEngine — rebuild from events (PM-LED-03)", () => {
 
   it("rebuild handles multiple accounts and assets independently", async () => {
     const scenarios = [
-      { account: "0xMULTI_1", asset: "pUSD", events: [ev("RESERVATION_CREATED", { account: "0xMULTI_1", asset: "pUSD", cashBase: "1000000", intentId: randomUUID(), reservationId: randomUUID(), permitId: randomUUID(), leaseEpoch: 1 })] },
-      { account: "0xMULTI_2", asset: "pUSD", events: [ev("RESERVATION_CREATED", { account: "0xMULTI_2", asset: "pUSD", cashBase: "2000000", intentId: randomUUID(), reservationId: randomUUID(), permitId: randomUUID(), leaseEpoch: 1 })] },
-      { account: "0xMULTI_1", asset: "USDC", events: [ev("RESERVATION_CREATED", { account: "0xMULTI_1", asset: "USDC", cashBase: "500000", intentId: randomUUID(), reservationId: randomUUID(), permitId: randomUUID(), leaseEpoch: 1 })] },
+      {
+        account: "0xMULTI_1",
+        asset: "pUSD",
+        events: [
+          ev("RESERVATION_CREATED", {
+            account: "0xMULTI_1",
+            asset: "pUSD",
+            cashBase: "1000000",
+            intentId: randomUUID(),
+            reservationId: randomUUID(),
+            permitId: randomUUID(),
+            leaseEpoch: 1,
+          }),
+        ],
+      },
+      {
+        account: "0xMULTI_2",
+        asset: "pUSD",
+        events: [
+          ev("RESERVATION_CREATED", {
+            account: "0xMULTI_2",
+            asset: "pUSD",
+            cashBase: "2000000",
+            intentId: randomUUID(),
+            reservationId: randomUUID(),
+            permitId: randomUUID(),
+            leaseEpoch: 1,
+          }),
+        ],
+      },
+      {
+        account: "0xMULTI_1",
+        asset: "USDC",
+        events: [
+          ev("RESERVATION_CREATED", {
+            account: "0xMULTI_1",
+            asset: "USDC",
+            cashBase: "500000",
+            intentId: randomUUID(),
+            reservationId: randomUUID(),
+            permitId: randomUUID(),
+            leaseEpoch: 1,
+          }),
+        ],
+      },
     ];
     for (const s of scenarios) {
       for (const e of s.events) {
@@ -141,7 +250,10 @@ describe("ProjectionEngine — rebuild from events (PM-LED-03)", () => {
       }
     }
 
-    await projectionEngine.rebuild({ projectionName: "balance_projections", fromSequence: 1n });
+    await projectionEngine.rebuild({
+      projectionName: "balance_projections",
+      fromSequence: 1n,
+    });
 
     const bal1 = await balanceStore.get("0xMULTI_1", "pUSD");
     assert.equal(bal1.availableBase, -1000000n);
@@ -163,19 +275,38 @@ describe("ProjectionEngine — rebuild from events (PM-LED-03)", () => {
 
     const events = [];
     for (let i = 0; i < 10; i++) {
-      events.push(ev(i % 2 === 0 ? "RESERVATION_CREATED" : "RESERVATION_RELEASED", { account, asset, cashBase: (100000 * (i + 1)).toString(), intentId: randomUUID(), reservationId: randomUUID(), permitId: randomUUID(), leaseEpoch: 1 }));
+      events.push(
+        ev(i % 2 === 0 ? "RESERVATION_CREATED" : "RESERVATION_RELEASED", {
+          account,
+          asset,
+          cashBase: (100000 * (i + 1)).toString(),
+          intentId: randomUUID(),
+          reservationId: randomUUID(),
+          permitId: randomUUID(),
+          leaseEpoch: 1,
+        }),
+      );
     }
     for (const e of events) {
       await eventStore.append(e as any);
     }
 
-    await projectionEngine.rebuild({ projectionName: "balance_projections", fromSequence: 1n });
+    await projectionEngine.rebuild({
+      projectionName: "balance_projections",
+      fromSequence: 1n,
+    });
     const bal1 = await balanceStore.get(account, asset);
 
-    await projectionEngine.rebuild({ projectionName: "balance_projections", fromSequence: 1n });
+    await projectionEngine.rebuild({
+      projectionName: "balance_projections",
+      fromSequence: 1n,
+    });
     const bal2 = await balanceStore.get(account, asset);
 
-    await projectionEngine.rebuild({ projectionName: "balance_projections", fromSequence: 1n });
+    await projectionEngine.rebuild({
+      projectionName: "balance_projections",
+      fromSequence: 1n,
+    });
     const bal3 = await balanceStore.get(account, asset);
 
     assert.equal(bal2.availableBase, bal1.availableBase);
@@ -185,7 +316,16 @@ describe("ProjectionEngine — rebuild from events (PM-LED-03)", () => {
   });
 
   it("append rejects events lacking schema_version (PM-LED-01 canonical schema)", async () => {
-    const bad = { type: "RESERVATION_CREATED", aggregate_type: "Reservation", aggregate_id: randomUUID(), payload: {}, metadata: {} };
-    await assert.rejects(() => eventStore.append(bad as any), /invalid LedgerEvent/i);
+    const bad = {
+      type: "RESERVATION_CREATED",
+      aggregate_type: "Reservation",
+      aggregate_id: randomUUID(),
+      payload: {},
+      metadata: {},
+    };
+    await assert.rejects(
+      () => eventStore.append(bad as any),
+      /invalid LedgerEvent/i,
+    );
   });
 });

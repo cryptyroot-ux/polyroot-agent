@@ -14,7 +14,8 @@
  * Pure functions (no I/O).
  */
 
-export type IncentiveCategory = "MAKER_REBATE" | "LP_REWARD" | "TAKER_INCENTIVE";
+export type IncentiveCategory =
+  "MAKER_REBATE" | "LP_REWARD" | "TAKER_INCENTIVE";
 
 export interface AttributedOrder {
   orderId: string;

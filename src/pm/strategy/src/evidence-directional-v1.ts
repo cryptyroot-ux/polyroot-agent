@@ -1,6 +1,6 @@
 /**
  * @polyroot/strategy — EvidenceDirectionalV1: Placeholder for legacy strategy.
- * 
+ *
  * This is the legacy evidence_directional_v1 strategy that has been
  * superseded by evidence_directional_v2. Kept for backward compatibility
  * and comparison purposes only.
@@ -27,9 +27,14 @@ export class EvidenceDirectionalV1 {
     book: { yes_price: number; no_price: number };
     fees: { taker_bps: number };
   }): Promise<StrategyProposal | null> {
-    const p = input.forecast.p_conservative ?? input.forecast.p_calibrated ?? input.forecast.p_raw ?? 0.5;
+    const p =
+      input.forecast.p_conservative ??
+      input.forecast.p_calibrated ??
+      input.forecast.p_raw ??
+      0.5;
     const side = p > 0.5 ? "YES" : "NO";
-    const bookPrice = side === "YES" ? input.book.yes_price : input.book.no_price;
+    const bookPrice =
+      side === "YES" ? input.book.yes_price : input.book.no_price;
     const edge = Math.abs(p - bookPrice) - input.fees.taker_bps / 10000;
 
     if (edge < this.config.minEdgeAfterCost) {

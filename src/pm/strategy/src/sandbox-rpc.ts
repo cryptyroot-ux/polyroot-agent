@@ -30,12 +30,13 @@ export interface StrategyWorkerResourceLimits {
  * instead of exhausting the host. Values are generous for legitimate
  * strategies (small JSON in/out) and overridable per call.
  */
-export const DEFAULT_WORKER_RESOURCE_LIMITS: Required<StrategyWorkerResourceLimits> = {
-  maxOldGenerationSizeMb: 256,
-  maxYoungGenerationSizeMb: 64,
-  codeRangeSizeMb: 0,
-  stackSizeMb: 4,
-};
+export const DEFAULT_WORKER_RESOURCE_LIMITS: Required<StrategyWorkerResourceLimits> =
+  {
+    maxOldGenerationSizeMb: 256,
+    maxYoungGenerationSizeMb: 64,
+    codeRangeSizeMb: 0,
+    stackSizeMb: 4,
+  };
 
 export async function spawnStrategyWorker(opts: {
   strategyCode: string;
@@ -51,7 +52,10 @@ export async function spawnStrategyWorker(opts: {
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const worker = new Worker(resolve(HERE, "./sandbox-worker.js"), {
     workerData: { strategyCode: opts.strategyCode },
-    resourceLimits: { ...DEFAULT_WORKER_RESOURCE_LIMITS, ...opts.resourceLimits },
+    resourceLimits: {
+      ...DEFAULT_WORKER_RESOURCE_LIMITS,
+      ...opts.resourceLimits,
+    },
   });
 
   function callWorker(message: unknown): Promise<unknown> {
@@ -110,14 +114,14 @@ export async function spawnStrategyWorker(opts: {
     async evalInWorker(code: string): Promise<unknown> {
       return callWorker({ code, input: null });
     },
-    
+
     async terminate(): Promise<void> {
       return new Promise((resolve) => {
         worker.terminate();
         resolve();
       });
-    }
+    },
   };
-  
+
   return { client, worker };
 }

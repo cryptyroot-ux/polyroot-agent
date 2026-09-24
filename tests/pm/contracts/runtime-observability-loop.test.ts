@@ -29,7 +29,12 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
     available = 1_000_000_000n;
     committed = 0n;
     async get() {
-      return { account: "0xFUNDER", asset: "pUSD", availableBase: this.available, committedBase: this.committed };
+      return {
+        account: "0xFUNDER",
+        asset: "pUSD",
+        availableBase: this.available,
+        committedBase: this.committed,
+      };
     }
     async reserveFunds(_a: string, _s: string, amount: bigint) {
       this.available -= amount;
@@ -72,7 +77,14 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
       };
     }
     async placeOrder(_o: SignedOrder): Promise<SubmitOutcome> {
-      return { ok: true, result: { success: true, submit_status: "ACKNOWLEDGED", timestamp: new Date() } };
+      return {
+        ok: true,
+        result: {
+          success: true,
+          submit_status: "ACKNOWLEDGED",
+          timestamp: new Date(),
+        },
+      };
     }
     async cancelOrder(_id: string): Promise<SubmitOutcome> {
       return { ok: true, result: { success: true, timestamp: new Date() } };
@@ -104,7 +116,11 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
       sink: { push: async () => {} },
       authority: {
         async reserve(): Promise<MoneyAuthorityResult> {
-          return { ok: true, reservationId: randomUUID(), permitId: randomUUID() };
+          return {
+            ok: true,
+            reservationId: randomUUID(),
+            permitId: randomUUID(),
+          };
         },
       },
       chainId: 137,
@@ -136,9 +152,12 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
     const marketIdObs = "mkt_obs_1";
     const observed: Array<{ hook: string; args: unknown[] }> = [];
     const obs: G4CoreObservability = {
-      emitStepStart: (input) => observed.push({ hook: "emitStepStart", args: [input] }),
-      emitStepComplete: (input, res) => observed.push({ hook: "emitStepComplete", args: [input, res] }),
-      emitFinancialGate: (gate, mode, venue) => observed.push({ hook: "emitFinancialGate", args: [gate, mode, venue] }),
+      emitStepStart: (input) =>
+        observed.push({ hook: "emitStepStart", args: [input] }),
+      emitStepComplete: (input, res) =>
+        observed.push({ hook: "emitStepComplete", args: [input, res] }),
+      emitFinancialGate: (gate, mode, venue) =>
+        observed.push({ hook: "emitFinancialGate", args: [gate, mode, venue] }),
     };
 
     const pipeline = createG4Pipeline({
@@ -147,7 +166,11 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
       signer,
       executor,
       wallet: makeWallet(),
-      policy: { ...DEFAULT_RISK_POLICY, policy_version: "v0-bootstrap", capital_usd_cap: 10_000 },
+      policy: {
+        ...DEFAULT_RISK_POLICY,
+        policy_version: "v0-bootstrap",
+        capital_usd_cap: 10_000,
+      },
       policyHash: "ph_obs",
       venueMode: () => adapter.mode,
       leaseEpoch: () => 1,
@@ -157,13 +180,26 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
       observability: obs,
     });
 
-    await pipeline.processMarket({ market_id: marketIdObs, bid: 0.45, ask: 0.55 });
+    await pipeline.processMarket({
+      market_id: marketIdObs,
+      bid: 0.45,
+      ask: 0.55,
+    });
 
-    const hookNames = observed.map(o => o.hook);
+    const hookNames = observed.map((o) => o.hook);
     const calledHooks = new Set(hookNames);
-    assert.ok(calledHooks.has("emitStepStart"), "emitStepStart should be called");
-    assert.ok(calledHooks.has("emitStepComplete"), "emitStepComplete should be called");
-    assert.ok(calledHooks.has("emitFinancialGate"), "emitFinancialGate should be called");
+    assert.ok(
+      calledHooks.has("emitStepStart"),
+      "emitStepStart should be called",
+    );
+    assert.ok(
+      calledHooks.has("emitStepComplete"),
+      "emitStepComplete should be called",
+    );
+    assert.ok(
+      calledHooks.has("emitFinancialGate"),
+      "emitFinancialGate should be called",
+    );
   });
 
   it("runContinuous executes without throwing for a single iteration", async () => {
@@ -173,7 +209,11 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
       sink: { push: async () => {} },
       authority: {
         async reserve(): Promise<MoneyAuthorityResult> {
-          return { ok: true, reservationId: randomUUID(), permitId: randomUUID() };
+          return {
+            ok: true,
+            reservationId: randomUUID(),
+            permitId: randomUUID(),
+          };
         },
       },
       chainId: 137,
@@ -207,7 +247,11 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
       signer,
       executor,
       wallet: makeWallet(),
-      policy: { ...DEFAULT_RISK_POLICY, policy_version: "v0-bootstrap", capital_usd_cap: 10_000 },
+      policy: {
+        ...DEFAULT_RISK_POLICY,
+        policy_version: "v0-bootstrap",
+        capital_usd_cap: 10_000,
+      },
       policyHash: "ph_loop",
       venueMode: () => adapter.mode,
       leaseEpoch: () => 1,
@@ -217,7 +261,7 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
     });
 
     const runPromise = pipeline.runContinuous();
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
     pipeline.stop();
     await runPromise;
     const metrics = pipeline.getMetrics();

@@ -31,10 +31,7 @@ export interface GateReport {
 }
 
 export type ExperimentStatus =
-  | "PREREGISTERED"
-  | "LIVE_QUALIFIED"
-  | "REJECTED"
-  | "ARCHIVED";
+  "PREREGISTERED" | "LIVE_QUALIFIED" | "REJECTED" | "ARCHIVED";
 
 export interface ExperimentRecord {
   id: string;
@@ -76,7 +73,9 @@ export class ExperimentRegistry {
       [specHash],
     );
     if (existing.rows.length > 0) {
-      throw new Error(`Experiment with same spec already exists: ${existing.rows[0].id}`);
+      throw new Error(
+        `Experiment with same spec already exists: ${existing.rows[0].id}`,
+      );
     }
 
     await this.pool.query(
@@ -124,12 +123,7 @@ export class ExperimentRegistry {
       `UPDATE experiments
        SET status = $1, gate_report_json = $2, updated_at = $3
        WHERE id = $4 AND status = 'PREREGISTERED'`,
-      [
-        newStatus,
-        JSON.stringify(gateResults),
-        new Date(),
-        experimentId,
-      ],
+      [newStatus, JSON.stringify(gateResults), new Date(), experimentId],
     );
 
     const result = await this.pool.query(
@@ -138,7 +132,9 @@ export class ExperimentRegistry {
     );
 
     if (result.rowCount === 0) {
-      throw new Error(`Failed to promote experiment ${experimentId} to ${newStatus}`);
+      throw new Error(
+        `Failed to promote experiment ${experimentId} to ${newStatus}`,
+      );
     }
   }
 
@@ -193,7 +189,8 @@ export class ExperimentRegistry {
       params.push(filters.status);
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const whereClause =
+      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const limit = filters?.limit ?? 100;
     const offset = filters?.offset ?? 0;
 
@@ -256,7 +253,7 @@ export class ExperimentRegistry {
     let hash = 0;
     for (let i = 0; i < normalized.length; i++) {
       const char = normalized.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash;
     }
     return `sha_${Math.abs(hash).toString(16)}`;

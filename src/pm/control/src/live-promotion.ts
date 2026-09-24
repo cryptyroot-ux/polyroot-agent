@@ -93,7 +93,10 @@ export function evaluateLivePromotion(input: {
       ],
     };
   }
-  const expiry = promo.expiresAt instanceof Date ? promo.expiresAt : new Date(promo.expiresAt);
+  const expiry =
+    promo.expiresAt instanceof Date
+      ? promo.expiresAt
+      : new Date(promo.expiresAt);
   if (Number.isNaN(expiry.getTime()) || expiry.getTime() <= now.getTime()) {
     return {
       decision: "BLOCKED",
@@ -106,9 +109,9 @@ export function evaluateLivePromotion(input: {
   );
 
   // 3. Monitoring: all three distinct streams declared.
-  const missingStreams = (Object.keys(input.monitoring) as Array<
-    keyof MonitoringDeclaration
-  >).filter((k) => !input.monitoring[k]);
+  const missingStreams = (
+    Object.keys(input.monitoring) as Array<keyof MonitoringDeclaration>
+  ).filter((k) => !input.monitoring[k]);
   if (missingStreams.length > 0) {
     return {
       decision: "BLOCKED",
@@ -126,7 +129,10 @@ export function evaluateLivePromotion(input: {
     return {
       decision: "BLOCKED",
       code: "ROLLBACK_INCOMPLETE",
-      reasons: [...reasons, `rollback triggers missing: ${missingTriggers.join(", ")}`],
+      reasons: [
+        ...reasons,
+        `rollback triggers missing: ${missingTriggers.join(", ")}`,
+      ],
     };
   }
   if (input.rollback.steps.length === 0) {

@@ -445,6 +445,7 @@ export {
 export {
   verifyBodyHmac,
   checkCredentialBinding,
+  checkRateLimit,
   type CredentialAuthCode,
   type CredentialAuthResult,
   type CredentialBinding,

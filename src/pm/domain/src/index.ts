@@ -41,7 +41,12 @@ export interface CatalystBusInterface {
  */
 export interface ResearchBudgetInterface {
   charge(tokens: number, costUsdFrac: number): Promise<void>;
-  check(tokensNeeded: number): Promise<{ ok: boolean; remainingTokens?: bigint; code?: string; reason?: string }>;
+  check(tokensNeeded: number): Promise<{
+    ok: boolean;
+    remainingTokens?: bigint;
+    code?: string;
+    reason?: string;
+  }>;
   reset(): Promise<void>;
 }
 

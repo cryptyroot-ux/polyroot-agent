@@ -21,7 +21,13 @@ import type {
   G4CoreMetrics,
   CreateG4CoreOptions,
 } from "./g4-core.js";
-import { isValidModeTransition, getDefaultModeConfig, computeFinancialGate, executeG4Step, createG4Core } from "./g4-core.js";
+import {
+  isValidModeTransition,
+  getDefaultModeConfig,
+  computeFinancialGate,
+  executeG4Step,
+  createG4Core,
+} from "./g4-core.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -72,7 +78,8 @@ export class G4Pipeline {
         emitFinancialGate: deps.observability?.emitFinancialGate ?? (() => {}),
         emitError: deps.observability?.emitError ?? (() => {}),
         emitMetrics: deps.observability?.emitMetrics ?? (() => {}),
-        emitModeTransition: deps.observability?.emitModeTransition ?? (() => {}),
+        emitModeTransition:
+          deps.observability?.emitModeTransition ?? (() => {}),
       },
     };
     this.metrics = {
@@ -103,7 +110,9 @@ export class G4Pipeline {
   /** Set mode (validates transitions). */
   setMode(mode: G4PipelineMode): void {
     if (!isValidModeTransition(this.config.mode, mode)) {
-      throw new Error(`Invalid mode transition: ${this.config.mode} -> ${mode}`);
+      throw new Error(
+        `Invalid mode transition: ${this.config.mode} -> ${mode}`,
+      );
     }
     this.config.mode = mode;
   }
@@ -115,11 +124,18 @@ export class G4Pipeline {
 
   /** Run one iteration of the pipeline for a single market. */
   async processMarket(input: G4PipelineInput): Promise<G4PipelineResult> {
-    const result = await executeG4Step(input, { config: this.config, deps: this.deps }, this.paperFillConfig);
+    const result = await executeG4Step(
+      input,
+      { config: this.config, deps: this.deps },
+      this.paperFillConfig,
+    );
 
     // Update metrics
     this.metrics.totalOrders++;
-    if (result.fill && (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")) {
+    if (
+      result.fill &&
+      (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")
+    ) {
       this.metrics.filledOrders++;
     }
     this.metrics.totalPnl += result.pnl ?? 0;
@@ -169,21 +185,27 @@ export class G4Pipeline {
 
         const result = await this.processMarket(mockInput);
 
-        if (result.fill && (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")) {
-          console.log(`✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}`);
+        if (
+          result.fill &&
+          (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")
+        ) {
+          console.log(
+            `✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}`,
+          );
         } else if (result.decision !== "NO_TRADE") {
-          console.log(`📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})`);
+          console.log(
+            `📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})`,
+          );
         } else {
           console.log(`⏭️  No trade: ${result.reason}`);
         }
 
         // Wait for next interval
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
+        await new Promise((resolve) => setTimeout(resolve, 5000));
       } catch (error) {
         console.error("❌ Pipeline error:", error);
         // Continue running even if one iteration fails
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
     }
   }

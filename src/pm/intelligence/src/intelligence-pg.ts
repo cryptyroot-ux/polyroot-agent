@@ -27,7 +27,12 @@ export interface IntelligencePgStores {
   catalystBus: CatalystBusInterface;
   researchBudget: {
     charge: (tokens: number, costUsdFrac: number) => Promise<void>;
-    check: (tokensNeeded: number) => Promise<{ ok: boolean; remainingTokens?: bigint; code?: string; reason?: string }>;
+    check: (tokensNeeded: number) => Promise<{
+      ok: boolean;
+      remainingTokens?: bigint;
+      code?: string;
+      reason?: string;
+    }>;
     reset: () => Promise<void>;
   };
 }
@@ -39,7 +44,9 @@ export async function createIntelligencePgStores(
   deps: IntelligencePgDeps,
 ): Promise<IntelligencePgStores> {
   const pool = new Pool(
-    typeof deps.pgConfig === "string" ? { connectionString: deps.pgConfig } : deps.pgConfig,
+    typeof deps.pgConfig === "string"
+      ? { connectionString: deps.pgConfig }
+      : deps.pgConfig,
   );
 
   const { PgSourceRegistry } = await import("./index.js");

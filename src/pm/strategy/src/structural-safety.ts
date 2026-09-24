@@ -19,9 +19,7 @@
  */
 
 export type StructuralCode =
-  | "INCOMPLETE_EXCLUSIVITY"
-  | "RESIDUAL_OVER_CAP"
-  | "UNKNOWN_RELATION";
+  "INCOMPLETE_EXCLUSIVITY" | "RESIDUAL_OVER_CAP" | "UNKNOWN_RELATION";
 
 export type StructuralResult =
   | { ok: true; note: string }
@@ -153,7 +151,12 @@ export interface GroupCapInput {
 
 export type GroupCapVerdict =
   | { ok: true; effectiveCap: number; note: string }
-  | { ok: false; code: "UNKNOWN_RELATION"; reason: string; effectiveCap: number };
+  | {
+      ok: false;
+      code: "UNKNOWN_RELATION";
+      reason: string;
+      effectiveCap: number;
+    };
 
 /**
  * Overlapping group limits are ALL consumed (gross). Unknown relations
@@ -187,7 +190,10 @@ export function groupCapWithFallback(input: GroupCapInput): GroupCapVerdict {
       note: "unknown relation: conservative cap shared, no diversification credit",
     };
   }
-  const effectiveCap = Math.min(input.conservativeCap, ...input.verifiedGroupCaps);
+  const effectiveCap = Math.min(
+    input.conservativeCap,
+    ...input.verifiedGroupCaps,
+  );
   return {
     ok: true,
     effectiveCap,

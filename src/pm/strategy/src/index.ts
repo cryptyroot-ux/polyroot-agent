@@ -40,15 +40,9 @@ export {
   runSmartMoneyPipeline,
 } from "./smart-money-consensus.js";
 
-export {
-  type StrategyArbiterConfig,
-  StrategyArbiter,
-} from "./arbiter.js";
+export { type StrategyArbiterConfig, StrategyArbiter } from "./arbiter.js";
 
-export {
-  type ExitEngineConfig,
-  ExitEngine,
-} from "./exit-engine.js";
+export { type ExitEngineConfig, ExitEngine } from "./exit-engine.js";
 
 export {
   type ExperimentSpec,

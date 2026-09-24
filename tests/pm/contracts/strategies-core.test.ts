@@ -3,12 +3,16 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { EvidenceDirectionalV2 } from "@polyroot/strategy";
 import { MarketGraphRelativeValueV1 } from "@polyroot/strategy";
-import type { MarketSnapshot, GraphEdge, MarketFeeSettings } from "@polyroot/domain";
+import type {
+  MarketSnapshot,
+  GraphEdge,
+  MarketFeeSettings,
+} from "@polyroot/domain";
 
 describe("evidence_directional_v2", () => {
   it("evidence_directional_v2 produces NO_TRADE when conservative edge < minEdge", async () => {
     const strategy = new EvidenceDirectionalV2({ minEdgeAfterCost: 0.03 });
-    
+
     const result = await strategy.run({
       forecast: {
         schema_version: "1.0.0",
@@ -27,7 +31,7 @@ describe("evidence_directional_v2", () => {
       book: { yes_price: 0.48, no_price: 0.52 },
       fees: { taker_bps: 200 },
     });
-    
+
     assert.equal(result?.no_trade_code, "MIN_EDGE_UNMET");
   });
 });
@@ -40,9 +44,11 @@ describe("market_graph_relative_value_v1", () => {
       getEdgesByType: async () => [],
       deleteMarketEdges: async () => {},
     };
-    
-    const strategy = new MarketGraphRelativeValueV1(graphStore as any, { minEdgeAfterCost: 0.01 });
-    
+
+    const strategy = new MarketGraphRelativeValueV1(graphStore as any, {
+      minEdgeAfterCost: 0.01,
+    });
+
     const edge: GraphEdge = {
       schema_version: "1.0.0",
       from_market_id: "market1",
@@ -53,48 +59,54 @@ describe("market_graph_relative_value_v1", () => {
     };
 
     const snapshots = new Map<string, MarketSnapshot>([
-      ["market1", {
-        schema_version: "1.0.0",
-        event_id: "e1",
-        market_id: "market1",
-        condition_id: "c1",
-        question: "Q1",
-        chain_id: 1,
-        collateral: "USDC",
-        rules_hash: "h1",
-        fee_maker_bps: 0,
-        fee_taker_bps: 200,
-        tick_size: 0.01,
-        min_size: 0.01,
-        status: "OPEN",
-        is_neg_risk: true,
-        venue_mode: "NORMAL",
-        source_at: new Date(),
-        received_at: new Date(),
-        yes_price: 0.48,
-        no_price: 0.48,
-      }],
-      ["market2", {
-        schema_version: "1.0.0",
-        event_id: "e1",
-        market_id: "market2",
-        condition_id: "c1",
-        question: "Q2",
-        chain_id: 1,
-        collateral: "USDC",
-        rules_hash: "h2",
-        fee_maker_bps: 0,
-        fee_taker_bps: 200,
-        tick_size: 0.01,
-        min_size: 0.01,
-        status: "OPEN",
-        is_neg_risk: true,
-        venue_mode: "NORMAL",
-        source_at: new Date(),
-        received_at: new Date(),
-        yes_price: 0.48,
-        no_price: 0.48,
-      }],
+      [
+        "market1",
+        {
+          schema_version: "1.0.0",
+          event_id: "e1",
+          market_id: "market1",
+          condition_id: "c1",
+          question: "Q1",
+          chain_id: 1,
+          collateral: "USDC",
+          rules_hash: "h1",
+          fee_maker_bps: 0,
+          fee_taker_bps: 200,
+          tick_size: 0.01,
+          min_size: 0.01,
+          status: "OPEN",
+          is_neg_risk: true,
+          venue_mode: "NORMAL",
+          source_at: new Date(),
+          received_at: new Date(),
+          yes_price: 0.48,
+          no_price: 0.48,
+        },
+      ],
+      [
+        "market2",
+        {
+          schema_version: "1.0.0",
+          event_id: "e1",
+          market_id: "market2",
+          condition_id: "c1",
+          question: "Q2",
+          chain_id: 1,
+          collateral: "USDC",
+          rules_hash: "h2",
+          fee_maker_bps: 0,
+          fee_taker_bps: 200,
+          tick_size: 0.01,
+          min_size: 0.01,
+          status: "OPEN",
+          is_neg_risk: true,
+          venue_mode: "NORMAL",
+          source_at: new Date(),
+          received_at: new Date(),
+          yes_price: 0.48,
+          no_price: 0.48,
+        },
+      ],
     ]);
 
     const result = await strategy.run({
@@ -113,7 +125,7 @@ describe("market_graph_relative_value_v1", () => {
         observed_at: new Date(),
       } as MarketFeeSettings,
     });
-    
+
     assert.equal(Array.isArray(result), true);
   });
 });

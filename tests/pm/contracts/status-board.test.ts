@@ -21,7 +21,11 @@ describe("Phase 27: three-stream status stays split (PRD 5.3)", () => {
   it("any HALTED signal halts without hiding the other two", () => {
     for (const input of [
       { systemHealth: "BLOCKED", venueMode: "NORMAL", accountMode: "NORMAL" },
-      { systemHealth: "READY", venueMode: "UNAVAILABLE", accountMode: "NORMAL" },
+      {
+        systemHealth: "READY",
+        venueMode: "UNAVAILABLE",
+        accountMode: "NORMAL",
+      },
       { systemHealth: "READY", venueMode: "NORMAL", accountMode: "BANNED" },
     ] as const) {
       const s = systemStatus(input);

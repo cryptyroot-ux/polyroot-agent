@@ -148,7 +148,9 @@ export function selectQualifyingWallets(
   criteria: WalletSelectionCriteria = DEFAULT_SELECTION_CRITERIA,
   now: Date,
 ): Map<string, WalletActivity[]> {
-  const cutoff = new Date(now.getTime() - criteria.selection_lookback_days * 86400000);
+  const cutoff = new Date(
+    now.getTime() - criteria.selection_lookback_days * 86400000,
+  );
   const by_wallet = new Map<string, WalletActivity[]>();
 
   // Group by wallet
@@ -165,8 +167,11 @@ export function selectQualifyingWallets(
     if (acts.length < criteria.min_historical_trades) continue;
 
     // Check wallet age (first activity in window)
-    const first_activity = acts.reduce((a, b) => a.executed_at < b.executed_at ? a : b);
-    const wallet_age_days = (now.getTime() - first_activity.executed_at.getTime()) / 86400000;
+    const first_activity = acts.reduce((a, b) =>
+      a.executed_at < b.executed_at ? a : b,
+    );
+    const wallet_age_days =
+      (now.getTime() - first_activity.executed_at.getTime()) / 86400000;
     if (wallet_age_days < criteria.min_wallet_age_days) continue;
 
     // Check volume
@@ -177,8 +182,8 @@ export function selectQualifyingWallets(
     // In real impl: check against label database
 
     // Check directional consistency
-    const buys = acts.filter(a => a.action === "BUY").length;
-    const sells = acts.filter(a => a.action === "SELL").length;
+    const buys = acts.filter((a) => a.action === "BUY").length;
+    const sells = acts.filter((a) => a.action === "SELL").length;
     const total = acts.length;
     const max_dir = Math.max(buys, sells) / total;
     if (max_dir < criteria.min_directional_consistency) continue;
@@ -229,7 +234,8 @@ export function scoreWallet(
   }
 
   const win_rate = wins / activities.length;
-  const avg_edge_bps = activities.length > 0 ? total_edge_bps / activities.length : 0;
+  const avg_edge_bps =
+    activities.length > 0 ? total_edge_bps / activities.length : 0;
 
   // Recency decay: weight recent trades more
   let weighted_score = 0;
@@ -246,14 +252,17 @@ export function scoreWallet(
 
   // Turnover penalty
   const daily_trades = activities.length / params.lookback_days;
-  turnover_penalty = Math.min(1, daily_trades * params.turnover_penalty_bps / 10000);
+  turnover_penalty = Math.min(
+    1,
+    (daily_trades * params.turnover_penalty_bps) / 10000,
+  );
 
   // Composite score
-  const raw_score = (
-    params.win_rate_weight * (win_rate * 2 - 1) + // scale to [-1, 1]
-    params.edge_weight * Math.tanh(avg_edge_bps / 100) + // edge in bps, bounded
-    recency_weighted * 0.2 // recency component
-  ) * (1 - turnover_penalty);
+  const raw_score =
+    (params.win_rate_weight * (win_rate * 2 - 1) + // scale to [-1, 1]
+      params.edge_weight * Math.tanh(avg_edge_bps / 100) + // edge in bps, bounded
+      recency_weighted * 0.2) * // recency component
+    (1 - turnover_penalty);
 
   return {
     wallet_address: wallet,
@@ -295,7 +304,9 @@ export function generateConsensus(
   const consensus = total_weight > 0 ? weighted_sum / total_weight : 0;
 
   // Dissent = standard deviation of scores
-  const variance = wallet_scores.reduce((sum, ws) => sum + (ws.score - avg_score) ** 2, 0) / wallet_scores.length;
+  const variance =
+    wallet_scores.reduce((sum, ws) => sum + (ws.score - avg_score) ** 2, 0) /
+    wallet_scores.length;
   const dissent = Math.sqrt(variance);
 
   return {
@@ -342,7 +353,7 @@ export function signalToIntent(
     desired_qty: size,
     limit_price: 0.5, // placeholder - would be set by quote adjustment
     forecast_refs: [signal.signal_id],
-    evidence_ids: signal.wallet_scores.map(ws => ws.wallet_address),
+    evidence_ids: signal.wallet_scores.map((ws) => ws.wallet_address),
     status: "CREATED",
     price: 0.5,
     size,
@@ -362,7 +373,11 @@ export function runSmartMoneyPipeline(
   scoring_params: WalletScoringParams = DEFAULT_SCORING_PARAMS,
   base_size: number = 10,
   now: Date = new Date(),
-): { intent: TradeIntent | null; signal: SmartMoneySignal | null; qualifying_count: number } {
+): {
+  intent: TradeIntent | null;
+  signal: SmartMoneySignal | null;
+  qualifying_count: number;
+} {
   const qualifying = selectQualifyingWallets(activities, criteria, now);
   const wallet_scores: WalletScore[] = [];
 
@@ -372,7 +387,10 @@ export function runSmartMoneyPipeline(
     wallet_scores.push(scored);
   }
 
-  const signal = wallet_scores.length > 0 ? generateConsensus(market_id, wallet_scores) : null;
+  const signal =
+    wallet_scores.length > 0
+      ? generateConsensus(market_id, wallet_scores)
+      : null;
   const intent = signal ? signalToIntent(signal, asset, base_size) : null;
 
   return { intent, signal, qualifying_count: qualifying.size };

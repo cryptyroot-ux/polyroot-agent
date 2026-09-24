@@ -120,11 +120,22 @@ export async function proposeAdaptation(
   const pending_proposals = 0; // In real impl, query audit store
 
   if (pending_proposals >= config.max_pending_proposals) {
-    return { ok: false, code: "TOO_MANY_PENDING", reason: "max pending proposals reached" };
+    return {
+      ok: false,
+      code: "TOO_MANY_PENDING",
+      reason: "max pending proposals reached",
+    };
   }
 
-  if (config.max_entries !== undefined && Object.keys(current_state.values).length > config.max_entries) {
-    return { ok: false, code: "TOO_MANY_ENTRIES", reason: `state entries count ${Object.keys(current_state.values).length} exceeds max_entries cap ${config.max_entries}` };
+  if (
+    config.max_entries !== undefined &&
+    Object.keys(current_state.values).length > config.max_entries
+  ) {
+    return {
+      ok: false,
+      code: "TOO_MANY_ENTRIES",
+      reason: `state entries count ${Object.keys(current_state.values).length} exceeds max_entries cap ${config.max_entries}`,
+    };
   }
 
   const proposals: AdaptationProposal[] = [];
@@ -146,7 +157,10 @@ export async function proposeAdaptation(
     }
 
     // Check statistical significance if required
-    if (config.require_significance && obs.p_value > config.significance_threshold) {
+    if (
+      config.require_significance &&
+      obs.p_value > config.significance_threshold
+    ) {
       continue;
     }
 
@@ -156,10 +170,19 @@ export async function proposeAdaptation(
       continue; // parameter not in envelope
     }
 
-    const target = Math.max(allowed_range.min, Math.min(allowed_range.max, obs.sample_mean));
+    const target = Math.max(
+      allowed_range.min,
+      Math.min(allowed_range.max, obs.sample_mean),
+    );
     const max_step = current_value * envelope.max_step_pct;
-    const delta = Math.max(-max_step, Math.min(max_step, target - current_value));
-    const proposed_value = Math.max(allowed_range.min, Math.min(allowed_range.max, current_value + delta));
+    const delta = Math.max(
+      -max_step,
+      Math.min(max_step, target - current_value),
+    );
+    const proposed_value = Math.max(
+      allowed_range.min,
+      Math.min(allowed_range.max, current_value + delta),
+    );
 
     // Skip if change is negligible
     if (Math.abs(delta) < 1e-6) {
@@ -185,7 +208,11 @@ export async function proposeAdaptation(
   // For now, return first valid proposal (in real impl, return all for batch review)
   const proposal = proposals[0];
   if (!proposal) {
-    return { ok: false, code: "NO_VALID_PROPOSALS", reason: "no parameters passed validation gates" };
+    return {
+      ok: false,
+      code: "NO_VALID_PROPOSALS",
+      reason: "no parameters passed validation gates",
+    };
   }
 
   // Build new state with proposed values
@@ -218,8 +245,10 @@ export function applyAdaptation(
   const audit_entries: AdaptationAuditEntry[] = [];
 
   for (const [param, new_value] of Object.entries(proposal.proposed_values)) {
-    const old_value = proposal.current_values[param] ?? current_state.values[param] ?? 0;
-    const change_pct = old_value !== 0 ? (new_value - old_value) / old_value : 0;
+    const old_value =
+      proposal.current_values[param] ?? current_state.values[param] ?? 0;
+    const change_pct =
+      old_value !== 0 ? (new_value - old_value) / old_value : 0;
 
     // Verify within envelope (defensive - already checked in proposeAdaptation)
     // In real impl, would re-verify against current envelope

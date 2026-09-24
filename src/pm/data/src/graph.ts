@@ -9,7 +9,9 @@ import type { GraphEdge, MarketSnapshot } from "@polyroot/domain";
 export interface GraphEdgeStore {
   upsert(edge: GraphEdge): Promise<void>;
   getEdgesByMarket(marketId: string): Promise<GraphEdge[]>;
-  getEdgesByType(relationType: GraphEdge['relation_type']): Promise<GraphEdge[]>;
+  getEdgesByType(
+    relationType: GraphEdge["relation_type"],
+  ): Promise<GraphEdge[]>;
   deleteMarketEdges(marketId: string): Promise<void>;
 }
 
@@ -46,8 +48,8 @@ export class PgGraphEdgeStore implements GraphEdgeStore {
           edge.trust_level,
           edge.confidence ?? null,
           edge.provenance,
-          'v0',
-        ]
+          "v0",
+        ],
       );
     } finally {
       client.release();
@@ -59,33 +61,37 @@ export class PgGraphEdgeStore implements GraphEdgeStore {
       `SELECT from_market_id, to_market_id, relation_type, trust_level, confidence, provenance
        FROM graph_edges
        WHERE from_market_id = $1 OR to_market_id = $1`,
-      [marketId]
+      [marketId],
     );
-    return result.rows.map(row => ({
-      schema_version: '1.0.0',
+    return result.rows.map((row) => ({
+      schema_version: "1.0.0",
       from_market_id: row.from_market_id,
       to_market_id: row.to_market_id,
       relation_type: row.relation_type,
       trust_level: row.trust_level,
-      confidence: row.confidence !== null ? parseFloat(row.confidence) : undefined,
+      confidence:
+        row.confidence !== null ? parseFloat(row.confidence) : undefined,
       provenance: row.provenance,
     }));
   }
 
-  async getEdgesByType(relationType: GraphEdge['relation_type']): Promise<GraphEdge[]> {
+  async getEdgesByType(
+    relationType: GraphEdge["relation_type"],
+  ): Promise<GraphEdge[]> {
     const result = await this.pool.query(
       `SELECT from_market_id, to_market_id, relation_type, trust_level, confidence, provenance
        FROM graph_edges
        WHERE relation_type = $1`,
-      [relationType]
+      [relationType],
     );
-    return result.rows.map(row => ({
-      schema_version: '1.0.0',
+    return result.rows.map((row) => ({
+      schema_version: "1.0.0",
       from_market_id: row.from_market_id,
       to_market_id: row.to_market_id,
       relation_type: row.relation_type,
       trust_level: row.trust_level,
-      confidence: row.confidence !== null ? parseFloat(row.confidence) : undefined,
+      confidence:
+        row.confidence !== null ? parseFloat(row.confidence) : undefined,
       provenance: row.provenance,
     }));
   }
@@ -93,7 +99,7 @@ export class PgGraphEdgeStore implements GraphEdgeStore {
   async deleteMarketEdges(marketId: string): Promise<void> {
     await this.pool.query(
       `DELETE FROM graph_edges WHERE from_market_id = $1 OR to_market_id = $1`,
-      [marketId]
+      [marketId],
     );
   }
 
@@ -103,7 +109,9 @@ export class PgGraphEdgeStore implements GraphEdgeStore {
 }
 
 /** Factory function for creating PgGraphEdgeStore. */
-export function createPgGraphEdgeStore(config: PoolConfig | string | Pool): PgGraphEdgeStore {
+export function createPgGraphEdgeStore(
+  config: PoolConfig | string | Pool,
+): PgGraphEdgeStore {
   return new PgGraphEdgeStore(config);
 }
 
@@ -123,7 +131,7 @@ export class GraphBuilder {
     const eventGroups = new Map<string, MarketSnapshot[]>();
 
     for (const market of markets) {
-      const negRiskKey = `${market.event_id}:${market.condition_id ?? ''}`;
+      const negRiskKey = `${market.event_id}:${market.condition_id ?? ""}`;
       if (market.is_neg_risk) {
         const group = negRiskGroups.get(negRiskKey) ?? [];
         group.push(market);
@@ -145,20 +153,20 @@ export class GraphBuilder {
             if (!m1 || !m2) continue;
             // Create bidirectional edges
             await this.store.upsert({
-              schema_version: '1.0.0',
+              schema_version: "1.0.0",
               from_market_id: m1.market_id,
               to_market_id: m2.market_id,
-              relation_type: 'NATIVE_NEG_RISK',
-              trust_level: 'VERIFIED_PLATFORM',
-              provenance: `polymarket:event:${m1.event_id}:condition:${m1.condition_id ?? ''}`,
+              relation_type: "NATIVE_NEG_RISK",
+              trust_level: "VERIFIED_PLATFORM",
+              provenance: `polymarket:event:${m1.event_id}:condition:${m1.condition_id ?? ""}`,
             });
             await this.store.upsert({
-              schema_version: '1.0.0',
+              schema_version: "1.0.0",
               from_market_id: m2.market_id,
               to_market_id: m1.market_id,
-              relation_type: 'NATIVE_NEG_RISK',
-              trust_level: 'VERIFIED_PLATFORM',
-              provenance: `polymarket:event:${m1.event_id}:condition:${m1.condition_id ?? ''}`,
+              relation_type: "NATIVE_NEG_RISK",
+              trust_level: "VERIFIED_PLATFORM",
+              provenance: `polymarket:event:${m1.event_id}:condition:${m1.condition_id ?? ""}`,
             });
           }
         }
@@ -175,19 +183,19 @@ export class GraphBuilder {
             if (!m1 || !m2) continue;
             // Create bidirectional edges
             await this.store.upsert({
-              schema_version: '1.0.0',
+              schema_version: "1.0.0",
               from_market_id: m1.market_id,
               to_market_id: m2.market_id,
-              relation_type: 'NATIVE_EVENT_MEMBER',
-              trust_level: 'VERIFIED_PLATFORM',
+              relation_type: "NATIVE_EVENT_MEMBER",
+              trust_level: "VERIFIED_PLATFORM",
               provenance: `polymarket:event:${eventId}`,
             });
             await this.store.upsert({
-              schema_version: '1.0.0',
+              schema_version: "1.0.0",
               from_market_id: m2.market_id,
               to_market_id: m1.market_id,
-              relation_type: 'NATIVE_EVENT_MEMBER',
-              trust_level: 'VERIFIED_PLATFORM',
+              relation_type: "NATIVE_EVENT_MEMBER",
+              trust_level: "VERIFIED_PLATFORM",
               provenance: `polymarket:event:${eventId}`,
             });
           }
