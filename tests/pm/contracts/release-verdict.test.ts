@@ -14,7 +14,7 @@ function green(over: Record<string, any> = {}) {
     shadowPlumbingProven: true,
     liveObservationDays: 0,
     liveFillsObserved: 0,
-    kmsWired: false,
+    keystoreWired: false,
     wrapper1271Present: false,
     ...over,
   };
@@ -47,7 +47,7 @@ describe("Phase 30: release verdict (PRD 10, Blueprint 15)", () => {
       green({
         liveObservationDays: 45,
         liveFillsObserved: 200,
-        kmsWired: true,
+        keystoreWired: true,
         wrapper1271Present: true,
       }),
     );
@@ -60,7 +60,7 @@ describe("Phase 30: release verdict (PRD 10, Blueprint 15)", () => {
     const text = r.reasons.join(";");
     assert.match(text, /12\/30 days/);
     assert.match(text, /no authenticated live fills/);
-    assert.match(text, /KMS/);
+    assert.match(text, /Keystore/);
     assert.match(text, /1271/);
   });
 });

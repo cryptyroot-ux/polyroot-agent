@@ -1,11 +1,11 @@
 /**
- * @polyroot/signer — Encrypted keystore (KMS step 1: key at rest).
+ * @polyroot/signer — Encrypted keystore.
  *
  * Seals the deposit-wallet private key with scrypt + AES-256-GCM so the
  * key never sits as raw hex on disk, in backups, or in shell history.
- * This protects the key AT REST — it does not replace HSM/KMS for
- * production custody, and the passphrase must still reach the process
- * securely (systemd credentials, Docker secrets, or equivalent).
+ * Key custody uses this encrypted keystore (or optional KMS/HSM).
+ * The passphrase must reach the process securely (systemd credentials,
+ * Docker secrets, or equivalent).
  */
 
 import {

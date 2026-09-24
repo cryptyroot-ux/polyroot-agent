@@ -1,6 +1,7 @@
-import { existsSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, writeFileSync, chmodSync, readFileSync, mkdirSync } from "node:fs";
 import { Pool } from "pg";
 import { deriveAddressFromPrivateKey, sealPrivateKey } from "@polyroot/signer";
+import { randomBytes } from "node:crypto";
 import {
   PgLiveGuardStore,
   checkShadowBaselineRow,
@@ -40,11 +41,18 @@ export function assertRuntimeEnv(
 ): void {
   const isLive = mode === "MICRO_LIVE" || mode === "LIVE";
   if (!isLive) return;
-  const hasKey = Boolean(env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]);
-  if (!hasKey) {
+  const hasKeystore = Boolean(env["POLYROOT_KEYSTORE_JSON"]);
+  const hasPassphrase = Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]);
+  const hasRawKey = Boolean(env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]);
+  if (!hasKeystore && !hasRawKey) {
     throw new Error(
-      "LIVE_ENV_MISSING: PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY) is required for MICRO_LIVE/LIVE",
+      "LIVE_ENV_MISSING: PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY) is required for MICRO_LIVE/LIVE when not using a keystore.\n" +
+      "Option A: set PRIVATE_KEY_HEX or WALLET_PRIVATE_KEY.\n" +
+      "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE)."
     );
+  }
+  if (hasKeystore && !hasPassphrase && !hasRawKey) {
+    throw new Error("LIVE_ENV_MISSING: POLYROOT_KEYSTORE_PASSPHRASE is required with POLYROOT_KEYSTORE_JSON");
   }
   const account = env["WALLET_ACCOUNT"];
   const funder = env["WALLET_FUNDER"];
@@ -68,6 +76,7 @@ export interface CLIConfig {
   kmsRegion: string;
   once: boolean;
 }
+
 
 function getEnv(key: string): string | undefined {
   return process.env[key];
@@ -109,16 +118,244 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   }
 
   if (!databaseUrl) databaseUrl = getEnv("DATABASE_URL") ?? "";
+  // KMS is not used: key custody is keystore + dedicated wallet + caps.
+  // The flag stays accepted for backwards compatibility but is optional.
+  const hasKeystore = Boolean(getEnv("POLYROOT_KEYSTORE_JSON") || getEnv("POLYROOT_KEYSTORE_FILE"));
   if (!kmsKeyId) kmsKeyId = getEnv("KMS_KEY_ID") ?? "";
   const envMode = getEnv("RUNTIME_MODE");
   if (mode === "PAPER" && envMode) mode = parseMode(envMode, "RUNTIME_MODE");
 
   if (!databaseUrl)
     throw new Error("DATABASE_URL required (--db or DATABASE_URL env)");
-  if (!kmsKeyId)
-    throw new Error("KMS_KEY_ID required (--kms-key or KMS_KEY_ID env)");
+  if (!hasKeystore && !kmsKeyId)
+    throw new Error(
+      "KMS_KEY_ID required (--kms-key or KMS_KEY_ID env) when not using a keystore.\n" +
+      "Option A: export KMS_KEY_ID + AWS credentials.\n" +
+      "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE)."
+    );
 
   return { mode, databaseUrl, kmsKeyId, kmsEndpoint: "", kmsRegion: "", once };
+}
+
+const POLYROOT_HOME = process.env["HOME"] ? `${process.env["HOME"]}/.polyroot` : "/tmp/.polyroot";
+const ENV_PATH = `${POLYROOT_HOME}/.env`;
+const KEYSTORE_PATH = `${POLYROOT_HOME}/keystore.json`;
+
+interface OnboardingConfig {
+  provider: string;
+  model: string;
+  apiKey: string;
+  baseUrl?: string;
+  walletType: "create" | "import";
+  privateKey?: string;
+  passphrase: string;
+  mode: "PAPER" | "LIVE";
+}
+
+function ensurePolyrootHome(): void {
+  if (!existsSync(POLYROOT_HOME)) {
+    mkdirSync(POLYROOT_HOME, { recursive: true, mode: 0o700 });
+  }
+}
+
+function isFirstRun(): boolean {
+  return !existsSync(ENV_PATH);
+}
+
+function prompt(message: string): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdout.write(message);
+    process.stdin.once("data", (data) => {
+      resolve(data.toString().trim());
+    });
+  });
+}
+
+function promptSecret(message: string): Promise<string> {
+  return new Promise((resolve) => {
+    const stdin = process.stdin;
+    const stdout = process.stdout;
+    stdin.setRawMode(true);
+    stdout.write(message);
+    let input = "";
+    stdin.on("data", (char) => {
+      const c = char.toString();
+      if (c === "\n" || c === "\r") {
+        stdin.setRawMode(false);
+        stdout.write("\n");
+        stdin.pause();
+        resolve(input);
+        return;
+      }
+      if (c === "\u0003") {
+        stdin.setRawMode(false);
+        process.exit(1);
+      }
+      if (c === "\u007f" || c === "\b") {
+        if (input.length > 0) {
+          input = input.slice(0, -1);
+          stdout.write("\b \b");
+        }
+        return;
+      }
+      input += c;
+      stdout.write("*");
+    });
+    stdin.resume();
+  });
+}
+
+function selectOption(message: string, options: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    console.log(message);
+    options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt}`));
+    const ask = () => {
+      process.stdout.write("Select [1-" + options.length + "]: ");
+      process.stdin.once("data", (data) => {
+        const idx = parseInt(data.toString().trim(), 10) - 1;
+        if (idx >= 0 && idx < options.length) {
+          const selected = options[idx];
+          if (selected) resolve(selected);
+          else ask();
+        } else {
+          console.log("Invalid selection. Try again.");
+          ask();
+        }
+      });
+    };
+    ask();
+  });
+}
+
+async function runOnboarding(): Promise<OnboardingConfig> {
+  console.log("\n═══════════════════════════════════════════════");
+  console.log("  Welcome to PolyRoot Agent — First Run Setup");
+  console.log("═══════════════════════════════════════════════\n");
+
+  // 1. AI Provider & Model
+  console.log("📡 Step 1/3: Choose AI Provider & Model");
+  const provider = await selectOption("Select provider:", [
+    "OpenAI (GPT-4o, GPT-4o-mini)",
+    "9Router / OpenAI-compatible",
+    "Ollama (local)",
+    "Custom OpenAI-compatible endpoint",
+  ]);
+
+  let model = "";
+  let baseUrl = "";
+  let apiKey = "";
+
+  if (provider.includes("OpenAI")) {
+    model = await selectOption("Select model:", ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"]);
+    apiKey = await promptSecret("Enter OpenAI API Key (sk-...): ");
+  } else if (provider.includes("9Router")) {
+    model = await prompt("Model name (e.g., gpt-4o-mini): ");
+    baseUrl = await prompt("Base URL [https://files.pango.fun/v1]: ") || "https://files.pango.fun/v1";
+    apiKey = await promptSecret("Enter 9Router API Key: ");
+  } else if (provider.includes("Ollama")) {
+    model = await prompt("Model name (e.g., llama3.1): ");
+    baseUrl = await prompt("Base URL [http://localhost:11434/v1]: ") || "http://localhost:11434/v1";
+    apiKey = "ollama"; // dummy
+  } else {
+    model = await prompt("Model name: ");
+    baseUrl = await prompt("Base URL: ");
+    apiKey = await promptSecret("API Key: ");
+  }
+
+  // 2. Wallet
+  console.log("\n🔐 Step 2/3: Wallet Setup");
+  const walletChoice = await selectOption("Wallet:", [
+    "Create new wallet (generates keystore)",
+    "Import existing private key",
+  ]);
+
+  let privateKey = "";
+  let passphrase = "";
+
+  if (walletChoice.startsWith("Create")) {
+    passphrase = await promptSecret("Set keystore passphrase: ");
+    const confirm = await promptSecret("Confirm passphrase: ");
+    if (passphrase !== confirm) {
+      throw new Error("Passphrases do not match");
+    }
+    // Generate random key
+    privateKey = "0x" + randomBytes(32).toString("hex");
+    console.log(`\n✅ New wallet generated!`);
+    console.log(`   Address: ${deriveAddressFromPrivateKey(privateKey)}`);
+    console.log(`   Private Key: ${privateKey}`);
+    console.log(`   (Save these — they are shown only once)`);
+  } else {
+    privateKey = await promptSecret("Enter private key (0x...): ");
+    if (!/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) {
+      throw new Error("Invalid private key format");
+    }
+    passphrase = await promptSecret("Set keystore passphrase: ");
+    console.log(`\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`);
+  }
+
+  // Seal keystore
+  const keystore = sealPrivateKey(privateKey, passphrase);
+  ensurePolyrootHome();
+  writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(KEYSTORE_PATH, 0o600);
+  console.log(`🔐 Keystore saved to ${KEYSTORE_PATH} (encrypted, 600 perms)`);
+
+  // 3. Mode selection
+  console.log("\n🚀 Step 3/3: Select Mode");
+  const mode = await selectOption("Run mode:", [
+    "PAPER — Safe simulation, mock data, no real money",
+    "LIVE — Real trading on Polymarket (requires capital, API keys)",
+  ]) === "PAPER — Safe simulation, mock data, no real money" ? "PAPER" : "LIVE";
+
+  return { provider, model, apiKey, baseUrl, walletType: walletChoice.startsWith("Create") ? "create" : "import", privateKey, passphrase, mode };
+}
+
+function writeEnv(config: OnboardingConfig): void {
+  ensurePolyrootHome();
+  const lines = [
+    "# PolyRoot Agent — Auto-generated by onboarding",
+    `DATABASE_URL=postgresql://polyroot:polyroot@localhost:5432/polyroot`,
+    `RUNTIME_MODE=${config.mode}`,
+    `POLYROOT_KEYSTORE_JSON=${JSON.stringify(sealPrivateKey(config.privateKey!, config.passphrase))}`,
+    `POLYROOT_KEYSTORE_PASSPHRASE=${config.passphrase}`,
+    `WALLET_ADDRESS=${deriveAddressFromPrivateKey(config.privateKey!)}`,
+    `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
+    `RPC_URL=https://polygon-rpc.com`,
+    `POLYROOT_FORECAST_PROVIDER=${config.provider.includes("OpenAI") ? "openai" : "custom"}`,
+    `POLYROOT_FORECAST_MODEL=${config.model}`,
+    `OPENAI_API_KEY=${config.apiKey}`,
+    ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
+    "",
+    "# For LIVE mode, uncomment and configure:",
+    "# POLYMARKET_API_KEY=",
+    "# POLYMARKET_API_SECRET=",
+    "# POLYMARKET_API_PASSPHRASE=",
+    "# WALLET_ACCOUNT=",
+    "# WALLET_FUNDER=",
+    "# POLYROOT_MICRO_LIVE_LOSS_CAP_USD=100",
+  ];
+  writeFileSync(ENV_PATH, lines.join("\n"), { mode: 0o600 });
+  chmodSync(ENV_PATH, 0o600);
+  console.log(`\n✅ Configuration saved to ${ENV_PATH} (600 perms)`);
+}
+
+async function runFirstTimeSetup(): Promise<void> {
+  if (!isFirstRun()) return;
+
+  console.log("\n🎉 First run detected — launching interactive setup...\n");
+  try {
+    const config = await runOnboarding();
+    writeEnv(config);
+    console.log("\n═══════════════════════════════════════════════");
+    console.log("  Setup complete! Starting PolyRoot Agent...");
+    console.log("═══════════════════════════════════════════════\n");
+
+    // Reload env for current process
+    process.loadEnvFile(ENV_PATH as string);
+  } catch (err) {
+    console.error("\n❌ Setup failed:", (err as Error).message);
+    process.exit(1);
+  }
 }
 
 import { createSignerFromEnv } from "@polyroot/signer";
@@ -448,6 +685,12 @@ export async function main(
     if (!result.ok) process.exit(1);
     return;
   }
+
+  // First-run onboarding (skip for subcommands)
+  if (argv[0] !== "wallet" && argv[0] !== "venue" && argv[0] !== "guard") {
+    await runFirstTimeSetup();
+  }
+
   const config = parseArgs(argv);
   assertRuntimeEnv(config.mode);
   if (config.mode === "MICRO_LIVE") {

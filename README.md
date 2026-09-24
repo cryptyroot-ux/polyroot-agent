@@ -207,9 +207,9 @@ POLYROOT_METRICS_OWNER_KEY=your-owner-key-here
 ### 8. Commission Autonomy Charter (Required for LIVE Mode)
 
 > **LIVE trading warning:** beyond the charter sign-off, live modes require a
-> production signer — KMS/HSM-backed, never a raw key on disk beyond initial
-> setup — plus a distinct deposit-wallet account/funder triple (verify with
-> `npm start -- wallet verify`). The built-in placeholder signer and mock
+> production signer — encrypted keystore or KMS/HSM-backed, never a raw key on disk
+> beyond initial setup — plus a distinct deposit-wallet account/funder triple (verify
+> with `npm start -- wallet verify`). The built-in placeholder signer and mock
 > venue are PAPER/SHADOW-only and the code refuses live operation with them
 > (`REFUSE_LIVE_WITH_STUBS`).
 
