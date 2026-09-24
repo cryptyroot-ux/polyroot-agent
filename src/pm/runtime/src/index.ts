@@ -43,5 +43,8 @@ export {
   main,
   assertRuntimeEnv,
   loadDotEnv,
+  runWalletVerify,
+  type WalletCheck,
+  type WalletVerifyResult,
 } from "./cli.js";
 export type { CLIConfig } from "./cli.js";
