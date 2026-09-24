@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildLiveVenueAdapter,
+  buildPublicVenueAdapter,
   buildSdkSigner,
   PolymarketVenueAdapter,
   readSecureClientEnv,
+  runVenueCheck,
 } from "@polyroot/venue";
 
 describe("secure venue client factory", () => {
@@ -65,7 +67,36 @@ describe("secure venue client factory", () => {
     );
   });
 
-  it("refuses domain-shaped orders without touching the venue client", async () => {
+  it("builds a public adapter without credentials or network", () => {
+    const adapter = buildPublicVenueAdapter();
+    assert.ok(adapter instanceof PolymarketVenueAdapter);
+    assert.equal(adapter.mode, "NORMAL");
+  });
+
+  it("venue check reports live prices through an injected adapter", async () => {
+    const adapter = new PolymarketVenueAdapter({
+      fetchOrderBook: async () => ({
+        bids: [{ price: "0.42", size: "100" }],
+        asks: [{ price: "0.58", size: "120" }],
+        market: { question: "Probe?", status: "ACTIVE" },
+      }),
+    });
+    const res = await runVenueCheck("0x" + "9".repeat(64), { adapter });
+    assert.equal(res.ok, true);
+    assert.equal(res.yesPrice, 0.42);
+    assert.equal(res.noPrice, 0.58);
+  });
+
+  it("venue check fails closed on empty books", async () => {
+    const adapter = new PolymarketVenueAdapter({
+      fetchOrderBook: async () => ({ bids: [], asks: [] }),
+    });
+    const res = await runVenueCheck("no-such-market", { adapter });
+    assert.equal(res.ok, false);
+    assert.match(res.detail, /no live prices/);
+  });
+
+  it("refuses translatable orders when the client lacks placeLimitOrder", async () => {
     let called = 0;
     const adapter = new PolymarketVenueAdapter({
       postOrder: async () => {
@@ -75,10 +106,15 @@ describe("secure venue client factory", () => {
     });
     const res = await adapter.placeOrder({
       order_id: "o1",
-      market_id: "m1",
+      market_id: "12345",
       side: "BUY",
       price: 0.5,
       size: 1,
+      fee_rate_bps: 0,
+      signature: "0xsig",
+      signer: "0x" + "1".repeat(40),
+      signed_at: new Date(0),
+      order_type: "LIMIT",
     } as never);
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, "VENUE_ORDER_SHAPE_UNSUPPORTED");
