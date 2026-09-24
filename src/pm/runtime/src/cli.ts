@@ -162,121 +162,146 @@ function isFirstRun(): boolean {
   return !existsSync(ENV_PATH);
 }
 
-// Single readline instance for all prompts - avoids stdin conflicts
-let _rl: any = null;
+/**
+ * Onboarding prompts, Hermes-style: one self-contained mechanism per question,
+ * never shared stdin state. Normal input uses a fresh readline per question
+ * (created and closed inside the call); secrets use a standalone masked reader
+ * with no readline involved at all. Ctrl-C / EOF always cancels cleanly with a
+ * message instead of leaking keystrokes to the shell.
+ */
+class OnboardingCancelled extends Error {
+  constructor() {
+    super("Setup cancelled");
+  }
+}
 
-async function getRL(): Promise<any> {
-  if (!_rl) {
-    const readline = await import("readline");
-    _rl = readline.createInterface({
+/** One normal line of input. Blank accepts `defaultValue`; without one, re-ask. */
+async function askText(
+  message: string,
+  opts: { defaultValue?: string } = {},
+): Promise<string> {
+  const readline = await import("node:readline");
+  const hint = opts.defaultValue !== undefined ? ` [${opts.defaultValue}]` : "";
+  for (;;) {
+    const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
       terminal: true,
     });
-    // Handle Ctrl+C gracefully
-    _rl.on("SIGINT", () => {
-      process.exit(1);
-    });
-  }
-  return _rl;
-}
-
-function closeRL(): void {
-  if (_rl) {
-    _rl.close();
-    _rl = null;
-  }
-}
-
-async function prompt(message: string): Promise<string> {
-  const rl = await getRL();
-  return new Promise((resolve) => {
-    rl.question(message, (answer: string) => {
-      resolve(answer.trim());
-    });
-  });
-}
-
-async function promptSecret(message: string): Promise<string> {
-  const stdin = process.stdin;
-  const isTTY = stdin.isTTY;
-
-  // Piped/non-TTY input cannot mask: fall back to a normal prompt instead of hanging.
-  if (!isTTY) {
-    return prompt(message);
-  }
-
-  // The shared readline instance and raw-mode byte reading must never both
-  // own stdin: drop the shared instance before taking over the stream.
-  closeRL();
-  stdin.setRawMode(true);
-  
-  let input = "";
-  
-  return new Promise<string>((resolve) => {
-    const onData = (char: Buffer) => {
-      const c = char.toString();
-      if (c === "\n" || c === "\r") {
-        stdin.removeListener("data", onData);
-        if (isTTY) {
-          stdin.setRawMode(false);
-          console.log("");
-        }
-        resolve(input);
-        return;
-      }
-      if (c === "\u0003") {
-        process.exit(1);
-      }
-      if (c === "\u007f" || c === "\b") {
-        if (input.length > 0) {
-          input = input.slice(0, -1);
-          if (isTTY) process.stdout.write("\b \b");
-        }
-        return;
-      }
-      input += c;
-      if (isTTY) process.stdout.write("*");
-    };
-    
-    if (isTTY) {
-      stdin.on("data", onData);
+    try {
+      const answer = await new Promise<string>((resolve, reject) => {
+        let settled = false;
+        rl.on("SIGINT", () => {
+          if (!settled) {
+            settled = true;
+            reject(new OnboardingCancelled());
+          }
+        });
+        rl.on("close", () => {
+          if (!settled) {
+            settled = true;
+            reject(new OnboardingCancelled());
+          }
+        });
+        rl.question(`${message}${hint}: `, (a: string) => {
+          if (!settled) {
+            settled = true;
+            resolve(a ?? "");
+          }
+        });
+      });
+      const text = answer.trim();
+      if (text) return text;
+      if (opts.defaultValue !== undefined) return opts.defaultValue;
+      console.log("Please type a value (or press Ctrl-C to cancel).");
+    } finally {
+      rl.close();
     }
-    
-    // Show prompt
-    process.stdout.write(message);
-  });
+  }
 }
 
-async function selectOption(message: string, options: string[]): Promise<string> {
-  const rl = await getRL();
-  return new Promise((resolve) => {
-    console.log(message);
-    options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt}`));
-    const ask = () => {
-      rl.question("Select [1-" + options.length + "]: ", (answer: string) => {
-        if (answer === null || answer === undefined) {
-          throw new Error("Setup cancelled (no input)");
-        }
-        const idx = parseInt(answer.trim(), 10) - 1;
-        if (idx >= 0 && idx < options.length) {
-          const selected = options[idx];
-          if (selected) resolve(selected);
-          else ask();
-        } else {
-          console.log("Invalid selection. Try again.");
-          ask();
+/** Secret input with `*` masking and no readline involved (mirrors Hermes'
+ *  `masked_secret_prompt`: raw byte reading, backspace support, arrow-key
+ *  sequences never become secret text). Falls back to visible input off-TTY. */
+async function askSecret(message: string): Promise<string> {
+  // Sudo-style hidden input: echo is swallowed by a muted output stream, so
+  // typed characters are invisible. Deliberately NO raw-mode byte reading and
+  // NO shared state -- this is just a normal readline question whose echo goes
+  // nowhere, which means it can never fight other prompts over stdin.
+  const readline = await import("node:readline");
+  const { Writable } = await import("node:stream");
+  const mute = new Writable({
+    write(_chunk, _encoding, cb): void {
+      cb();
+    },
+  });
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: mute,
+    terminal: true,
+  });
+  try {
+    process.stdout.write(`${message} (typing hidden): `);
+    const answer = await new Promise<string>((resolve, reject) => {
+      let settled = false;
+      rl.on("SIGINT", () => {
+        if (!settled) {
+          settled = true;
+          reject(new OnboardingCancelled());
         }
       });
-    };
-    ask();
-  });
+      rl.on("close", () => {
+        if (!settled) {
+          settled = true;
+          reject(new OnboardingCancelled());
+        }
+      });
+      rl.question("", (a: string) => {
+        if (!settled) {
+          settled = true;
+          resolve(a ?? "");
+        }
+      });
+    });
+    return answer;
+  } finally {
+    console.log("");
+    rl.close();
+  }
 }
 
-// Cleanup on exit
-process.on("exit", closeRL);
-process.on("SIGINT", () => { closeRL(); process.exit(1); });
-process.on("SIGTERM", () => { closeRL(); process.exit(1); });
+/** Secret input that must not be empty (loops instead of aborting setup). */
+async function askRequiredSecret(message: string): Promise<string> {
+  for (;;) {
+    const value = (await askSecret(message)).trim();
+    if (value) return value;
+    console.log("A value is required (or press Ctrl-C to cancel).");
+  }
+}
+
+/** Numbered menu with a marked default (blank = default), Hermes `_ask_index`-style. */
+async function askChoice(
+  message: string,
+  options: string[],
+  defaultIdx = 0,
+): Promise<string> {
+  console.log(message);
+  options.forEach((opt, i) => {
+    const marker = i === defaultIdx ? "→" : " ";
+    console.log(`  ${marker} ${i + 1}. ${opt}`);
+  });
+  for (;;) {
+    const raw = await askText(`Choice [1-${options.length}]`, {
+      defaultValue: String(defaultIdx + 1),
+    });
+    const idx = Number.parseInt(raw, 10) - 1;
+    if (Number.isInteger(idx) && idx >= 0 && idx < options.length) {
+      const selected = options[idx];
+      if (selected !== undefined) return selected;
+    }
+    console.log(`Please enter 1-${options.length}`);
+  }
+}
 
 async function runOnboarding(): Promise<OnboardingConfig> {
   console.log("\n═══════════════════════════════════════════════");
@@ -285,32 +310,36 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   // 1. AI Provider & Model
   console.log("📡 Step 1/3: Choose AI Provider & Model");
-  const provider = await selectOption("Select provider:", [
-    "OpenAI (GPT-4o, GPT-4o-mini)",
-    "9Router / OpenAI-compatible",
-    "Ollama (local)",
-    "Custom OpenAI-compatible endpoint",
-  ]);
+  const provider = await askChoice(
+    "Select AI provider (Enter = recommended):",
+    [
+      "OpenAI (GPT-4o, GPT-4o-mini)",
+      "9Router / OpenAI-compatible",
+      "Ollama (local)",
+      "Custom OpenAI-compatible endpoint",
+    ],
+    1,
+  );
 
   let model = "";
   let baseUrl = "";
   let apiKey = "";
 
   if (provider === "OpenAI (GPT-4o, GPT-4o-mini)") {
-    model = await selectOption("Select model:", ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"]);
-    apiKey = await promptSecret("Enter OpenAI API Key (sk-...): ");
+    model = await askChoice("Select model:", ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"], 0);
+    apiKey = await askRequiredSecret("OpenAI API key");
   } else if (provider === "9Router / OpenAI-compatible") {
-    model = await prompt("Model name (e.g., gpt-4o-mini): ");
-    baseUrl = await prompt("Base URL [https://files.pango.fun/v1]: ") || "https://files.pango.fun/v1";
-    apiKey = await promptSecret("Enter 9Router API Key: ");
+    model = await askText("Model name", { defaultValue: "gpt-4o-mini" });
+    baseUrl = await askText("Base URL", { defaultValue: "https://files.pango.fun/v1" });
+    apiKey = await askRequiredSecret("9Router API key");
   } else if (provider === "Ollama (local)") {
-    model = await prompt("Model name (e.g., llama3.1): ");
-    baseUrl = await prompt("Base URL [http://localhost:11434/v1]: ") || "http://localhost:11434/v1";
+    model = await askText("Model name", { defaultValue: "llama3.1" });
+    baseUrl = await askText("Base URL", { defaultValue: "http://localhost:11434/v1" });
     apiKey = "ollama"; // dummy
   } else {
-    model = await prompt("Model name: ");
-    baseUrl = await prompt("Base URL: ");
-    apiKey = await promptSecret("API Key: ");
+    model = await askText("Model name");
+    baseUrl = await askText("Base URL");
+    apiKey = await askRequiredSecret("API key");
   }
 
   if (!model.trim()) {
@@ -322,19 +351,21 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   // 2. Wallet
   console.log("\n🔐 Step 2/3: Wallet Setup");
-  const walletChoice = await selectOption("Wallet:", [
-    "Create new wallet (generates keystore)",
-    "Import existing private key",
-  ]);
+  const walletChoice = await askChoice(
+    "Wallet (Enter = create new):",
+    ["Create new wallet (generates keystore)", "Import existing private key"],
+    0,
+  );
 
   let privateKey = "";
   let passphrase = "";
 
   if (walletChoice.startsWith("Create")) {
-    passphrase = await promptSecret("Set keystore passphrase: ");
-    const confirm = await promptSecret("Confirm passphrase: ");
-    if (passphrase !== confirm) {
-      throw new Error("Passphrases do not match");
+    for (;;) {
+      passphrase = await askRequiredSecret("Set keystore passphrase");
+      const confirm = await askRequiredSecret("Confirm passphrase");
+      if (passphrase === confirm) break;
+      console.log("Passphrases do not match — try again.");
     }
     // Generate random key
     privateKey = "0x" + randomBytes(32).toString("hex");
@@ -343,11 +374,12 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     console.log(`   Private Key: ${privateKey}`);
     console.log(`   (Save these — they are shown only once)`);
   } else {
-    privateKey = await promptSecret("Enter private key (0x...): ");
-    if (!/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) {
-      throw new Error("Invalid private key format");
+    for (;;) {
+      privateKey = await askRequiredSecret("Private key (0x...)");
+      if (/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) break;
+      console.log("Invalid private key format — expected 64 hex characters.");
     }
-    passphrase = await promptSecret("Set keystore passphrase: ");
+    passphrase = await askRequiredSecret("Set keystore passphrase");
     console.log(`\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`);
   }
 
@@ -360,10 +392,28 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   // 3. Mode selection
   console.log("\n🚀 Step 3/3: Select Mode");
-  const mode = await selectOption("Run mode:", [
-    "PAPER — Safe simulation, mock data, no real money",
-    "LIVE — Real trading on Polymarket (requires capital, API keys)",
-  ]) === "PAPER — Safe simulation, mock data, no real money" ? "PAPER" : "LIVE";
+  const modeChoice = await askChoice(
+    "Select mode (Enter = PAPER):",
+    [
+      "PAPER — Safe simulation, mock data, no real money",
+      "LIVE — Real trading on Polymarket (requires capital, API keys)",
+    ],
+    0,
+  );
+  let mode: "PAPER" | "LIVE" = "PAPER";
+  if (modeChoice.startsWith("LIVE")) {
+    console.log(
+      "\nLIVE uses real money. You will still need: Polymarket API credentials, " +
+        "WALLET_ACCOUNT + WALLET_FUNDER (3 distinct addresses), and " +
+        "POLYROOT_MICRO_LIVE_LOSS_CAP_USD in ~/.polyroot/.env.",
+    );
+    const confirm = await askText("Type LIVE to confirm (anything else keeps PAPER)");
+    if (confirm.trim() === "LIVE") {
+      mode = "LIVE";
+    } else {
+      console.log("Keeping PAPER. Switch later via RUNTIME_MODE.");
+    }
+  }
 
   return { provider, model, apiKey, baseUrl, walletType: walletChoice.startsWith("Create") ? "create" : "import", privateKey, passphrase, mode };
 }
@@ -401,8 +451,6 @@ async function runOnboardingFlow(): Promise<void> {
   try {
     const config = await runOnboarding();
     writeEnv(config);
-    // Release stdin before the agent run so no prompt listener leaks into it.
-    closeRL();
     console.log("\n═══════════════════════════════════════════════");
     console.log("  Setup complete! Starting PolyRoot Agent...");
     console.log("═══════════════════════════════════════════════\n");
@@ -410,7 +458,10 @@ async function runOnboardingFlow(): Promise<void> {
     // Reload env for current process
     process.loadEnvFile(ENV_PATH as string);
   } catch (err) {
-    closeRL();
+    if (err instanceof OnboardingCancelled) {
+      console.log("\nSetup cancelled. Run 'polyroot onboard' any time.");
+      process.exit(0);
+    }
     console.error("\n❌ Setup failed:", (err as Error).message);
     process.exit(1);
   }
