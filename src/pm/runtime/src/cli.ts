@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { deriveAddressFromPrivateKey } from "@polyroot/signer";
 import { bootstrapAgent } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
@@ -207,10 +208,108 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   }
 }
 
+/** Single wallet verification check result. */
+export interface WalletCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+/** Result of `polyroot wallet verify` (no agent started, no network). */
+export interface WalletVerifyResult {
+  ok: boolean;
+  address?: string;
+  checks: WalletCheck[];
+}
+
+/**
+ * Verify wallet env without starting the agent: key format, derived
+ * address vs WALLET_ADDRESS, and WAL-03 account/funder distinctness.
+ */
+export function runWalletVerify(
+  env: NodeJS.ProcessEnv = process.env,
+): WalletVerifyResult {
+  const checks: WalletCheck[] = [];
+  const rawKey = env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"] ?? "";
+  if (!rawKey) {
+    checks.push({
+      name: "key-present",
+      ok: false,
+      detail: "PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY) is not set",
+    });
+    return { ok: false, checks };
+  }
+  checks.push({ name: "key-present", ok: true, detail: "wallet key is set" });
+  let address: string;
+  try {
+    address = deriveAddressFromPrivateKey(rawKey);
+  } catch {
+    checks.push({
+      name: "key-format",
+      ok: false,
+      detail: "key is not 64 hex characters",
+    });
+    return { ok: false, checks };
+  }
+  checks.push({
+    name: "key-format",
+    ok: true,
+    detail: `derived address ${address}`,
+  });
+  const declared = env["WALLET_ADDRESS"];
+  if (declared) {
+    const match = declared.toLowerCase() === address.toLowerCase();
+    checks.push({
+      name: "address-match",
+      ok: match,
+      detail: match
+        ? "WALLET_ADDRESS matches the derived address"
+        : `WALLET_ADDRESS ${declared} does NOT match derived ${address}`,
+    });
+  } else {
+    checks.push({
+      name: "address-match",
+      ok: true,
+      detail: `WALLET_ADDRESS unset — derived address is ${address}`,
+    });
+  }
+  const account = env["WALLET_ACCOUNT"] ?? "";
+  const funder = env["WALLET_FUNDER"] ?? "";
+  if (!account || !funder) {
+    checks.push({
+      name: "account-funder",
+      ok: false,
+      detail: "WALLET_ACCOUNT and WALLET_FUNDER must both be set",
+    });
+  } else {
+    const lower = (a: string): string => a.toLowerCase();
+    const distinct =
+      lower(account) !== lower(address) &&
+      lower(funder) !== lower(address) &&
+      lower(account) !== lower(funder);
+    checks.push({
+      name: "account-funder",
+      ok: distinct,
+      detail: distinct
+        ? "signer, account and funder are three distinct addresses (WAL-03)"
+        : "signer, account and funder must be three distinct addresses (WAL-03)",
+    });
+  }
+  return { ok: checks.every((c) => c.ok), address, checks };
+}
+
 export async function main(
   argv: string[] = process.argv.slice(2),
 ): Promise<void> {
   loadDotEnv();
+  if (argv[0] === "wallet" && argv[1] === "verify") {
+    const result = runWalletVerify();
+    for (const c of result.checks) {
+      console.log(`${c.ok ? "PASS" : "FAIL"} ${c.name}: ${c.detail}`);
+    }
+    if (!result.ok) process.exit(1);
+    return;
+  }
   const config = parseArgs(argv);
   assertRuntimeEnv(config.mode);
   await startAgent(config);
