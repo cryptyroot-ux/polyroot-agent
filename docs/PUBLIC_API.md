@@ -91,7 +91,18 @@ All configuration is via environment variables (`.env`) or programmatic `Runtime
 | `POLYMARKET_API_KEY` | CLOB API key (reuse mode; never derived implicitly) | Yes (LIVE/MICRO) |
 | `POLYMARKET_API_SECRET` | CLOB API secret | Yes (LIVE/MICRO) |
 | `POLYMARKET_API_PASSPHRASE` | CLOB API passphrase | Yes (LIVE/MICRO) |
+| `POLYROOT_MICRO_LIVE_LOSS_CAP_USD` | Owner loss cap (pUSD); submit refused + latch engages without it | Yes (LIVE/MICRO) |
+| `POLYROOT_MICRO_LIVE_CAP_USD` | Exposure cap override (USD) | No (default `500`) |
 | `RUNTIME_MODE` | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE` | No (default `PAPER`) |
+
+Live enforcement, in order before every submission: exposure cap
+(`MICRO_LIVE_CAP_UNCONFIGURED` / `EXPOSURE_CAP_EXCEEDED`), loss-cap
+presence (`LOSS_CAP_UNCONFIGURED`), wired durable guard
+(`LIVE_GUARD_UNWIRED`), loss latch (`LOSS_CAP_BREACHED` /
+`LOSS_CAP_LATCHED`). MICRO_LIVE also refuses to start without SHADOW
+baseline evidence (`MICRO_LIVE_NOT_READY`: 30 days / 100 clusters); clear
+a latched breach only via `polyroot guard reset --loss <pusd>` when loss
+is back under cap.
 
 Live reads (order books, balances) go through the authenticated secure
 client. Domain `SignedOrder`s translate to CLOB limit orders only when

@@ -81,11 +81,13 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
     const prevKey = process.env["WALLET_PRIVATE_KEY"];
     const prevAccount = process.env["WALLET_ACCOUNT"];
     const prevFunder = process.env["WALLET_FUNDER"];
+    const prevLossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
     process.env["WALLET_PRIVATE_KEY"] =
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     process.env["WALLET_ACCOUNT"] =
       "0x1111111111111111111111111111111111111111";
     process.env["WALLET_FUNDER"] = "0x2222222222222222222222222222222222222222";
+    process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = "100";
     try {
       const agent = await bootstrapAgent(DUMMY_DB, "MICRO_LIVE", {
         cryptoSigner: async () => "0x_test_sig",
@@ -101,6 +103,40 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
       else process.env["WALLET_ACCOUNT"] = prevAccount;
       if (prevFunder === undefined) delete process.env["WALLET_FUNDER"];
       else process.env["WALLET_FUNDER"] = prevFunder;
+      if (prevLossCap === undefined)
+        delete process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+      else process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = prevLossCap;
+    }
+  });
+
+  it("bootstrapAgent MICRO_LIVE without a loss cap refuses fail-closed", async () => {
+    const prevKey = process.env["WALLET_PRIVATE_KEY"];
+    const prevAccount = process.env["WALLET_ACCOUNT"];
+    const prevFunder = process.env["WALLET_FUNDER"];
+    const prev = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+    process.env["WALLET_PRIVATE_KEY"] =
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    process.env["WALLET_ACCOUNT"] =
+      "0x1111111111111111111111111111111111111111";
+    process.env["WALLET_FUNDER"] = "0x2222222222222222222222222222222222222222";
+    delete process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+    try {
+      await assert.rejects(
+        bootstrapAgent(DUMMY_DB, "MICRO_LIVE", {
+          cryptoSigner: async () => "0x_test_sig",
+          venueAdapter: fakeVenueAdapter(),
+        }),
+        /LIVE_LOSS_CAP_UNCONFIGURED/,
+      );
+    } finally {
+      if (prevKey === undefined) delete process.env["WALLET_PRIVATE_KEY"];
+      else process.env["WALLET_PRIVATE_KEY"] = prevKey;
+      if (prevAccount === undefined) delete process.env["WALLET_ACCOUNT"];
+      else process.env["WALLET_ACCOUNT"] = prevAccount;
+      if (prevFunder === undefined) delete process.env["WALLET_FUNDER"];
+      else process.env["WALLET_FUNDER"] = prevFunder;
+      if (prev !== undefined)
+        process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = prev;
     }
   });
 });

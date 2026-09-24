@@ -16,6 +16,7 @@ import {
 import type { MoneyKernel } from "@polyroot/risk";
 import type { SignerVault } from "@polyroot/signer";
 import type { Executor } from "@polyroot/executor";
+import { evaluateLossGuard, type LossGuardState } from "./micro-live-guard.js";
 
 /* ─── Core G4 Types ──────────────────────────────────────────────────────── */
 
@@ -35,6 +36,11 @@ export interface G4CoreConfig {
   };
   /** Microlive explicit cap (base units). */
   microLiveCapBase?: bigint;
+  /**
+   * Owner loss cap in pUSD for MICRO_LIVE/LIVE. REQUIRED in live modes:
+   * the order path refuses to submit without a finite positive cap.
+   */
+  liveLossCapPusd?: number;
   /** Minimum edge after costs for entry. */
   minEdgeAfterCost?: number;
   /** Paper simulator configuration. */
@@ -81,6 +87,21 @@ export interface G4CoreDeps {
   paperWallet?: WalletIdentity;
   /** Observability hooks for metrics and logging */
   observability?: G4CoreObservability;
+  /**
+   * Live enforcement dependencies (MICRO_LIVE/LIVE only). REQUIRED in live
+   * modes: without a wired guard the order path refuses to submit.
+   */
+  liveGuard?: LiveGuardDeps;
+}
+
+/**
+ * Live enforcement inputs: durable loss latch + realized-loss reader.
+ * Production wiring uses PgLiveGuardStore; tests inject fakes.
+ */
+export interface LiveGuardDeps {
+  loadLatch(): Promise<LossGuardState | null>;
+  saveLatch(state: LossGuardState): Promise<void>;
+  realizedLossPusd(): number | Promise<number>;
 }
 
 export interface G4CoreInput {
@@ -175,6 +196,7 @@ export interface CreateG4CoreOptions {
     p: number,
   ) => number;
   observability?: G4CoreObservability;
+  liveGuard?: LiveGuardDeps;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -191,6 +213,7 @@ export function createG4Core(options: CreateG4CoreOptions) {
     leaseEpoch: options.leaseEpoch,
     now: options.now,
     ...(options.observability ? { observability: options.observability } : {}),
+    ...(options.liveGuard ? { liveGuard: options.liveGuard } : {}),
   };
   return {
     config: options.config,
@@ -496,6 +519,49 @@ export async function executeG4Step(
       latencyMs: fillResult.latencyMs,
     };
   } else if (config.mode === "MICRO_LIVE" || config.mode === "LIVE") {
+    // Live enforcement (fail-closed, in order): exposure cap, loss-cap
+    // presence, wired guard, durable loss latch — before any submission.
+    const noTrade = (reason: string): G4CoreResult => ({
+      market_id,
+      decision: "NO_TRADE",
+      reason,
+    });
+    const cap = config.microLiveCapUsd;
+    if (cap === undefined || !Number.isFinite(cap) || cap <= 0) {
+      return noTrade(
+        "MICRO_LIVE_CAP_UNCONFIGURED: live modes require a finite positive microLiveCapUsd",
+      );
+    }
+    const notional = size * built.order.price;
+    const exposure = currentPortfolioExposureUsd ?? 0;
+    if (exposure + notional > cap) {
+      return noTrade(
+        `EXPOSURE_CAP_EXCEEDED: exposure ${exposure} + notional ${notional} exceeds cap ${cap}`,
+      );
+    }
+    const lossCap = config.liveLossCapPusd;
+    if (lossCap === undefined || !Number.isFinite(lossCap) || lossCap <= 0) {
+      return noTrade(
+        "LOSS_CAP_UNCONFIGURED: live modes require a finite positive liveLossCapPusd",
+      );
+    }
+    if (!deps.liveGuard) {
+      return noTrade(
+        "LIVE_GUARD_UNWIRED: live modes require a wired liveGuard (durable latch + realized-loss reader)",
+      );
+    }
+    const previous = await deps.liveGuard.loadLatch();
+    const realizedLoss = await deps.liveGuard.realizedLossPusd();
+    const latch = evaluateLossGuard({
+      realizedLossPusd: realizedLoss,
+      lossCapPusd: lossCap,
+      reset: false,
+      previous,
+    });
+    await deps.liveGuard.saveLatch(latch.state);
+    if (latch.halted) {
+      return noTrade(`${latch.code}: ${latch.reason}`);
+    }
     // Submit to executor
     const submitted = await deps.executor.submit(
       built.order,

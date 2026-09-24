@@ -24,7 +24,11 @@ import {
   type SignedOrder,
   type WalletIdentity,
 } from "@polyroot/domain";
-import { createG4Pipeline } from "@polyroot/runtime";
+import {
+  createG4Pipeline,
+  type LiveGuardDeps,
+  type LossGuardState,
+} from "@polyroot/runtime";
 
 describe("Runtime MICRO_LIVE — G4 pipeline with real wallet/venue adapter and explicit capital cap", () => {
   class FakeBalanceStore implements BalanceStore {
@@ -202,11 +206,20 @@ describe("Runtime MICRO_LIVE — G4 pipeline with real wallet/venue adapter and 
       leaseEpoch: 1,
     });
     const cap = customCapUsd ?? 500;
+    const savedLatch: LossGuardState[] = [];
+    const liveGuard: LiveGuardDeps = {
+      loadLatch: async () => null,
+      saveLatch: async (s: LossGuardState) => {
+        savedLatch.push(s);
+      },
+      realizedLossPusd: () => 0,
+    };
     const pipeline = createG4Pipeline({
       config: {
         mode: "MICRO_LIVE",
         minEdgeAfterCost: 0.01,
         microLiveCapUsd: cap,
+        liveLossCapPusd: 1000,
       },
       kernel,
       signer,
@@ -226,6 +239,7 @@ describe("Runtime MICRO_LIVE — G4 pipeline with real wallet/venue adapter and 
       now: () => NOW,
       forecast: async () => forecastP,
       sizeIntent: () => sizeIntentVal,
+      liveGuard,
     });
     return {
       pipeline,

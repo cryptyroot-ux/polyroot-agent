@@ -1,5 +1,11 @@
 import { existsSync } from "node:fs";
+import { Pool } from "pg";
 import { deriveAddressFromPrivateKey } from "@polyroot/signer";
+import {
+  PgLiveGuardStore,
+  checkShadowBaselineRow,
+  decideGuardReset,
+} from "./live-guard-store.js";
 import { bootstrapAgent } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
@@ -220,6 +226,62 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   }
 }
 
+/**
+ * MICRO_LIVE startup gate: refuse to start without SHADOW baseline
+ * evidence (30 days / 100 resolved clusters) in the database.
+ */
+export async function assertMicroLiveReady(databaseUrl: string): Promise<void> {
+  const pool = new Pool({ connectionString: databaseUrl });
+  try {
+    const res = await pool.query(
+      `SELECT observed_days, resolved_clusters FROM shadow_baseline
+       WHERE id = '00000000-0000-0000-0000-000000000001'`,
+    );
+    const verdict = checkShadowBaselineRow(
+      (res.rows[0] ?? null) as {
+        observed_days: unknown;
+        resolved_clusters: unknown;
+      } | null,
+    );
+    if (!verdict.ok) {
+      throw new Error(`${verdict.code}: ${verdict.reason}`);
+    }
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
+export interface GuardResetResult {
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * Explicit owner latch reset: clears a halted breach ONLY when the
+ * owner-measured realized loss is back under the configured loss cap.
+ */
+export async function runGuardReset(
+  databaseUrl: string,
+  realizedLossPusd: number,
+  lossCapPusd: number,
+): Promise<GuardResetResult> {
+  const pool = new Pool({ connectionString: databaseUrl });
+  try {
+    const store = new PgLiveGuardStore(pool);
+    const state = await store.load();
+    const verdict = decideGuardReset(state, realizedLossPusd, lossCapPusd);
+    if (!verdict.ok) {
+      return { ok: false, detail: `${verdict.code}: ${verdict.reason}` };
+    }
+    if (state?.halted) {
+      await store.save({ halted: false, realizedLossPusd });
+    }
+    return { ok: true, detail: verdict.reason };
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
 /** Single wallet verification check result. */
 export interface WalletCheck {
   name: string;
@@ -335,8 +397,29 @@ export async function main(
     if (!result.ok) process.exit(1);
     return;
   }
+  if (argv[0] === "guard" && argv[1] === "reset") {
+    const lossRaw = argv[argv.indexOf("--loss") + 1] ?? "";
+    const loss = Number(lossRaw);
+    const capRaw = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] ?? "";
+    const cap = Number(capRaw);
+    const dbUrl = process.env["DATABASE_URL"] ?? "";
+    if (!dbUrl || !Number.isFinite(loss) || !Number.isFinite(cap)) {
+      console.error(
+        "Usage: polyroot guard reset --loss <realized-loss-pusd> " +
+          "(requires DATABASE_URL + POLYROOT_MICRO_LIVE_LOSS_CAP_USD)",
+      );
+      process.exit(1);
+    }
+    const result = await runGuardReset(dbUrl, loss, cap);
+    console.log(`${result.ok ? "PASS" : "FAIL"} guard-reset: ${result.detail}`);
+    if (!result.ok) process.exit(1);
+    return;
+  }
   const config = parseArgs(argv);
   assertRuntimeEnv(config.mode);
+  if (config.mode === "MICRO_LIVE") {
+    await assertMicroLiveReady(config.databaseUrl);
+  }
   await startAgent(config);
 }
 

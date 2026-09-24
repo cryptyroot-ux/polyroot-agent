@@ -26,6 +26,7 @@ import { Executor } from "@polyroot/executor";
 import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
+import { PgLiveGuardStore } from "./live-guard-store.js";
 import {
   createForecastProviderFromEnv,
   type ForecastProvider,
@@ -233,10 +234,39 @@ export async function bootstrapAgent(
 
   // 8. Shared metrics + G4 Pipeline (observability wired to Metrics).
   const metrics = new Metrics();
+
+  // Live enforcement inputs (fail-closed): an explicit owner loss cap is
+  // REQUIRED in live modes; the exposure cap defaults to 500 USDC and can
+  // be overridden down via env (never up without code review).
+  const isLiveMode = mode === "MICRO_LIVE" || mode === "LIVE";
+  const lossCapRaw = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+  const liveLossCapPusd =
+    lossCapRaw === undefined ? undefined : Number(lossCapRaw);
+  if (isLiveMode && (liveLossCapPusd === undefined || liveLossCapPusd <= 0)) {
+    await pool.end().catch(() => undefined);
+    throw new Error(
+      "LIVE_LOSS_CAP_UNCONFIGURED: POLYROOT_MICRO_LIVE_LOSS_CAP_USD must be a positive number for MICRO_LIVE/LIVE",
+    );
+  }
+  const capOverrideRaw = process.env["POLYROOT_MICRO_LIVE_CAP_USD"];
+  const microLiveCapUsd =
+    capOverrideRaw === undefined ? undefined : Number(capOverrideRaw);
+  if (
+    microLiveCapUsd !== undefined &&
+    (!Number.isFinite(microLiveCapUsd) || microLiveCapUsd <= 0)
+  ) {
+    await pool.end().catch(() => undefined);
+    throw new Error(
+      "LIVE_CAP_INVALID: POLYROOT_MICRO_LIVE_CAP_USD must be a positive number when set",
+    );
+  }
+  const liveGuardStore = new PgLiveGuardStore(pool);
   const pipeline = createG4Pipeline({
     config: {
       mode,
       minEdgeAfterCost: 0.03,
+      ...(microLiveCapUsd !== undefined ? { microLiveCapUsd } : {}),
+      ...(liveLossCapPusd !== undefined ? { liveLossCapPusd } : {}),
     },
     observability: {
       emitMetrics: (m) => recordG4Metrics(metrics, m),
@@ -253,6 +283,15 @@ export async function bootstrapAgent(
     venueMode: () => venueAdapter.mode,
     leaseEpoch: () => 1,
     now: () => new Date(),
+    liveGuard: {
+      loadLatch: () => liveGuardStore.load(),
+      saveLatch: (s) => liveGuardStore.save(s),
+      // Session realized loss from shared metrics. The latch itself is
+      // DB-persisted, so a restart can never clear an engaged breach —
+      // at worst a fresh session re-detects it from new activity.
+      realizedLossPusd: () =>
+        Math.max(0, -(metrics.getCounter("totalPnl") ?? 0)),
+    },
     forecast: async (market) => {
       if (!forecastProvider) {
         if (!warnedNoProvider) {
