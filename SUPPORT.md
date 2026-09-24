@@ -15,4 +15,4 @@ We provide best-effort support for the open-source project.
 
 ## Support Channels
 
-Please report issues via [GitHub Issues](https://github.com/your-org/polyroot-agent/issues).
+Please report issues via [GitHub Issues](https://github.com/cryptyroot-ux/polyroot-agent/issues).
