@@ -181,7 +181,7 @@ export class ExperimentRegistry {
     offset?: number;
   }): Promise<ExperimentRecord[]> {
     const conditions: string[] = [];
-    const params: any[] = [];
+    const params: unknown[] = [];
     let paramIndex = 1;
 
     if (filters?.strategy) {

@@ -612,6 +612,18 @@ export class PgSourceRegistry {
  * Durable catalyst bus with watermark (PM-INTEL-08): PostgreSQL-backed
  * implementation that persists events and watermarks for replay across restarts.
  */
+/** Shape of a catalyst_outbox row as returned by pg (snake_case columns). */
+interface CatalystOutboxRow {
+  event_id: string;
+  category: CatalystEvent["category"];
+  subject: string;
+  payload_version: number;
+  event_at: Date | string;
+  received_at: Date | string;
+  dedupe_key: string;
+  payload: unknown;
+}
+
 export class PgCatalystBus {
   constructor(
     private pool: {
@@ -667,8 +679,9 @@ export class PgCatalystBus {
       );
       
       if (!result.rows) return [];
-      
-      return result.rows.map((row: any) => ({
+
+      const rows = result.rows as CatalystOutboxRow[];
+      return rows.map((row) => ({
         event_id: row.event_id,
         category: row.category,
         subject: row.subject,
@@ -688,8 +701,9 @@ export class PgCatalystBus {
       );
       
       if (!result.rows) return [];
-      
-      return result.rows.map((row: any) => ({
+
+      const rows = result.rows as CatalystOutboxRow[];
+      return rows.map((row) => ({
         event_id: row.event_id,
         category: row.category,
         subject: row.subject,

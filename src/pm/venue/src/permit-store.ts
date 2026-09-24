@@ -228,7 +228,7 @@ async claim(permitId: string, orderId: string): Promise<boolean> {
 export class MemPermitStore implements PermitStore {
   private readonly permits = new Map<
     string,
-    ExecutionPermit & { claimed: boolean }
+    ExecutionPermit & { claimed: boolean; claimedOrderId?: string }
   >();
   private readonly clock: () => Date;
 
@@ -255,7 +255,7 @@ export class MemPermitStore implements PermitStore {
     if (permit.claimed) return false;
     if (this.clock() > permit.expires_at) return false;
     permit.claimed = true;
-    (permit as any).claimedOrderId = orderId;
+    permit.claimedOrderId = orderId;
     return true;
   }
 
@@ -279,7 +279,7 @@ export class MemPermitStore implements PermitStore {
       return { ok: false, code: "PERMIT_EXPIRED", reason: "permit expired" };
     }
     permit.claimed = true;
-    (permit as any).claimedOrderId = orderId;
+    permit.claimedOrderId = orderId;
     return { ok: true, permitId };
   }
 

@@ -11,6 +11,7 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
+import type { ResearchQuota } from "@polyroot/domain";
 import type { SourceRegistryInterface, CatalystBusInterface } from "./index.js";
 
 /**
@@ -49,7 +50,8 @@ export async function createIntelligencePgStores(
   const catalystBus = new PgCatalystBus(pool);
   const researchBudget = new PgResearchBudget(
     pool,
-    { max_tokens: 1_000_000, max_cost_usd: 100 } as any,
+    // Partial bootstrap quota: only token/cost caps are enforced at wiring time.
+    { max_tokens: 1_000_000, max_cost_usd: 100 } as ResearchQuota,
   );
 
   return {

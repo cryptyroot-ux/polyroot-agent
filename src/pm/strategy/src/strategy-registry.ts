@@ -7,7 +7,7 @@ export interface StrategyDefinition {
   name: string;
   version: string;
   qualifiedForMode: ("PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE")[];
-  run: (input: any) => Promise<StrategyProposal | StrategyProposal[] | null>;
+  run: (input: unknown) => Promise<StrategyProposal | StrategyProposal[] | null>;
 }
 
 export class StrategyRegistry {

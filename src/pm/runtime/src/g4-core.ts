@@ -9,6 +9,9 @@ import type {
 } from "@polyroot/domain";
 import { simulateFill } from "./paper-engine.js";
 import { evaluateEdge, validateAndReserve, buildSignedOrder } from "@polyroot/control";
+import type { MoneyKernel } from "@polyroot/risk";
+import type { SignerVault } from "@polyroot/signer";
+import type { Executor } from "@polyroot/executor";
 
 /* ─── Core G4 Types ──────────────────────────────────────────────────────── */
 
@@ -46,11 +49,11 @@ export interface G4CoreDeps {
   /** Strategy: produces intent from forecast + market. */
   sizeIntent: (market: { market_id: string; bid: number; ask: number }, p: number) => number;
   /** Money Kernel for reservations & permits. */
-  kernel: any;
+  kernel: MoneyKernel;
   /** Signer Vault for signing orders. */
-  signer: any;
+  signer: SignerVault;
   /** Executor for submitting orders. */
-  executor: any;
+  executor: Executor;
   /** Wallet identity for financial operations. */
   wallet: WalletIdentity;
   /** Risk policy with caps & limits. */
@@ -109,7 +112,7 @@ export interface G4CoreObservability {
   emitStepStart?(input: G4CoreInput, mode: G4Mode): void;
   emitStepComplete?(input: G4CoreInput, result: G4CoreResult): void;
   emitFinancialGate?(gate: "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED", mode: G4Mode, venue: VenueMode): void;
-  emitError?(error: Error, context: any): void;
+  emitError?(error: Error, context: unknown): void;
   emitMetrics?(metrics: G4CoreMetrics): void;
   emitModeTransition?(from: G4Mode, to: G4Mode, reason: string): void;
 }
@@ -125,11 +128,20 @@ export interface G4CoreMetrics {
   maxExposureUsd: number;
 }
 
+/** Paper-fill simulator overrides passed to each G4 step (subset of FillModelInput). */
+export interface G4FillSimulatorConfig {
+  cancelProbability: number;
+  partialFraction: number;
+  latencyMs: number;
+  makerFeeBps: number;
+  takerFeeBps: number;
+}
+
 export interface CreateG4CoreOptions {
   config: G4CoreConfig;
-  kernel: any;
-  signer: any;
-  executor: any;
+  kernel: MoneyKernel;
+  signer: SignerVault;
+  executor: Executor;
   wallet: WalletIdentity;
   policy: RiskPolicy;
   policyHash: string;
@@ -224,7 +236,7 @@ export function computeFinancialGate(
 export async function executeG4Step(
   input: G4CoreInput,
   core: { config: G4CoreConfig; deps: G4CoreDeps },
-  paperFillConfig: any,
+  paperFillConfig: G4FillSimulatorConfig,
 ): Promise<G4CoreResult> {
   const {
     market_id,

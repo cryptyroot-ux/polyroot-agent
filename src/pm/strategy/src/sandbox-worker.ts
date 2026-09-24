@@ -2,7 +2,7 @@ import { parentPort, workerData } from "worker_threads";
 
 const { strategyCode } = workerData as { strategyCode: string };
 
-parentPort?.on("message", async (msg: { id: number; code?: string; input?: any }) => {
+parentPort?.on("message", async (msg: { id: number; code?: string; input?: unknown }) => {
   try {
     let codeToRun = msg.code || strategyCode;
     

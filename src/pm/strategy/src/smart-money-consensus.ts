@@ -34,6 +34,10 @@ export interface WalletActivity {
   tx_hash: string;
   /** Whether this was a maker or taker order. */
   maker_taker: "MAKER" | "TAKER" | "UNKNOWN";
+  /** Attached outcome label for scoring ("WIN" | "LOSS" | "UNKNOWN"). */
+  outcome?: "WIN" | "LOSS" | "UNKNOWN";
+  /** Realized edge in bps attached for scoring. */
+  realized_edge_bps?: number;
 }
 
 /** Wallet score with full lineage. */
@@ -217,10 +221,10 @@ export function scoreWallet(
   for (const act of activities) {
     // Simplified: in real impl, would fetch market outcome for this trade
     // For now, assume we have outcome data attached
-    const outcome = (act as any).outcome; // "WIN" | "LOSS" | "UNKNOWN"
+    const outcome = act.outcome; // "WIN" | "LOSS" | "UNKNOWN"
     if (outcome === "WIN") wins++;
     if (outcome !== "UNKNOWN") {
-      total_edge_bps += (act as any).realized_edge_bps ?? 0;
+      total_edge_bps += act.realized_edge_bps ?? 0;
     }
   }
 
@@ -233,7 +237,7 @@ export function scoreWallet(
   for (const act of activities) {
     const days_ago = (now.getTime() - act.executed_at.getTime()) / 86400000;
     const weight = Math.pow(0.5, days_ago / params.recency_half_life_days);
-    const outcome = (act as any).outcome;
+    const outcome = act.outcome;
     const trade_score = outcome === "WIN" ? 1 : outcome === "LOSS" ? -1 : 0;
     weighted_score += trade_score * weight;
     total_weight += weight;

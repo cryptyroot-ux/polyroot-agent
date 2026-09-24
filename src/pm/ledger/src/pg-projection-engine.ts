@@ -25,14 +25,28 @@ import {
 } from "./index.js";
 import { type LedgerEvent } from "@polyroot/domain";
 
+/** Structured shape of kernel event payloads applied to the balance projection. */
+interface KernelEventPayload {
+  account?: string;
+  asset?: string;
+  cashBase?: string;
+  feeBase?: string;
+  rebateBase?: string;
+  amountBase?: string;
+  pnlBase?: string;
+  isGain?: boolean;
+  reversal?: KernelEventPayload | null;
+  reversalType?: string;
+}
+
 /** Type for a single kernel event row. */
 interface KernelEventRow {
   id: string;
   type: string;
   aggregate_type: string;
   aggregate_id: string;
-  payload: any;
-  metadata: any;
+  payload: unknown;
+  metadata: unknown;
   sequence: bigint;
   created_at: Date;
 }
@@ -75,7 +89,7 @@ export class PgProjectionEngine implements ProjectionEngine {
    * Returns the projected deltas, or null if the event doesn't affect balances.
    */
   private projectEvent(row: KernelEventRow): ProjectedEvent | null {
-    const payload = row.payload;
+    const payload = row.payload as KernelEventPayload;
     if (!payload || typeof payload !== "object") return null;
 
     // Handle Money Kernel event types

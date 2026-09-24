@@ -4,9 +4,16 @@ import { fileURLToPath } from "url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+/** Reply posted by the sandbox worker: a result payload or a string error. */
+export interface WorkerReply {
+  id?: unknown;
+  error?: string;
+  result?: unknown;
+}
+
 export interface StrategySandboxClient {
-  run(input: any): Promise<any>;
-  evalInWorker(code: string): Promise<any>;
+  run(input: unknown): Promise<unknown>;
+  evalInWorker(code: string): Promise<unknown>;
   terminate(): Promise<void>;
 }
 
@@ -47,7 +54,7 @@ export async function spawnStrategyWorker(opts: {
     resourceLimits: { ...DEFAULT_WORKER_RESOURCE_LIMITS, ...opts.resourceLimits },
   });
 
-  function callWorker(message: unknown): Promise<any> {
+  function callWorker(message: unknown): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const id = Date.now() + Math.random();
       let settled = false;
@@ -57,7 +64,7 @@ export async function spawnStrategyWorker(opts: {
         worker.removeListener("error", handleError);
         worker.removeListener("exit", handleExit);
       };
-      const handleMessage = (msg: any) => {
+      const handleMessage = (msg: WorkerReply) => {
         if (msg?.id === id && !settled) {
           settled = true;
           cleanup();
@@ -96,11 +103,11 @@ export async function spawnStrategyWorker(opts: {
   }
 
   const client: StrategySandboxClient = {
-    async run(input: any): Promise<any> {
+    async run(input: unknown): Promise<unknown> {
       return callWorker({ code: opts.strategyCode, input });
     },
 
-    async evalInWorker(code: string): Promise<any> {
+    async evalInWorker(code: string): Promise<unknown> {
       return callWorker({ code, input: null });
     },
     
