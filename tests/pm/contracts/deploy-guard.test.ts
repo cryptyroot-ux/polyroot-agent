@@ -32,25 +32,37 @@ function parseComposeService(text: string, name: string): Record<string, any> {
 
 describe("Phase 29: deployment hardening gate (Blueprint §2/§15)", () => {
   const compose = read("docker-compose.yml");
+  const composeProd = read("docker-compose.prod.yml");
 
-  for (const svc of ["executor", "gateway", "strategy-worker"]) {
-    it(`${svc} runs hardened: no-new-privileges, cap_drop ALL, read-only, mem cap`, () => {
-      const s = parseComposeService(compose, svc);
-      assert.ok(
-        (s["security_opt"] as string[]).includes("no-new-privileges:true"),
-        `${svc} missing no-new-privileges`,
-      );
-      assert.ok(
-        (s["cap_drop"] as string[]).includes("ALL"),
-        `${svc} must drop ALL capabilities`,
-      );
-      assert.equal(s["read_only"], "true", `${svc} must be read-only`);
-      assert.match(
-        String(s["mem_limit"] ?? ""),
-        /^\d+[mg]$/i,
-        `${svc} must declare a memory cap`,
-      );
-    });
+  const matrix: Array<{ file: string; text: string; services: string[] }> = [
+    {
+      file: "docker-compose.yml",
+      text: compose,
+      services: ["agent", "strategy-worker"],
+    },
+    { file: "docker-compose.prod.yml", text: composeProd, services: ["agent"] },
+  ];
+
+  for (const { file, text, services } of matrix) {
+    for (const svc of services) {
+      it(`${file} :: ${svc} runs hardened: no-new-privileges, cap_drop ALL, read-only, mem cap`, () => {
+        const s = parseComposeService(text, svc);
+        assert.ok(
+          (s["security_opt"] as string[]).includes("no-new-privileges:true"),
+          `${svc} missing no-new-privileges`,
+        );
+        assert.ok(
+          (s["cap_drop"] as string[]).includes("ALL"),
+          `${svc} must drop ALL capabilities`,
+        );
+        assert.equal(s["read_only"], "true", `${svc} must be read-only`);
+        assert.match(
+          String(s["mem_limit"] ?? ""),
+          /^\d+[mg]$/i,
+          `${svc} must declare a memory cap`,
+        );
+      });
+    }
   }
 
   it("strategy socket crosses services only via the shared volume", () => {
@@ -63,8 +75,10 @@ describe("Phase 29: deployment hardening gate (Blueprint §2/§15)", () => {
     assert.match(compose, /polyroot_pgdata:/);
   });
 
-  it("no real secrets baked into Dockerfiles or compose (dev placeholders only)", () => {
-    const text = compose + read("Dockerfile") + read("Dockerfile.strategy");
+  it("no real secrets baked into Dockerfiles or compose (env references only)", () => {
+    const prod = read("docker-compose.prod.yml");
+    const text =
+      compose + prod + read("Dockerfile") + read("Dockerfile.strategy");
     for (const pattern of [
       /AKIA[0-9A-Z]{16}/,
       /-----BEGIN (RSA )?PRIVATE KEY-----/,
@@ -73,8 +87,17 @@ describe("Phase 29: deployment hardening gate (Blueprint §2/§15)", () => {
     ]) {
       assert.ok(!pattern.test(text), `secret pattern leaked: ${pattern}`);
     }
-    // The dev placeholder must loudly say so (production overrides via .env).
-    assert.match(compose, /dev-key-change-in-production/);
+    // Wallet keys must arrive via ${VAR} references, never literals.
+    for (const [file, body] of [
+      ["docker-compose.yml", compose],
+      ["docker-compose.prod.yml", prod],
+    ] as Array<[string, string]>) {
+      assert.match(
+        body,
+        /WALLET_PRIVATE_KEY:\s*\$\{/,
+        `${file}: wallet key must be an env reference`,
+      );
+    }
   });
 
   it("Dockerfiles run final stages as non-root with healthchecks", () => {

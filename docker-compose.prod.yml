@@ -6,7 +6,6 @@
 # Vault, AWS Secrets Manager) or environment variables injected at runtime.
 # NEVER commit raw private keys or production secrets to version control.
 # =============================================================================
-version: "3.8"
 
 services:
   postgres:

@@ -84,20 +84,27 @@ cp .env.example .env
 # Edit .env with your settings (see Configuration section below)
 ```
 
-### 4. Run Migrations
+### 4. Verify Wallet Setup (no agent started, no network)
+
+```bash
+npm start -- wallet verify
+# PASS on every line = ready. FAIL tells you exactly which variable is wrong.
+```
+
+### 5. Run Migrations
 
 ```bash
 npm run migrate:latest
 ```
 
-### 5. Build & Run (PAPER Mode)
+### 6. Build & Run (PAPER Mode)
 
 ```bash
 npm run build
 npm start            # Starts the agent CLI in PAPER mode (see RUNTIME_MODE)
 ```
 
-### 6. Verify Installation
+### 7. Verify Installation
 
 ```bash
 npm run test:unit        # 585 contract + 12 property = 597 tests
