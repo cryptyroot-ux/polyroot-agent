@@ -535,6 +535,184 @@ export async function runGuardReset(
   }
 }
 
+/** Status command - shows current configuration and health. */
+async function runStatus(): Promise<void> {
+  loadDotEnv();
+  const env = process.env;
+  console.log("\n═══════════════════════════════════════════════");
+  console.log("  PolyRoot Agent — Status");
+  console.log("═══════════════════════════════════════════════\n");
+
+  // Config
+  const mode = env["RUNTIME_MODE"] || "PAPER";
+  const dbUrl = env["DATABASE_URL"] ? "✅ Set" : "❌ Missing";
+  const rpc = env["RPC_URL"] || "https://polygon-rpc.com";
+  const metricsKey = env["POLYROOT_METRICS_OWNER_KEY"] ? "✅ Set" : "❌ Missing (metrics disabled)";
+
+  // Wallet
+  const hasKeystore = Boolean(env["POLYROOT_KEYSTORE_JSON"]);
+  const hasPassphrase = Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]);
+  const hasRawKey = Boolean(env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]);
+  const walletAddr = env["WALLET_ADDRESS"] || "Not set";
+  const account = env["WALLET_ACCOUNT"] || "Not set";
+  const funder = env["WALLET_FUNDER"] || "Not set";
+
+  // Venue
+  const venueKey = env["POLYMARKET_API_KEY"] ? "✅ Set" : "❌ Missing";
+  const venueSecret = env["POLYMARKET_API_SECRET"] ? "✅ Set" : "❌ Missing";
+  const venuePassphrase = env["POLYMARKET_API_PASSPHRASE"] ? "✅ Set" : "❌ Missing";
+
+  // Live caps
+  const lossCap = env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] || "Not set";
+  const expCap = env["POLYROOT_MICRO_LIVE_CAP_USD"] || "500 (default)";
+
+  console.log("📋 Configuration:");
+  console.log(`  Mode:              ${mode}`);
+  console.log(`  Database:          ${dbUrl}`);
+  console.log(`  RPC URL:           ${rpc}`);
+  console.log(`  Metrics:           ${metricsKey}`);
+  console.log("");
+  console.log("🔐 Wallet:");
+  console.log(`  Keystore:          ${hasKeystore ? "✅ Set" : "❌ Missing"}`);
+  console.log(`  Passphrase:        ${hasPassphrase ? "✅ Set" : "❌ Missing"}`);
+  console.log(`  Raw Key:           ${hasRawKey ? "✅ Set" : "❌ Missing"}`);
+  console.log(`  Address:           ${walletAddr}`);
+  console.log(`  Account:           ${account}`);
+  console.log(`  Funder:            ${funder}`);
+  console.log("");
+  console.log("🏪 Venue (Polymarket):");
+  console.log(`  API Key:           ${venueKey}`);
+  console.log(`  API Secret:        ${venueSecret}`);
+  console.log(`  Passphrase:        ${venuePassphrase}`);
+  console.log("");
+  console.log("🛡️  Live Caps:");
+  console.log(`  Loss Cap (pUSD):   ${lossCap}`);
+  console.log(`  Exposure Cap (pUSD): ${expCap}`);
+  console.log("");
+  console.log("📁 Config: ~/.polyroot/.env");
+  console.log("🔐 Keystore: ~/.polyroot/keystore.json");
+  console.log("\n═══════════════════════════════════════════════\n");
+}
+
+/** Update command - git pull and rebuild. */
+async function runUpdate(): Promise<void> {
+  console.log("\n🔄 Updating PolyRoot Agent...\n");
+  const { execSync } = await import("node:child_process");
+  const installDir = process.env["HOME"] ? `${process.env["HOME"]}/.polyroot` : "/tmp/.polyroot";
+
+  try {
+    console.log("📥 Pulling latest changes...");
+    execSync("git pull", { cwd: installDir, stdio: "inherit" });
+
+    console.log("\n📦 Installing dependencies...");
+    execSync("npm ci", { cwd: installDir, stdio: "inherit" });
+
+    console.log("\n🔨 Building...");
+    execSync("npx turbo run build", { cwd: installDir, stdio: "inherit" });
+
+    console.log("\n✅ Update complete!");
+  } catch (err) {
+    console.error("❌ Update failed:", (err as Error).message);
+    process.exit(1);
+  }
+}
+
+/** Doctor command - health checks. */
+async function runDoctor(): Promise<void> {
+  console.log("\n🏥 PolyRoot Agent — Doctor\n");
+  let allOk = true;
+
+  // 1. Check DATABASE_URL
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"];
+  if (!dbUrl) {
+    console.log("❌ DATABASE_URL not set");
+    allOk = false;
+  } else {
+    console.log("✅ DATABASE_URL set");
+    // Test connection
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: dbUrl });
+    try {
+      await pool.query("SELECT 1");
+      await pool.end();
+      console.log("✅ Database connection OK");
+    } catch (e) {
+      console.log("❌ Database connection failed:", (e as Error).message);
+      allOk = false;
+    }
+  }
+
+  // 2. Check wallet
+  const hasKeystore = Boolean(process.env["POLYROOT_KEYSTORE_JSON"]);
+  const hasPassphrase = Boolean(process.env["POLYROOT_KEYSTORE_PASSPHRASE"]);
+  const hasRawKey = Boolean(process.env["PRIVATE_KEY_HEX"] ?? process.env["WALLET_PRIVATE_KEY"]);
+  if (!hasKeystore && !hasRawKey) {
+    console.log("❌ No wallet key configured (keystore or raw)");
+    allOk = false;
+  } else {
+    console.log("✅ Wallet key present");
+    if (hasKeystore && !hasPassphrase) {
+      console.log("⚠️  Keystore set but passphrase missing");
+      allOk = false;
+    }
+  }
+
+  // 3. Check RPC
+  const rpc = process.env["RPC_URL"] || "https://polygon-rpc.com";
+  try {
+    const res = await fetch(rpc, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
+    });
+    if (res.ok) console.log("✅ RPC reachable");
+    else { console.log("❌ RPC unreachable"); allOk = false; }
+  } catch {
+    console.log("❌ RPC unreachable");
+    allOk = false;
+  }
+
+  // 4. Venue credentials (only for live modes)
+  const mode = process.env["RUNTIME_MODE"] || "PAPER";
+  if (mode !== "PAPER") {
+    const venueOk = Boolean(process.env["POLYMARKET_API_KEY"] && process.env["POLYMARKET_API_SECRET"] && process.env["POLYMARKET_API_PASSPHRASE"]);
+    if (!venueOk) {
+      console.log("⚠️  Polymarket API credentials incomplete (required for " + mode + ")");
+    } else {
+      console.log("✅ Polymarket API credentials present");
+    }
+  }
+
+  // 5. Live caps
+  if (mode !== "PAPER") {
+    const lossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+    if (!lossCap) {
+      console.log("⚠️  POLYROOT_MICRO_LIVE_LOSS_CAP_USD not set (required for " + mode + ")");
+      allOk = false;
+    } else {
+      console.log("✅ Loss cap configured: " + lossCap + " pUSD");
+    }
+  }
+
+  console.log("\n" + (allOk ? "✅ All checks passed" : "❌ Some checks failed"));
+  if (!allOk) process.exit(1);
+}
+
+/** Docker fix - restart postgres container. */
+async function runDockerFix(): Promise<void> {
+  console.log("\n🐳 Fixing Docker PostgreSQL...\n");
+  const { execSync } = await import("node:child_process");
+  try {
+    console.log("🔄 Restarting postgres container...");
+    execSync("docker compose restart postgres", { stdio: "inherit" });
+    console.log("\n✅ PostgreSQL restarted");
+  } catch (e) {
+    console.error("❌ Failed:", (e as Error).message);
+    process.exit(1);
+  }
+}
+
 /** Single wallet verification check result. */
 export interface WalletCheck {
   name: string;
@@ -702,8 +880,26 @@ export async function main(
     return;
   }
 
+  if (argv[0] === "status") {
+    await runStatus();
+    return;
+  }
+  if (argv[0] === "update") {
+    await runUpdate();
+    return;
+  }
+  if (argv[0] === "doctor") {
+    await runDoctor();
+    return;
+  }
+  if (argv[0] === "docker-fix") {
+    await runDockerFix();
+    return;
+  }
+
   // First-run onboarding (skip for subcommands)
-  if (argv[0] !== "wallet" && argv[0] !== "venue" && argv[0] !== "guard") {
+  if (argv[0] !== "wallet" && argv[0] !== "venue" && argv[0] !== "guard" &&
+      argv[0] !== "status" && argv[0] !== "update" && argv[0] !== "doctor" && argv[0] !== "docker-fix") {
     await runFirstTimeSetup();
   }
 

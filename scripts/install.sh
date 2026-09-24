@@ -105,7 +105,8 @@ link_binary() {
   cat > "${BIN_DIR}/polyroot" <<'EOF'
 #!/usr/bin/env bash
 # PolyRoot Agent launcher — delegates to installed copy
-exec "${HOME}/.polyroot/node_modules/.bin/tsx" "${HOME}/.polyroot/src/pm/runtime/src/cli.ts" "$@"
+# Use npx to ensure tsx is found regardless of PATH
+exec npx --yes tsx "${HOME}/.polyroot/src/pm/runtime/src/cli.ts" "$@"
 EOF
   chmod +x "${BIN_DIR}/polyroot"
   # Ensure ~/.local/bin is in PATH
