@@ -21,6 +21,7 @@ import {
   type VenueMode,
 } from "@polyroot/domain";
 import { venueActionGate } from "./policy.js";
+import { translateDomainOrderToLimit } from "./order-translation.js";
 import type { SubmitOutcome } from "./types.js";
 
 /** The minimal @polymarket/client surface this adapter depends on (0.9.0). */
@@ -28,6 +29,7 @@ export interface PolymarketClientLike {
   fetchOrderBook?(request: { assetId: string }): Promise<unknown>;
   fetchMarket?(request: { marketId: string }): Promise<unknown>;
   postOrder?(order: unknown): Promise<unknown>;
+  placeLimitOrder?(request: unknown): Promise<unknown>;
   cancelOrder?(request: { orderId: string }): Promise<unknown>;
   fetchOrder?(request: { orderId: string }): Promise<unknown>;
 }
@@ -62,6 +64,107 @@ function isClobSignedOrder(order: unknown): boolean {
   return CLOB_ORDER_FIELDS.every(
     (field) => (order as Record<string, unknown>)[field] !== undefined,
   );
+}
+
+/**
+ * Submit a domain order by translating it to a CLOB limit order. The
+ * client must expose `placeLimitOrder` (the real secure client does);
+ * otherwise refuse without any network call.
+ *
+ * Module-level (not a class method) so the frozen adapter surface in
+ * adapter-freeze.test.ts stays pinned.
+ */
+async function submitTranslatedOrder(
+  client: PolymarketClientLike,
+  order: unknown,
+): Promise<SubmitOutcome> {
+  if (typeof order !== "object" || order === null) {
+    return {
+      ok: false,
+      code: "VENUE_ORDER_SHAPE_UNSUPPORTED",
+      reason: "order is not an object; nothing translatable to submit",
+    };
+  }
+  const translated = translateDomainOrderToLimit(order as SignedOrder);
+  if (!translated.ok) {
+    return { ok: false, code: translated.code, reason: translated.reason };
+  }
+  if (typeof client.placeLimitOrder !== "function") {
+    return {
+      ok: false,
+      code: "VENUE_ORDER_SHAPE_UNSUPPORTED",
+      reason:
+        "translated CLOB limit order has nowhere to go: injected client lacks placeLimitOrder",
+    };
+  }
+  try {
+    const result = (await client.placeLimitOrder(translated.request)) as
+      | {
+          ok?: boolean;
+          orderId?: string;
+          code?: string;
+          message?: string;
+          success?: boolean;
+          orderID?: string;
+          errorMsg?: string;
+        }
+      | undefined;
+    // SDK 0.9 shape: { ok, orderId } / { ok: false, code, message }.
+    if (result?.ok === true) {
+      return {
+        ok: true,
+        result: {
+          success: true,
+          order_id: result.orderId,
+          timestamp: new Date(),
+        },
+      };
+    }
+    if (result?.ok === false) {
+      return {
+        ok: false,
+        code: "VENUE_REJECTED",
+        reason: result.message ?? result.code ?? "venue rejected order",
+      };
+    }
+    // Legacy shape: { success, orderID/orderId, errorMsg }.
+    const id = result?.orderID ?? result?.orderId;
+    const ok = Boolean(result?.success ?? id);
+    return ok
+      ? {
+          ok: true,
+          result: {
+            success: true,
+            order_id: id,
+            timestamp: new Date(),
+          },
+        }
+      : {
+          ok: false,
+          code: "VENUE_REJECTED",
+          reason:
+            (result as { errorMsg?: string } | undefined)?.errorMsg ??
+            "venue rejected order",
+        };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isNetwork =
+      /fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|network/i.test(
+        msg,
+      );
+    if (isNetwork) {
+      return {
+        ok: false,
+        code: "DEFINITELY_NOT_SENT",
+        reason: `network error before send: ${msg}`,
+      };
+    }
+    return {
+      ok: false,
+      code: "SUBMISSION_UNKNOWN",
+      reason: `venue call error (may have been accepted): ${msg}`,
+    };
+  }
 }
 
 export class PolymarketVenueAdapter {
@@ -182,10 +285,8 @@ export class PolymarketVenueAdapter {
 
   /**
    * Submit a typed signed order if and only if the venue-mode gate allows
-   * it. Only CLOB-shaped orders reach the SDK: our domain SignedOrder
-   * (order_id/market_id/price/size) is NOT a CLOB-signed order and must
-   * never be posted to the real exchange — refuse it fail-closed until
-   * domain→CLOB order translation is implemented.
+   * it. CLOB-shaped orders post directly; anything else goes through
+   * domain→CLOB translation, which refuses what it cannot map exactly.
    */
   async placeOrder(order: SignedOrder | unknown): Promise<SubmitOutcome> {
     const gate = venueActionGate(this._mode, "ORDER_SUBMIT");
@@ -193,12 +294,7 @@ export class PolymarketVenueAdapter {
       return { ok: false, code: gate.code, reason: gate.reason };
     }
     if (!isClobSignedOrder(order)) {
-      return {
-        ok: false,
-        code: "VENUE_ORDER_SHAPE_UNSUPPORTED",
-        reason:
-          "order is not a CLOB-signed order (missing tokenId/maker/takerAmount/salt/signatureType/signature); domain SignedOrder translation is not implemented",
-      };
+      return submitTranslatedOrder(this.client, order);
     }
     try {
       const result = (await this.client.postOrder?.(order)) as

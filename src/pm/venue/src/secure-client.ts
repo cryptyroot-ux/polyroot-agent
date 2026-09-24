@@ -13,6 +13,7 @@
 
 import { JsonRpcProvider, Wallet } from "ethers";
 import {
+  createPublicClient,
   createSecureClient,
   type Signer as SdkSigner,
   type TypedDataPayload,
@@ -106,6 +107,56 @@ export function buildSdkSigner(
       };
     }) as never,
   } as unknown as SdkSigner;
+}
+
+/**
+ * Public (unauthenticated) adapter for SHADOW mode: live market reads with
+ * zero secrets. Construction performs no network I/O; calls fail with the
+ * usual transport errors only when actually used.
+ */
+export function buildPublicVenueAdapter(): PolymarketVenueAdapter {
+  const client = createPublicClient();
+  return new PolymarketVenueAdapter(client as unknown as PolymarketClientLike);
+}
+
+export interface VenueCheckResult {
+  ok: boolean;
+  assetId: string;
+  yesPrice?: number | undefined;
+  noPrice?: number | undefined;
+  detail: string;
+}
+
+/**
+ * Read-only connectivity probe: fetch one order book and report prices.
+ * Used by `polyroot venue check` so operators verify live reads without
+ * starting the agent. Accepts an injected adapter for offline tests.
+ */
+export async function runVenueCheck(
+  assetId: string,
+  deps: { adapter?: PolymarketVenueAdapter } = {},
+): Promise<VenueCheckResult> {
+  const adapter = deps.adapter ?? buildPublicVenueAdapter();
+  try {
+    const snap = await adapter.getOrderBook(assetId);
+    if (snap.yes_price === undefined && snap.no_price === undefined) {
+      return {
+        ok: false,
+        assetId,
+        detail: `no live prices for ${assetId} (empty book or unknown market)`,
+      };
+    }
+    return {
+      ok: true,
+      assetId,
+      yesPrice: snap.yes_price,
+      noPrice: snap.no_price,
+      detail: `YES ${snap.yes_price ?? "—"} / NO ${snap.no_price ?? "—"}`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, assetId, detail: `venue read failed: ${msg}` };
+  }
 }
 
 export async function buildLiveVenueAdapter(

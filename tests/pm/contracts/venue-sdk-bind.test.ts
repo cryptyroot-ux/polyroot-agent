@@ -96,7 +96,95 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
     if (res.ok) assert.equal(res.result.order_id, "venue_123");
   });
 
-  it("placeOrder refuses domain-shaped orders with VENUE_ORDER_SHAPE_UNSUPPORTED", async () => {
+  it("submits translatable domain orders via placeLimitOrder", async () => {
+    let seen: unknown;
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async () => ({ bids: [], asks: [] }),
+      placeLimitOrder: async (req: unknown) => {
+        seen = req;
+        return { ok: true, orderId: "clob_1", status: "live" };
+      },
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    const res = await adapter.placeOrder({
+      order_id: "o1",
+      market_id: "12345",
+      side: "SELL",
+      price: 0.4,
+      size: 5,
+      fee_rate_bps: 0,
+      signature: "0xsig",
+      signer: "0x" + "1".repeat(40),
+      signed_at: new Date(0),
+      order_type: "LIMIT",
+    } as never);
+    assert.equal(res.ok, true);
+    assert.deepEqual(seen, {
+      assetId: "12345",
+      price: 0.4,
+      size: 5,
+      side: "SELL",
+      postOnly: false,
+    });
+    if (res.ok) assert.equal(res.result.order_id, "clob_1");
+  });
+
+  it("maps rejected 0.9 responses to VENUE_REJECTED", async () => {
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async () => ({ bids: [], asks: [] }),
+      placeLimitOrder: async () => ({
+        ok: false,
+        code: "INSUFFICIENT_BALANCE",
+        message: "no funds",
+      }),
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    const res = await adapter.placeOrder({
+      order_id: "o1",
+      market_id: "12345",
+      side: "BUY",
+      price: 0.5,
+      size: 1,
+      fee_rate_bps: 0,
+      signature: "0xsig",
+      signer: "0x" + "1".repeat(40),
+      signed_at: new Date(0),
+    } as never);
+    assert.equal(res.ok, false);
+    if (!res.ok) {
+      assert.equal(res.code, "VENUE_REJECTED");
+      assert.match(res.reason, /no funds/);
+    }
+  });
+
+  it("refuses FOK domain orders without calling the client", async () => {
+    let called = 0;
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async () => ({ bids: [], asks: [] }),
+      placeLimitOrder: async () => {
+        called += 1;
+        return { ok: true, orderId: "x" };
+      },
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    const res = await adapter.placeOrder({
+      order_id: "o1",
+      market_id: "12345",
+      side: "BUY",
+      price: 0.5,
+      size: 1,
+      fee_rate_bps: 0,
+      signature: "0xsig",
+      signer: "0x" + "1".repeat(40),
+      signed_at: new Date(0),
+      order_type: "FOK",
+    } as never);
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "VENUE_ORDER_TYPE_UNSUPPORTED");
+    assert.equal(called, 0);
+  });
+
+  it("refuses opaque market ids without calling the client", async () => {
     let called = 0;
     const client: PolymarketClientLike = {
       fetchOrderBook: async () => ({ bids: [], asks: [] }),
@@ -112,13 +200,38 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
       side: "BUY",
       price: 0.5,
       size: 1,
-      salt: "s",
-      signature: "0x",
-      signer: "0x1",
-      funder: "0x2",
-      expiration: 1,
-      nonce: 1,
-    });
+      fee_rate_bps: 0,
+      signature: "0xsig",
+      signer: "0x" + "1".repeat(40),
+      signed_at: new Date(0),
+    } as never);
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "VENUE_MARKET_UNRESOLVED");
+    assert.equal(called, 0);
+  });
+
+  it("refuses translatable orders when the client lacks placeLimitOrder", async () => {
+    let called = 0;
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async () => ({ bids: [], asks: [] }),
+      postOrder: async () => {
+        called += 1;
+        return { success: true, orderID: "must-not-happen" };
+      },
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    const res = await adapter.placeOrder({
+      order_id: "o1",
+      market_id: "12345",
+      side: "BUY",
+      price: 0.5,
+      size: 1,
+      fee_rate_bps: 0,
+      signature: "0xsig",
+      signer: "0x" + "1".repeat(40),
+      signed_at: new Date(0),
+      order_type: "LIMIT",
+    } as never);
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, "VENUE_ORDER_SHAPE_UNSUPPORTED");
     assert.equal(called, 0);

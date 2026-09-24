@@ -94,9 +94,13 @@ All configuration is via environment variables (`.env`) or programmatic `Runtime
 | `RUNTIME_MODE` | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE` | No (default `PAPER`) |
 
 Live reads (order books, balances) go through the authenticated secure
-client. Order submission of domain `SignedOrder`s is refused with
-`VENUE_ORDER_SHAPE_UNSUPPORTED` until domain→CLOB order translation lands;
-only fully-formed CLOB-signed orders reach `postOrder`.
+client. Domain `SignedOrder`s translate to CLOB limit orders only when
+they carry a real asset id (`market_id` as hex/decimal token id),
+`order_type` `LIMIT`/`POST_ONLY`, no expiration, and valid price/size;
+anything else is refused fail-closed (`VENUE_MARKET_UNRESOLVED`,
+`VENUE_ORDER_TYPE_UNSUPPORTED`, `VENUE_EXPIRATION_UNSUPPORTED`,
+`VENUE_PRICE_INVALID`, `VENUE_SIZE_INVALID`). Fully-formed CLOB-signed
+orders still post directly via `postOrder`.
 
 ### G4 Pipeline Configuration
 
@@ -346,6 +350,16 @@ curl \
   -H "Authorization: Bearer $POLYROOT_METRICS_OWNER_KEY" \
   http://127.0.0.1:9090/metrics
 ```
+
+### Probe live venue reads (no secrets, no agent started)
+```bash
+npm start -- wallet verify
+npm start -- venue check --asset <clob-token-id>
+```
+
+SHADOW mode uses the public client (no private key or API credentials);
+MICRO_LIVE/LIVE build the authenticated secure client. See
+`docs/RUNBOOK_SHADOW_MICROLIVE.md` for the 30-day SHADOW → MICRO_LIVE path.
 
 ---
 

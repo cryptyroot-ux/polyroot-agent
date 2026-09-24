@@ -32,6 +32,9 @@ export * from "./polymarket-adapter.js";
 // Authenticated secure-client factory for the live CLI path.
 export * from "./secure-client.js";
 
+// Domain SignedOrder → CLOB limit-order translation (pure, no network).
+export * from "./order-translation.js";
+
 // Permit store with atomic claim (PR-EXE-02, PR-OPS-02)
 export * from "./permit-store.js";
 

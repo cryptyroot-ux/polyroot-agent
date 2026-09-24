@@ -116,7 +116,11 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
 }
 
 import { createSignerFromEnv } from "@polyroot/signer";
-import { buildLiveVenueAdapter } from "@polyroot/venue";
+import {
+  buildLiveVenueAdapter,
+  buildPublicVenueAdapter,
+  runVenueCheck,
+} from "@polyroot/venue";
 
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
@@ -131,7 +135,9 @@ export async function startAgent(config: CLIConfig): Promise<void> {
           // domain SignedOrders stays refused until CLOB translation lands).
           venueAdapter: await buildLiveVenueAdapter(),
         }
-      : {},
+      : config.mode === "SHADOW"
+        ? { venueAdapter: buildPublicVenueAdapter() }
+        : {},
   );
   const pipeline = agent.pipeline as unknown as {
     runContinuous: () => Promise<void>;
@@ -313,6 +319,19 @@ export async function main(
     for (const c of result.checks) {
       console.log(`${c.ok ? "PASS" : "FAIL"} ${c.name}: ${c.detail}`);
     }
+    if (!result.ok) process.exit(1);
+    return;
+  }
+  if (argv[0] === "venue" && argv[1] === "check") {
+    const assetId = argv[argv.indexOf("--asset") + 1] ?? "";
+    if (!assetId || assetId.startsWith("--")) {
+      console.error("Usage: polyroot venue check --asset <token-id>");
+      process.exit(1);
+    }
+    const result = await runVenueCheck(assetId);
+    console.log(
+      `${result.ok ? "PASS" : "FAIL"} venue-check ${result.assetId}: ${result.detail}`,
+    );
     if (!result.ok) process.exit(1);
     return;
   }
