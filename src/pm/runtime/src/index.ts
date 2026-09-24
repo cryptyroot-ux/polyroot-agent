@@ -29,6 +29,7 @@ export {
 export * from "./g4-core.js";
 export * from "./reality-gap.js";
 export * from "./micro-live-guard.js";
+export * from "./live-guard-store.js";
 export * from "./platform-safety.js";
 export {
   bootstrapAgent,
@@ -42,8 +43,11 @@ export {
   startAgent,
   main,
   assertRuntimeEnv,
+  assertMicroLiveReady,
   loadDotEnv,
   runWalletVerify,
+  runGuardReset,
+  type GuardResetResult,
   type WalletCheck,
   type WalletVerifyResult,
 } from "./cli.js";

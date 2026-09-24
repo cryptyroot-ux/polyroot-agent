@@ -84,10 +84,11 @@ Kill criteria (hentikan saat salah satu terjadi):
 
 ## 6. Peringatan jujur (baca sebelum danai wallet)
 
-1. **Loss-cap latch & readiness gate belum di-wire ke runtime loop** — saat ini
-   murni fungsi + test. Artinya enforcement cap di MICRO_LIVE masih
-   mengandalkan monitoring manual + kill criteria di atas. Wiring otomatis
-   adalah pekerjaan berikutnya sebelum menaikkan limit.
+1. **Enforcement otomatis SUDAH di-wire** (sejak rilis berikutnya): exposure
+   cap, loss-cap latch persisten (DB `live_guard_state`, selamat dari
+   restart), dan gerbang startup SHADOW 30d/100-cluster. Buka latch hanya
+   via `polyroot guard reset --loss <pusd>` saat loss kembali di bawah cap.
+   Kill criteria manual di poin 5 tetap berlaku sebagai lapisan kedua.
 2. **Signer = hot key dari env** (KMS/HSM belum diimplementasikan). Batasi
    dana di dompet uji; anggap key bisa bocor.
 3. **LIVE penuh butuh Autonomy Charter + G5 gates.** MICRO_LIVE bukan jalan
