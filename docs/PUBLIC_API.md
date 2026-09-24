@@ -93,6 +93,9 @@ All configuration is via environment variables (`.env`) or programmatic `Runtime
 | `POLYMARKET_API_PASSPHRASE` | CLOB API passphrase | Yes (LIVE/MICRO) |
 | `POLYROOT_MICRO_LIVE_LOSS_CAP_USD` | Owner loss cap (pUSD); submit refused + latch engages without it | Yes (LIVE/MICRO) |
 | `POLYROOT_MICRO_LIVE_CAP_USD` | Exposure cap override (USD) | No (default `500`) |
+| `POLYROOT_MARKET_IDS` | Owner-curated CLOB token ids, comma-separated | Yes (SHADOW/LIVE/MICRO; PAPER uses mock) |
+| `POLYROOT_KEYSTORE_JSON` | Sealed key envelope (`wallet seal`) — preferred over raw key | No (either keystore or raw key) |
+| `POLYROOT_KEYSTORE_PASSPHRASE` | Keystore passphrase (required with keystore) | No |
 | `RUNTIME_MODE` | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE` | No (default `PAPER`) |
 
 Live enforcement, in order before every submission: exposure cap

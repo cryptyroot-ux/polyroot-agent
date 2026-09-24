@@ -17,6 +17,7 @@
 import keccak256 from "keccak256";
 import type { SignRequest, CryptoSigner } from "./index.js";
 import { computePayloadHash } from "./index.js";
+import { resolveWalletKey } from "./keystore.js";
 import elliptic from "elliptic";
 const { ec: EC } = elliptic;
 
@@ -184,19 +185,17 @@ export function createProductionCryptoSigner(
 }
 
 /**
- * Factory for creating signer from environment variables
- * Usage: createSignerFromEnv() reads PRIVATE_KEY_HEX from process.env
+ * Factory for creating signer from environment variables.
+ * Prefers the sealed keystore (POLYROOT_KEYSTORE_JSON + PASSPHRASE) when
+ * configured; falls back to PRIVATE_KEY_HEX / WALLET_PRIVATE_KEY.
  */
 export function createSignerFromEnv(chainId: number = 137): CryptoSigner {
-  const env = process.env as Record<string, string | undefined>;
-  const privateKeyHex =
-    env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]?.replace("0x", "");
-
-  if (!privateKeyHex) {
-    throw new Error(
-      "PRIVATE_KEY_HEX or WALLET_PRIVATE_KEY environment variable required for production signer",
-    );
-  }
+  const resolved = resolveWalletKey(
+    process.env as Record<string, string | undefined>,
+  );
+  const privateKeyHex = resolved.startsWith("0x")
+    ? resolved.slice(2)
+    : resolved;
 
   return createProductionCryptoSigner({ privateKeyHex, chainId });
 }

@@ -17,6 +17,11 @@ import type { MoneyKernel } from "@polyroot/risk";
 import type { SignerVault } from "@polyroot/signer";
 import type { Executor } from "@polyroot/executor";
 import { evaluateLossGuard, type LossGuardState } from "./micro-live-guard.js";
+import {
+  collectLiveInputs,
+  type LiveMarketInput,
+  type MarketSource,
+} from "@polyroot/venue";
 
 /* ─── Core G4 Types ──────────────────────────────────────────────────────── */
 
@@ -92,6 +97,12 @@ export interface G4CoreDeps {
    * modes: without a wired guard the order path refuses to submit.
    */
   liveGuard?: LiveGuardDeps;
+  /**
+   * Live market source (SHADOW and live modes). REQUIRED outside PAPER:
+   * loops refuse to run on mock data when real money or live reads are
+   * configured.
+   */
+  marketSource?: MarketSource;
 }
 
 /**
@@ -197,6 +208,7 @@ export interface CreateG4CoreOptions {
   ) => number;
   observability?: G4CoreObservability;
   liveGuard?: LiveGuardDeps;
+  marketSource?: MarketSource;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -214,6 +226,7 @@ export function createG4Core(options: CreateG4CoreOptions) {
     now: options.now,
     ...(options.observability ? { observability: options.observability } : {}),
     ...(options.liveGuard ? { liveGuard: options.liveGuard } : {}),
+    ...(options.marketSource ? { marketSource: options.marketSource } : {}),
   };
   return {
     config: options.config,
@@ -292,6 +305,27 @@ export function computeFinancialGate(
   }
 
   return "ALLOW";
+}
+
+/**
+ * Build one loop pass of market inputs. PAPER uses the mock fixture;
+ * every other mode REQUIRES a wired market source and NEVER falls back
+ * to mock data (a live-configured loop on mock markets would fabricate
+ * decisions).
+ */
+export async function buildLoopInputs(
+  config: Pick<G4CoreConfig, "mode">,
+  deps: Pick<G4CoreDeps, "marketSource">,
+): Promise<LiveMarketInput[]> {
+  if (config.mode === "PAPER") {
+    return [{ market_id: "mock_market_1", bid: 0.45, ask: 0.55 }];
+  }
+  if (!deps.marketSource) {
+    throw new Error(
+      "LIVE_LOOP_UNWIRED: SHADOW/MICRO_LIVE/LIVE require a wired marketSource; refusing to run on mock data",
+    );
+  }
+  return collectLiveInputs(deps.marketSource);
 }
 
 export async function executeG4Step(

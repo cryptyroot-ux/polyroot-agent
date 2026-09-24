@@ -24,6 +24,10 @@ export type TranslationResult =
 /** CLOB asset ids are hex or decimal token ids — never opaque labels. */
 const ASSET_ID_PATTERN = /^(0x[0-9a-fA-F]+|[0-9]+)$/;
 
+export function isClobAssetId(value: unknown): value is string {
+  return typeof value === "string" && ASSET_ID_PATTERN.test(value);
+}
+
 function fail(code: string, reason: string): TranslationResult {
   return { ok: false, code, reason };
 }
@@ -31,7 +35,7 @@ function fail(code: string, reason: string): TranslationResult {
 export function translateDomainOrderToLimit(
   order: SignedOrder,
 ): TranslationResult {
-  if (!ASSET_ID_PATTERN.test(order.market_id)) {
+  if (!isClobAssetId(order.market_id)) {
     return fail(
       "VENUE_MARKET_UNRESOLVED",
       `market_id ${JSON.stringify(order.market_id)} is not a CLOB asset id (hex or decimal token id)`,

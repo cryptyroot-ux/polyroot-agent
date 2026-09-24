@@ -27,6 +27,7 @@ import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
 import { PgLiveGuardStore } from "./live-guard-store.js";
+import { readMarketUniverse } from "@polyroot/venue";
 import {
   createForecastProviderFromEnv,
   type ForecastProvider,
@@ -232,7 +233,25 @@ export async function bootstrapAgent(
     createForecastProviderFromEnv();
   let warnedNoProvider = false;
 
-  // 8. Shared metrics + G4 Pipeline (observability wired to Metrics).
+  // 8. Market universe (fail-closed outside PAPER): the loop iterates
+  // exactly these owner-curated CLOB token ids — never mock data.
+  const marketUniverse =
+    mode === "PAPER" ? [] : readMarketUniverse(process.env);
+  const marketSource =
+    marketUniverse.length === 0
+      ? undefined
+      : {
+          universe: () => marketUniverse,
+          snapshot: async (marketId: string) => {
+            const snap = await venueAdapter.getOrderBook(marketId);
+            if (snap.yes_price === undefined || snap.no_price === undefined) {
+              return null;
+            }
+            return { bid: snap.yes_price, ask: snap.no_price };
+          },
+        };
+
+  // 9. Shared metrics + G4 Pipeline (observability wired to Metrics).
   const metrics = new Metrics();
 
   // Live enforcement inputs (fail-closed): an explicit owner loss cap is
@@ -283,6 +302,7 @@ export async function bootstrapAgent(
     venueMode: () => venueAdapter.mode,
     leaseEpoch: () => 1,
     now: () => new Date(),
+    ...(marketSource ? { marketSource } : {}),
     liveGuard: {
       loadLatch: () => liveGuardStore.load(),
       saveLatch: (s) => liveGuardStore.save(s),

@@ -442,6 +442,14 @@ export {
   type ProdSignerConfig,
 } from "./crypto-signer-prod.js";
 
+// Encrypted keystore (scrypt + AES-256-GCM) for key-at-rest protection
+export {
+  sealPrivateKey,
+  openKeystore,
+  resolveWalletKey,
+  type SealedKeystore,
+} from "./keystore.js";
+
 // Credential authentication contracts (CT-09, G0 half)
 export {
   verifyBodyHmac,

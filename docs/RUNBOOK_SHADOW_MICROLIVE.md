@@ -11,9 +11,16 @@
 ## 1. Prasyarat
 
 ```bash
-cp .env.example .env   # lalu isi DATABASE_URL, RPC_URL
+cp .env.example .env   # lalu isi DATABASE_URL, RPC_URL, POLYROOT_MARKET_IDS
 docker compose up -d postgres
 npm run migrate:latest
+```
+
+Opsional tapi disarankan — segel private key (jangan simpan hex mentah):
+
+```bash
+PRIVATE_KEY_HEX=0x... POLYROOT_KEYSTORE_PASSPHRASE=... npm start -- wallet seal --out /run/secrets/keystore.json
+# Lalu hapus raw key dari .env, isi POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE.
 ```
 
 ## 2. Smoke test (tanpa secret, tanpa agent)
@@ -30,9 +37,13 @@ SHADOW tidak butuh private key / API credentials (public client). Kalau
 ## 3. Menjalankan SHADOW 30 hari
 
 ```bash
-RUNTIME_MODE=SHADOW docker compose -f docker-compose.prod.yml up -d --build
+RUNTIME_MODE=SHADOW POLYROOT_MARKET_IDS=<id1,id2> docker compose -f docker-compose.prod.yml up -d --build
 curl http://127.0.0.1:9090/healthz
 ```
+
+Tanpa `POLYROOT_MARKET_IDS`, mode non-PAPER menolak start
+(`MARKET_UNIVERSE_MISSING`) — loop tidak akan pernah memakai data mock
+saat live/SHADOW dikonfigurasi.
 
 Monitoring harian:
 
