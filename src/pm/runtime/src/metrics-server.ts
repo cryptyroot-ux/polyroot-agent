@@ -10,15 +10,19 @@ import type { MetricsExporter } from "./metrics-exporter.js";
 /** Options for MetricsServer. Port 0 selects an ephemeral port (tests). */
 export interface MetricsServerOptions {
   exporter: MetricsExporter;
-  /** Owner API key (from env POLYROOT_METRICS_OWNER_KEY). Never logged. */
-  ownerKey: string;
+  /**
+   * Owner API key (from env POLYROOT_METRICS_OWNER_KEY). Never logged.
+   * Optional so public /healthz can run without exposing /metrics.
+   */
+  ownerKey?: string;
   host?: string;
   port?: number;
 }
 
 /**
  * Minimal Prometheus/health HTTP server (node:http only).
- * GET /metrics requires Bearer owner key; GET /healthz is public.
+ * GET /metrics requires a configured Bearer owner key and is disabled
+ * without one; GET /healthz is public.
  */
 export class MetricsServer {
   private readonly server: Server;
@@ -30,9 +34,8 @@ export class MetricsServer {
   private listeningPort: number | undefined;
 
   constructor(opts: MetricsServerOptions) {
-    if (!opts.ownerKey) throw new Error("METRICS_OWNER_KEY_REQUIRED");
     this.exporter = opts.exporter;
-    this.ownerKey = opts.ownerKey;
+    this.ownerKey = opts.ownerKey ?? "";
     this.host = opts.host ?? "127.0.0.1";
     this.port = opts.port ?? 9090;
     this.server = createServer((req, res) => {
@@ -86,7 +89,7 @@ export class MetricsServer {
         return;
       }
       if (url.pathname === "/metrics") {
-        if (!this.hasValidBearer(req.headers.authorization)) {
+        if (!this.ownerKey || !this.hasValidBearer(req.headers.authorization)) {
           res
             .writeHead(401, { "content-type": "text/plain" })
             .end("unauthorized");

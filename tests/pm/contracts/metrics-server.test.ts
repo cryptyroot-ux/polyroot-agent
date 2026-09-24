@@ -56,6 +56,28 @@ describe("MetricsServer HTTP contract", () => {
     }
   });
 
+  it("serves public /healthz while /metrics stays disabled without an owner key", async () => {
+    const server = new MetricsServer({
+      exporter: new MetricsExporter(new Metrics()),
+      host: "127.0.0.1",
+      port: 0,
+    });
+
+    const { port } = await server.start();
+    const base = `http://127.0.0.1:${port}`;
+    try {
+      const health = await fetch(`${base}/healthz`);
+      assert.equal(health.status, 200);
+      const body = (await health.json()) as { status: string };
+      assert.equal(body.status, "ok");
+
+      const metrics = await fetch(`${base}/metrics`);
+      assert.equal(metrics.status, 401);
+    } finally {
+      await server.stop();
+    }
+  });
+
   it("non-GET method returns 405", async () => {
     const { server, base } = await startServer();
     try {

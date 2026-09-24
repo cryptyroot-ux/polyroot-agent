@@ -140,25 +140,21 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     }) => Promise<unknown>;
   };
 
-  // Metrics HTTP server lifecycle (Task 5 follow-up). Disabled with a
-  // warning when POLYROOT_METRICS_OWNER_KEY is unset — never serve
-  // financial metrics without authentication.
+  // Metrics/health HTTP server for agent runs. The server is started for
+  // continuous runs so public /healthz is available; /metrics stays disabled
+  // without POLYROOT_METRICS_OWNER_KEY. `--once` exits before `start()`.
   const metricsOwnerKey = getEnv("POLYROOT_METRICS_OWNER_KEY") ?? "";
   const metricsHost = getEnv("POLYROOT_METRICS_HOST");
   const metricsPortRaw = getEnv("POLYROOT_METRICS_PORT");
-  const metricsServer = metricsOwnerKey
-    ? new MetricsServer({
-        exporter: new MetricsExporter(agent.metrics),
-        ownerKey: metricsOwnerKey,
-        ...(metricsHost !== undefined ? { host: metricsHost } : {}),
-        ...(metricsPortRaw !== undefined
-          ? { port: Number(metricsPortRaw) }
-          : {}),
-      })
-    : undefined;
-  if (!metricsServer) {
+  const metricsServer = new MetricsServer({
+    exporter: new MetricsExporter(agent.metrics),
+    ...(metricsOwnerKey ? { ownerKey: metricsOwnerKey } : {}),
+    ...(metricsHost !== undefined ? { host: metricsHost } : {}),
+    ...(metricsPortRaw !== undefined ? { port: Number(metricsPortRaw) } : {}),
+  });
+  if (!metricsOwnerKey) {
     console.warn(
-      "POLYROOT_METRICS_OWNER_KEY unset — /metrics endpoint disabled",
+      "POLYROOT_METRICS_OWNER_KEY unset — /metrics endpoint disabled; /healthz remains public",
     );
   }
 
@@ -186,13 +182,11 @@ export async function startAgent(config: CLIConfig): Promise<void> {
         console.error("Pipeline stop error:", err);
       }
     }
-    if (metricsServer) {
-      void metricsServer
-        .stop()
-        .catch((err: unknown) =>
-          console.error("Metrics server stop error:", err),
-        );
-    }
+    void metricsServer
+      .stop()
+      .catch((err: unknown) =>
+        console.error("Metrics server stop error:", err),
+      );
     // Close the shared PG pool so the event loop can drain, then exit.
     // Without this the process hangs on open pool sockets until SIGKILL.
     void agent.pool
@@ -213,9 +207,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   // Resolved without a signal (e.g. stop() called externally):
   // close the pool so the process can exit cleanly.
   if (!stopping) {
-    if (metricsServer) {
-      await metricsServer.stop().catch(() => undefined);
-    }
+    await metricsServer.stop().catch(() => undefined);
     await agent.pool.end().catch(() => undefined);
   }
 }
