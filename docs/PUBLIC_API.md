@@ -94,19 +94,15 @@ All configuration is via environment variables (`.env`) or programmatic `Runtime
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `G4_MICRO_LIVE_CAP_USD` | `500` | Max capital allocated in MICRO_LIVE (USDC). |
-| `G4_MIN_EDGE_AFTER_COST` | `0.03` | Minimum probability edge after fees. |
-| `G4_SHADOW_MIN_DAYS` | `30` | Minimum SHADOW baseline days before promotion. |
-| `G4_SHADOW_MIN_CLUSTERS` | `100` | Minimum resolved clusters for SHADOW promotion. |
-| `G4_REALITY_GAP_TOLERANCE_BPS` | `1000` | Max fill-rate gap (basis points) for promotion. |
-| `G4_SLIPPAGE_BIAS_TOLERANCE` | `0.005` | Max signed slippage bias for promotion. |
+| *(G4 tuning — edge thresholds, SHADOW criteria, MICRO_LIVE caps — are code constants in `src/pm/runtime/src/main.ts`, not environment variables.)* | | |
 
 ### Observability Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `METRICS_PORT` | `9090` | Prometheus metrics endpoint port. |
-| `HEALTH_PORT` | `8080` | Health check endpoint port. |
+| `POLYROOT_METRICS_OWNER_KEY` | *(unset)* | Bearer key for `GET /metrics`; unset disables the endpoint. |
+| `POLYROOT_METRICS_HOST` | `127.0.0.1` | Bind host for `/metrics` + `/healthz`. |
+| `POLYROOT_METRICS_PORT` | `9090` | Port for `/metrics` + `/healthz`. |
 | `LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
 
 ### Complete Example
@@ -127,66 +123,51 @@ NODE_ENV=production
 LOG_LEVEL=info
 RUNTIME_MODE=PAPER
 
-# G4 Pipeline Config
-G4_MICRO_LIVE_CAP_USD=500
-G4_MIN_EDGE_AFTER_COST=0.03
-G4_SHADOW_MIN_DAYS=30
-G4_SHADOW_MIN_CLUSTERS=100
+# G4 pipeline tuning lives in code (src/pm/runtime/src/main.ts), not env.
 
-# Observability
-METRICS_PORT=9090
-HEALTH_PORT=8080
+# Observability (single port serves both endpoints)
+POLYROOT_METRICS_OWNER_KEY=your-owner-key-here
+# POLYROOT_METRICS_HOST=127.0.0.1
+# POLYROOT_METRICS_PORT=9090
+
+# Forecast provider (optional; abstains when unset)
+# POLYROOT_FORECAST_PROVIDER=openai
+# POLYROOT_FORECAST_MODEL=gpt-4o-mini
+# OPENAI_API_KEY=sk-...
+# OPENAI_BASE_URL=https://api.openai.com/v1
+
+# Live wallet identity (MICRO_LIVE/LIVE only)
+# WALLET_ACCOUNT=0xYOUR_PROXY_ACCOUNT_HERE
+# WALLET_FUNDER=0xYOUR_FUNDER_HERE
 ```
 
 ---
 
-## Gateway API
+## HTTP Surface
 
-The gateway exposes HTTP/JSON endpoints for control, monitoring, and introspection.
+The agent exposes exactly two HTTP endpoints (single port, default `9090`,
+configurable via `POLYROOT_METRICS_HOST` / `POLYROOT_METRICS_PORT`). There is no control-plane HTTP API: runtime mode,
+intents, positions, and venue control are in-process (TypeScript interfaces
+in `@polyroot/runtime`, `@polyroot/control`, `@polyroot/venue`) and driven
+exclusively through the CLI (`npm start`). Any third-party document listing
+`/runtime/*`, `/intents/*`, `/positions`, `/portfolio`, or `/venues/*`
+endpoints describes a system that does not exist in this repo.
 
 ### Base URL
 ```
-http://<host>:<port>   # default port 3000 for control, 8080 for health, 9090 for metrics
+http://<host>:9090   # host/port via POLYROOT_METRICS_HOST / POLYROOT_METRICS_PORT
 ```
 
-### Health & Readiness
+### Endpoints
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/health` | GET | Public | Liveness probe — returns 200 if process alive. |
-| `/ready` | GET | Public | Readiness probe — checks DB, RPC, venue connectivity. |
-| `/metrics` | GET | Public | Prometheus metrics exposition (`METRICS_PORT`). |
-
-### Runtime Control
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/runtime/mode` | GET | Bearer | Current runtime mode and state. |
-| `/runtime/mode` | POST | Bearer | Request mode transition (validates transition rules). |
-| `/runtime/status` | GET | Bearer | Full status: mode, health, capital, positions, metrics. |
-
-### Trade Intents (AI → Gateway)
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/intents` | POST | Bearer | Submit a `TradeIntent` for validation and execution. |
-| `/intents/:id` | GET | Bearer | Query intent status and fill details. |
-| `/intents` | GET | Bearer | List recent intents with filters. |
-
-### Positions & Portfolio
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/positions` | GET | Bearer | Current positions across all markets. |
-| `/portfolio` | GET | Bearer | Aggregated portfolio: capital, PnL, exposure. |
-
-### Venue & Market Data
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/venues` | GET | Bearer | Registered venues and their modes. |
-| `/venues/:id/mode` | POST | Bearer | Set venue mode (`NORMAL`, `POST_ONLY`, etc.). |
-| `/markets/:id/snapshot` | GET | Public | Current order book snapshot (yes/no prices, depth). |
+| `/healthz` | GET | Public | Liveness probe — `{"status":"ok","uptime_s":N}`. Used by the Dockerfile HEALTHCHECK. |
+| `/metrics` | GET | Bearer owner key | Prometheus exposition (`POLYROOT_METRICS_OWNER_KEY`). Unset key = endpoint disabled. |
 
 ### Authentication
-- **Bearer Token** required for all non-public endpoints.
-- Token configured via `GATEWAY_API_TOKEN` env var (min 32 chars).
-- Clock-skew tolerant (≤ 30s).
+- `/metrics` requires `Authorization: Bearer <POLYROOT_METRICS_OWNER_KEY>`,
+  compared timing-safe; missing/invalid key yields `401` with no detail.
+- No other HTTP authentication exists because no other HTTP endpoints exist.
 
 ---
 
@@ -247,29 +228,23 @@ interface CryptoSigner {
 
 ## Observability
 
-### Prometheus Metrics (`:9090/metrics`)
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `polyroot_intents_total` | Counter | `mode`, `result` | Total intents processed. |
-| `polyroot_fills_total` | Counter | `market`, `side` | Filled orders. |
-| `polyroot_capital_reserved` | Gauge | `currency` | Capital currently reserved. |
-| `polyroot_capital_available` | Gauge | `currency` | Capital available for new intents. |
-| `polyroot_pnl_usd` | Gauge | `market` | Realized + unrealized PnL. |
-| `polyroot_reality_gap_fill_rate` | Gauge | `market` | Shadow vs live fill rate gap (pp). |
-| `polyroot_venue_mode` | Gauge | `venue`, `mode` | Current venue mode (enum). |
-| `polyroot_executor_latency_ms` | Histogram | `operation` | End-to-end latency per operation. |
+### Prometheus Metrics (`:9090/metrics`, Bearer owner key)
+| Metric | Type | Description |
+|--------|------|-------------|
+| `g4_total_orders_total` | Counter | Total orders processed. |
+| `g4_filled_orders_total` | Counter | Filled orders. |
+| `g4_total_pnl_total` | Gauge | Total PnL. |
+| `g4_total_fees_total` | Gauge | Total fees. |
+| `g4_max_drawdown` | Gauge | Max drawdown. |
+| `g4_fill_ratio` | Gauge | Fill ratio. |
+| `g4_current_exposure_usd` | Gauge | Current exposure (USD). |
+| `g4_max_exposure_usd` | Gauge | Max exposure (USD). |
 
-### Health Checks (`:8080/health`, `:8080/ready`)
+### Health Check (`:9090/healthz`, public)
 ```json
 {
-  "status": "healthy",
-  "checks": {
-    "database": "ok",
-    "rpc": "ok",
-    "venue": "ok",
-    "signer": "ok"
-  },
-  "timestamp": "2026-01-15T10:30:00Z"
+  "status": "ok",
+  "uptime_s": 123
 }
 ```
 
@@ -292,45 +267,18 @@ Secrets (private keys, tokens) are automatically redacted.
 
 ## Deployment Modes
 
-### Development (`npm run dev`)
-- Runs gateway + executor in single process.
-- Hot reload via `tsx` watch mode.
-- PAPER mode by default.
+### Development
+- `npm start` runs the agent CLI (`src/pm/runtime/src/cli.ts`, PAPER by default).
+- `npm run dev` runs workspace watch mode (turbo).
+- `docker compose up -d postgres` starts local PostgreSQL; verify with
+  `npm start -- wallet verify` (no agent started, no network).
 
 ### Production (Docker Compose)
-```yaml
-# docker-compose.prod.yml
-services:
-  gateway:
-    image: polyroot/gateway:latest
-    ports: ["3000:3000", "8080:8080", "9090:9090"]
-    env_file: .env
-    depends_on: [postgres, redis]
-  
-  executor:
-    image: polyroot/executor:latest
-    env_file: .env
-    depends_on: [gateway]
-  
-  postgres:
-    image: postgres:16-alpine
-    volumes: [postgres-data:/var/lib/postgresql/data]
-    environment:
-      POSTGRES_DB: polyroot
-      POSTGRES_USER: polyroot
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-  
-  redis:
-    image: redis:7-alpine
-    volumes: [redis-data:/data]
-```
-
-### Kubernetes (Helm)
-Helm chart available in `deploy/helm/polyroot` with values for:
-- Replica counts, resource limits.
-- Ingress + TLS termination.
-- Prometheus ServiceMonitor.
-- Secret management via ExternalSecrets.
+`docker-compose.prod.yml` runs exactly two services — no redis, no gateway,
+no Helm chart exists in this repo:
+- `postgres` (postgres:16-alpine, health-gated).
+- `agent` (the runtime CLI, `RUNTIME_MODE` default `PAPER`,
+  `/metrics` + `/healthz` on `127.0.0.1:9090`).
 
 ---
 
