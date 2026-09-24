@@ -77,6 +77,36 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
     };
     const adapter = new PolymarketVenueAdapter(client);
     const res = await adapter.placeOrder({
+      maker: "0x" + "1".repeat(40),
+      takerAmount: "1000000",
+      makerAmount: "500000",
+      tokenId: "123",
+      salt: "1",
+      expiration: 9999999999,
+      side: 0,
+      orderType: 0,
+      signatureType: 0,
+      signer: "0x" + "1".repeat(40),
+      signature: "0x" + "2".repeat(130),
+      timestamp: "1",
+      builder: "0x" + "0".repeat(40),
+      metadata: "0x",
+    } as never);
+    assert.equal(res.ok, true);
+    if (res.ok) assert.equal(res.result.order_id, "venue_123");
+  });
+
+  it("placeOrder refuses domain-shaped orders with VENUE_ORDER_SHAPE_UNSUPPORTED", async () => {
+    let called = 0;
+    const client: PolymarketClientLike = {
+      fetchOrderBook: async () => ({ bids: [], asks: [] }),
+      postOrder: async () => {
+        called += 1;
+        return { success: true, orderID: "must-not-happen" };
+      },
+    };
+    const adapter = new PolymarketVenueAdapter(client);
+    const res = await adapter.placeOrder({
       order_id: "o1",
       market_id: "m1",
       side: "BUY",
@@ -89,8 +119,9 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
       expiration: 1,
       nonce: 1,
     });
-    assert.equal(res.ok, true);
-    if (res.ok) assert.equal(res.result.order_id, "venue_123");
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "VENUE_ORDER_SHAPE_UNSUPPORTED");
+    assert.equal(called, 0);
   });
 
   it("cancelOrder calls SDK cancelOrder({ orderId }) shape", async () => {

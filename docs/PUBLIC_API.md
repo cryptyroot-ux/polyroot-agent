@@ -88,7 +88,15 @@ All configuration is via environment variables (`.env`) or programmatic `Runtime
 | `WALLET_ADDRESS` | Derived wallet address (0x-prefixed) | Yes (LIVE/MICRO) |
 | `CHAIN_ID` | Polygon = 137 | Yes (LIVE/MICRO) |
 | `RPC_URL` | Polygon RPC endpoint (HTTPS) | Yes (LIVE/MICRO) |
+| `POLYMARKET_API_KEY` | CLOB API key (reuse mode; never derived implicitly) | Yes (LIVE/MICRO) |
+| `POLYMARKET_API_SECRET` | CLOB API secret | Yes (LIVE/MICRO) |
+| `POLYMARKET_API_PASSPHRASE` | CLOB API passphrase | Yes (LIVE/MICRO) |
 | `RUNTIME_MODE` | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE` | No (default `PAPER`) |
+
+Live reads (order books, balances) go through the authenticated secure
+client. Order submission of domain `SignedOrder`s is refused with
+`VENUE_ORDER_SHAPE_UNSUPPORTED` until domain→CLOB order translation lands;
+only fully-formed CLOB-signed orders reach `postOrder`.
 
 ### G4 Pipeline Configuration
 
@@ -139,6 +147,11 @@ POLYROOT_METRICS_OWNER_KEY=your-owner-key-here
 # Live wallet identity (MICRO_LIVE/LIVE only)
 # WALLET_ACCOUNT=0xYOUR_PROXY_ACCOUNT_HERE
 # WALLET_FUNDER=0xYOUR_FUNDER_HERE
+
+# CLOB API credentials (MICRO_LIVE/LIVE only)
+# POLYMARKET_API_KEY=
+# POLYMARKET_API_SECRET=
+# POLYMARKET_API_PASSPHRASE=
 ```
 
 ---

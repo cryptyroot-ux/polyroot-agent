@@ -116,7 +116,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
 }
 
 import { createSignerFromEnv } from "@polyroot/signer";
-import { PolymarketVenueAdapter } from "@polyroot/venue";
+import { buildLiveVenueAdapter } from "@polyroot/venue";
 
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
@@ -127,7 +127,9 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     isLive
       ? {
           cryptoSigner: createSignerFromEnv(),
-          venueAdapter: new PolymarketVenueAdapter({}),
+          // Authenticated secure client (reads live books; submission of
+          // domain SignedOrders stays refused until CLOB translation lands).
+          venueAdapter: await buildLiveVenueAdapter(),
         }
       : {},
   );
