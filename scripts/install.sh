@@ -95,7 +95,7 @@ install_deps() {
 build() {
   log "Building all packages..."
   cd "${INSTALL_DIR}"
-  npm run build
+  npx turbo run build
   ok "Build complete"
 }
 
