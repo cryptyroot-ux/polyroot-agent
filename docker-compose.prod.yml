@@ -34,24 +34,35 @@ services:
       - ALL
     restart: unless-stopped
 
-  executor:
+  agent:
     build:
       context: .
       dockerfile: Dockerfile
       target: runtime
-    container_name: polyroot-prod-executor
+    container_name: polyroot-prod-agent
+    command:
+      ["node", "src/pm/runtime/dist/cli.js", "--mode", "${RUNTIME_MODE:-PAPER}"]
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-secure_postgres_password}@postgres:5432/polyroot_prod
-      POLYMARKET_MODE: ${POLYMARKET_MODE:-PAPER}
-      WALLET_PRIVATE_KEY: ${WALLET_PRIVATE_KEY}
-      WALLET_ADDRESS: ${WALLET_ADDRESS}
+      KMS_KEY_ID: ${KMS_KEY_ID:-local-dev-key}
+      RUNTIME_MODE: ${RUNTIME_MODE:-PAPER}
+      WALLET_PRIVATE_KEY: ${WALLET_PRIVATE_KEY:-}
+      WALLET_ADDRESS: ${WALLET_ADDRESS:-}
+      WALLET_ACCOUNT: ${WALLET_ACCOUNT:-}
+      WALLET_FUNDER: ${WALLET_FUNDER:-}
       CHAIN_ID: ${CHAIN_ID:-137}
       RPC_URL: ${RPC_URL:-https://polygon-rpc.com}
-      EXECUTOR_PORT: 3001
+      POLYROOT_METRICS_OWNER_KEY: ${POLYROOT_METRICS_OWNER_KEY:-}
+      POLYROOT_METRICS_HOST: "0.0.0.0"
+      POLYROOT_METRICS_PORT: 9090
+      POLYROOT_FORECAST_PROVIDER: ${POLYROOT_FORECAST_PROVIDER:-none}
+      POLYROOT_FORECAST_MODEL: ${POLYROOT_FORECAST_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
-      - "127.0.0.1:3001:3001"
+      - "127.0.0.1:9090:9090"
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,40 +76,6 @@ services:
     tmpfs:
       - /tmp
     mem_limit: 1g
-    restart: unless-stopped
-
-  gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
-    container_name: polyroot-prod-gateway
-    command: ["node", "src/pm/control/dist/index.js"]
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-secure_postgres_password}@postgres:5432/polyroot_prod
-      GATEWAY_PORT: 3000
-      GATEWAY_HOST: 0.0.0.0
-      EXECUTOR_URL: http://executor:3001
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      OWNER_API_KEY: ${OWNER_API_KEY}
-    ports:
-      - "127.0.0.1:3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      executor:
-        condition: service_started
-    networks:
-      - polyroot-prod-network
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp
-    mem_limit: 512m
     restart: unless-stopped
 
 volumes:

@@ -153,7 +153,17 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
       leaseEpoch: 1,
     });
     const pipeline = createG4Pipeline({
-      config: { mode: initialMode, minEdgeAfterCost: 0.01 },
+      config: {
+        mode: initialMode,
+        minEdgeAfterCost: 0.01,
+        // Deterministic fills: the paper simulator is probabilistic by
+        // default, which flakes the filledOrders assertion.
+        paperFillConfig: {
+          cancelProbability: 0,
+          partialFraction: 1,
+          latencyMs: 0,
+        },
+      },
       kernel,
       signer,
       executor,

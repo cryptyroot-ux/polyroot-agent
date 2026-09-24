@@ -7,7 +7,7 @@ deterministic **Executor** signs and submits orders. The AI never holds private
 keys.
 
 > **Status: v1.1-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
-> Production-ready with G4 autonomous pipeline, G5 infrastructure, and 365 passing tests.
+> Production-ready with G4 autonomous pipeline, G5 infrastructure, and 597 passing tests (585 contract + 12 property).
 > Default mode is `PAPER`. Live trading requires explicit Autonomy Charter commissioning.
 
 ---
@@ -94,13 +94,13 @@ npm run migrate:latest
 
 ```bash
 npm run build
-npm run dev          # Starts gateway + executor in PAPER mode
+npm start            # Starts the agent CLI in PAPER mode (see RUNTIME_MODE)
 ```
 
 ### 6. Verify Installation
 
 ```bash
-npm run test:unit        # 341 contract + 12 property + 12 unit = 365 tests
+npm run test:unit        # 585 contract + 12 property = 597 tests
 npm run traceability     # 96/96 structural traceability
 npm run build            # 13/13 packages pass
 npm run lint && npm run typecheck
@@ -178,15 +178,23 @@ LOG_LEVEL=info
 # START WITH PAPER FOR VERIFICATION
 RUNTIME_MODE=PAPER
 
-# G4 Pipeline Config
-G4_MICRO_LIVE_CAP_USD=500
-G4_MIN_EDGE_AFTER_COST=0.03
-G4_SHADOW_MIN_DAYS=30
-G4_SHADOW_MIN_CLUSTERS=100
+# G4 Pipeline tuning (code constants in src/pm/runtime/src/main.ts, not env)
+# minEdgeAfterCost=0.03, SHADOW criteria, MICRO_LIVE capital cap
 
-# Observability
-METRICS_PORT=9090
-HEALTH_PORT=8080
+# Observability (single port serves both endpoints)
+POLYROOT_METRICS_OWNER_KEY=your-owner-key-here
+# POLYROOT_METRICS_HOST=127.0.0.1
+# POLYROOT_METRICS_PORT=9090
+
+# Forecast provider (optional; abstains when unset)
+# POLYROOT_FORECAST_PROVIDER=openai
+# POLYROOT_FORECAST_MODEL=gpt-4o-mini
+# OPENAI_API_KEY=sk-...
+# OPENAI_BASE_URL=https://api.openai.com/v1
+
+# Live wallet identity (required for MICRO_LIVE/LIVE)
+# WALLET_ACCOUNT=0xYOUR_PROXY_ACCOUNT_HERE
+# WALLET_FUNDER=0xYOUR_FUNDER_HERE
 ```
 
 ### 6. Run Migrations
@@ -207,11 +215,11 @@ npm run migrate:latest
 | Database connection refused     | Postgres not running or wrong URL     | Verify `docker compose ps` or local service, check `DATABASE_URL` in `.env`                |
 | Wallet errors: invalid key      | Incorrect private key format          | Must be 0x-prefixed 64 hex bytes (32 bytes)                                                |
 | RPC timeout/failure             | Network or endpoint issue             | Test RPC URL with curl, verify Polygon Mainnet reachable                                   |
-| Gateway fails to start          | Port already in use                   | Kill existing process on 3000/8080/9090 or change ports                                    |
-| MICRO_LIVE rejects orders       | Capital cap exceeded                  | Reduce intent size or increase `G4_MICRO_LIVE_CAP_USD`                                     |
+| Metrics port in use             | Port already in use                   | Kill existing process on 9090 or set `POLYROOT_METRICS_PORT`                               |
+| MICRO_LIVE rejects orders       | Capital cap exceeded                  | Reduce intent size or raise the commissioned cap in code                                   |
 | SHADOW→MICRO promotion blocked  | Reality gap or slippage bias too high | Wait for more evidence, adjust tolerances                                                  |
 | Gitleaks detects secrets        | Accidental credential in code/logs    | Remove secrets, run `git reset --hard`, add to `.gitleaksignore` if false positive         |
-| Observability metrics missing   | Metrics server not started            | Ensure `METRICS_PORT` and `HEALTH_PORT` are set and not firewalled                         |
+| Observability metrics missing   | Metrics server not started            | Set `POLYROOT_METRICS_OWNER_KEY` (serves `:9090/metrics` + `/healthz`)                     |
 
 ### Common Commands
 
@@ -258,22 +266,22 @@ See [`docs/PUBLIC_API.md`](docs/PUBLIC_API.md) for full API reference, runtime m
 
 ### Environment Variables (`.env`)
 
-| Variable                 | Description                                   | Example                                                         |
-| ------------------------ | --------------------------------------------- | --------------------------------------------------------------- |
-| `DATABASE_URL`           | PostgreSQL connection string                  | `postgresql://polyroot:secure_password@localhost:5432/polyroot` |
-| `WALLET_PRIVATE_KEY`     | Deposit wallet private key (0x-prefixed)      | `0xa1b2c3d4...`                                                 |
-| `WALLET_ADDRESS`         | Derived wallet address (0x-prefixed)          | `0xAbCdEf12...`                                                 |
-| `CHAIN_ID`               | Polygon = 137                                 | `137`                                                           |
-| `RPC_URL`                | Polygon RPC endpoint (HTTPS)                  | `https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY`             |
-| `NODE_ENV`               | `development` \| `production`                 | `production`                                                    |
-| `LOG_LEVEL`              | `debug` \| `info` \| `warn` \| `error`        | `info`                                                          |
-| `RUNTIME_MODE`           | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE` | `PAPER`                                                         |
-| `G4_MICRO_LIVE_CAP_USD`  | Max capital in MICRO_LIVE (USDC)              | `500`                                                           |
-| `G4_MIN_EDGE_AFTER_COST` | Min probability edge after fees               | `0.03`                                                          |
-| `G4_SHADOW_MIN_DAYS`     | Min SHADOW baseline days                      | `30`                                                            |
-| `G4_SHADOW_MIN_CLUSTERS` | Min resolved clusters for SHADOW              | `100`                                                           |
-| `METRICS_PORT`           | Prometheus metrics port                       | `9090`                                                          |
-| `HEALTH_PORT`            | Health check port                             | `8080`                                                          |
+| Variable                             | Description                                       | Example                                                         |
+| ------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------- |
+| `DATABASE_URL`                       | PostgreSQL connection string                      | `postgresql://polyroot:secure_password@localhost:5432/polyroot` |
+| `WALLET_PRIVATE_KEY`                 | Deposit wallet private key (0x-prefixed)          | `0xa1b2c3d4...`                                                 |
+| `WALLET_ADDRESS`                     | Derived wallet address (0x-prefixed)              | `0xAbCdEf12...`                                                 |
+| `CHAIN_ID`                           | Polygon = 137                                     | `137`                                                           |
+| `RPC_URL`                            | Polygon RPC endpoint (HTTPS)                      | `https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY`             |
+| `NODE_ENV`                           | `development` \| `production`                     | `production`                                                    |
+| `LOG_LEVEL`                          | `debug` \| `info` \| `warn` \| `error`            | `info`                                                          |
+| `RUNTIME_MODE`                       | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE`     | `PAPER`                                                         |
+| `POLYROOT_METRICS_OWNER_KEY`         | Bearer key for `GET /metrics` (`/healthz` public) | _(unset = endpoint disabled)_                                   |
+| `POLYROOT_METRICS_PORT`              | Metrics + health port                             | `9090`                                                          |
+| `POLYROOT_FORECAST_PROVIDER`         | `openai` to enable, else abstain                  | `none`                                                          |
+| `POLYROOT_FORECAST_MODEL`            | Model name for the forecast provider              | _(required when enabled)_                                       |
+| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | Credentials for OpenAI-compatible gateway         | _(required when enabled)_                                       |
+| `WALLET_ACCOUNT` / `WALLET_FUNDER`   | Distinct deposit-wallet addresses (live only)     | _(required for MICRO_LIVE/LIVE)_                                |
 
 ---
 

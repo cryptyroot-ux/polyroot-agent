@@ -200,7 +200,17 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
       leaseEpoch: 1,
     });
     const pipeline = createG4Pipeline({
-      config: { mode: "SHADOW", minEdgeAfterCost: 0.01 },
+      config: {
+        mode: "SHADOW",
+        minEdgeAfterCost: 0.01,
+        // Deterministic fills: the paper simulator is probabilistic by
+        // default, which flakes this assertion (FILLED vs CANCELLED).
+        paperFillConfig: {
+          cancelProbability: 0,
+          partialFraction: 1,
+          latencyMs: 0,
+        },
+      },
       kernel,
       signer,
       executor,
