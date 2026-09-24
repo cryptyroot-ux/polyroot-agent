@@ -1,6 +1,45 @@
+import { existsSync } from "node:fs";
 import { bootstrapAgent } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
+
+/** Load .env via Node's native loader when present (never overrides real env). */
+export function loadDotEnv(dotenvPath = ".env"): void {
+  if (existsSync(dotenvPath)) {
+    process.loadEnvFile(dotenvPath);
+  }
+}
+
+/**
+ * Fail-closed env validation beyond parseArgs. PAPER/SHADOW need only the
+ * database; live modes additionally require an explicit wallet key and the
+ * distinct deposit-wallet account/funder addresses.
+ */
+export function assertRuntimeEnv(
+  mode: CLIConfig["mode"],
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const isLive = mode === "MICRO_LIVE" || mode === "LIVE";
+  if (!isLive) return;
+  const hasKey = Boolean(env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]);
+  if (!hasKey) {
+    throw new Error(
+      "LIVE_ENV_MISSING: PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY) is required for MICRO_LIVE/LIVE",
+    );
+  }
+  const account = env["WALLET_ACCOUNT"];
+  const funder = env["WALLET_FUNDER"];
+  if (!account || !funder) {
+    throw new Error(
+      "LIVE_ENV_MISSING: WALLET_ACCOUNT and WALLET_FUNDER are required for MICRO_LIVE/LIVE (must differ from the signer address)",
+    );
+  }
+  if (account.toLowerCase() === funder.toLowerCase()) {
+    throw new Error(
+      "LIVE_ENV_INVALID: WALLET_ACCOUNT and WALLET_FUNDER must be distinct (WAL-03)",
+    );
+  }
+}
 
 export interface CLIConfig {
   mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
@@ -171,7 +210,9 @@ export async function startAgent(config: CLIConfig): Promise<void> {
 export async function main(
   argv: string[] = process.argv.slice(2),
 ): Promise<void> {
+  loadDotEnv();
   const config = parseArgs(argv);
+  assertRuntimeEnv(config.mode);
   await startAgent(config);
 }
 

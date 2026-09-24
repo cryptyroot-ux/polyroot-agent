@@ -763,6 +763,7 @@ export class PgCatalystBus {
 }
 
 export * from "./catalyst-gate.js";
+export * from "./forecast-provider.js";
 
 /* ─── minor re-exports ───────────────────────────────────────────────── */
 

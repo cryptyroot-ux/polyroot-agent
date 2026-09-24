@@ -29,6 +29,21 @@ export interface ProdSignerConfig {
   chainId?: number;
 }
 
+/**
+ * Derive the Ethereum address for a private key (0x-prefix optional).
+ * Used to build the live WalletIdentity from the user's configured key —
+ * the signer address must match the key that actually signs (WAL-03).
+ */
+export function deriveAddressFromPrivateKey(privateKeyHex: string): string {
+  const normalized = privateKeyHex.startsWith("0x")
+    ? privateKeyHex.slice(2)
+    : privateKeyHex;
+  const keyPair = loadKeypair(normalized);
+  const publicKeyNoPrefix = keyPair.publicKey.slice(1); // remove 0x04 prefix
+  const addressHash = keccak256(publicKeyNoPrefix);
+  return "0x" + addressHash.slice(-20).toString("hex");
+}
+
 interface KeyPair {
   privateKey: Buffer;
   publicKey: Buffer;

@@ -8,7 +8,12 @@
 import { Pool } from "pg";
 import { createPgStores } from "@polyroot/risk";
 import { MoneyKernel } from "@polyroot/risk";
-import { SignerVault, type CryptoSigner } from "@polyroot/signer";
+import { createHash } from "node:crypto";
+import {
+  SignerVault,
+  deriveAddressFromPrivateKey,
+  type CryptoSigner,
+} from "@polyroot/signer";
 import { PolymarketVenueAdapter } from "@polyroot/venue";
 import {
   PgPermitStore,
@@ -21,6 +26,10 @@ import { Executor } from "@polyroot/executor";
 import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
+import {
+  createForecastProviderFromEnv,
+  type ForecastProvider,
+} from "@polyroot/intelligence";
 import type { G4CoreMetrics } from "./g4-core.js";
 
 /**
@@ -36,6 +45,80 @@ export function recordG4Metrics(metrics: Metrics, m: G4CoreMetrics): void {
   metrics.gauge("fillRatio", m.fillRatio);
   metrics.gauge("currentExposureUsd", m.currentExposureUsd);
   metrics.gauge("maxExposureUsd", m.maxExposureUsd);
+}
+
+/** PAPER/SHADOW placeholder identity (mock venue — never touches real funds). */
+const PAPER_WALLET_IDENTITY: WalletIdentity = {
+  schema_version: "1.1",
+  wallet_id: "00000000-0000-0000-0000-000000000001",
+  wallet_type: "DEPOSIT_WALLET",
+  signer_address: "0xSIGNER_ADDRESS_1111111111111111",
+  account_wallet: "0xACCOUNT_ADDRESS_22222222222222",
+  funder: "0xFUNDER_ADDRESS_3333333333333333",
+  chain_id: 137,
+  verified_at: new Date("2026-01-01T00:00:00.000Z"),
+};
+
+/**
+ * Deterministic wallet id (UUID-style) derived from the signer address.
+ * Stable across restarts so lease fencing and recovery stay consistent
+ * for the same wallet.
+ */
+export function deterministicWalletId(signerAddress: string): string {
+  const digest = createHash("sha256")
+    .update(`polyroot-wallet-id-v1:${signerAddress.toLowerCase()}`)
+    .digest();
+  const b6 = digest[6] ?? 0;
+  const b8 = digest[8] ?? 0;
+  digest[6] = (b6 & 0x0f) | 0x40; // version 4
+  digest[8] = (b8 & 0x3f) | 0x80; // variant RFC 4122
+  const hex = digest.toString("hex");
+  return (
+    `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-` +
+    `${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+  );
+}
+
+/**
+ * Build the runtime WalletIdentity. Live modes derive the signer address
+ * from the user's configured key and require distinct account/funder
+ * addresses (WAL-03); PAPER/SHADOW keep the mock placeholder.
+ */
+export function buildWalletIdentity(
+  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE",
+  env: NodeJS.ProcessEnv = process.env,
+): WalletIdentity {
+  if (mode === "PAPER" || mode === "SHADOW")
+    return { ...PAPER_WALLET_IDENTITY };
+  const rawKey = env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"] ?? "";
+  const signerAddress = deriveAddressFromPrivateKey(rawKey);
+  const account = env["WALLET_ACCOUNT"] ?? "";
+  const funder = env["WALLET_FUNDER"] ?? "";
+  if (!account || !funder) {
+    throw new Error(
+      "LIVE_WALLET_MISSING: WALLET_ACCOUNT and WALLET_FUNDER are required for MICRO_LIVE/LIVE",
+    );
+  }
+  const lower = (a: string): string => a.toLowerCase();
+  if (
+    lower(account) === lower(signerAddress) ||
+    lower(funder) === lower(signerAddress) ||
+    lower(account) === lower(funder)
+  ) {
+    throw new Error(
+      "LIVE_WALLET_INVALID: signer, account and funder must be three distinct addresses (WAL-03)",
+    );
+  }
+  return {
+    schema_version: "1.1",
+    wallet_id: deterministicWalletId(signerAddress),
+    wallet_type: "DEPOSIT_WALLET",
+    signer_address: signerAddress,
+    account_wallet: account,
+    funder,
+    chain_id: 137,
+    verified_at: new Date(),
+  };
 }
 
 export interface BootstrapAgentOptions {
@@ -139,19 +222,16 @@ export async function bootstrapAgent(
     leaseStore,
   });
 
-  // 6. Define Wallet Identity (WAL-03 distinctness check)
-  const wallet: WalletIdentity = {
-    schema_version: "1.1",
-    wallet_id: "00000000-0000-0000-0000-000000000001",
-    wallet_type: "DEPOSIT_WALLET",
-    signer_address: "0xSIGNER_ADDRESS_1111111111111111",
-    account_wallet: "0xACCOUNT_ADDRESS_22222222222222",
-    funder: "0xFUNDER_ADDRESS_3333333333333333",
-    chain_id: 137,
-    verified_at: new Date(),
-  };
+  // 6. Wallet Identity: derived from the user's key on live modes,
+  // mock placeholder on PAPER/SHADOW (WAL-03 distinctness enforced).
+  const wallet: WalletIdentity = buildWalletIdentity(mode);
 
-  // 7. Shared metrics + G4 Pipeline (observability wired to Metrics).
+  // 7. Forecast provider from env (null = abstain, never a stub value).
+  const forecastProvider: ForecastProvider | null =
+    createForecastProviderFromEnv();
+  let warnedNoProvider = false;
+
+  // 8. Shared metrics + G4 Pipeline (observability wired to Metrics).
   const metrics = new Metrics();
   const pipeline = createG4Pipeline({
     config: {
@@ -173,7 +253,23 @@ export async function bootstrapAgent(
     venueMode: () => venueAdapter.mode,
     leaseEpoch: () => 1,
     now: () => new Date(),
-    forecast: async () => 0.65, // Example forecast favoring YES
+    forecast: async (market) => {
+      if (!forecastProvider) {
+        if (!warnedNoProvider) {
+          warnedNoProvider = true;
+          console.warn(
+            "POLYROOT_FORECAST_PROVIDER unset — forecasting abstains (NO_TRADE). " +
+              "Set POLYROOT_FORECAST_PROVIDER=openai with OPENAI_API_KEY + POLYROOT_FORECAST_MODEL to enable.",
+          );
+        }
+        return null;
+      }
+      try {
+        return await forecastProvider.forecast(market);
+      } catch {
+        return null;
+      }
+    },
     sizeIntent: () => 100, // Example size in shares
   });
 

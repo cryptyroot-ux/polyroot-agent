@@ -438,6 +438,7 @@ export {
   createProductionCryptoSigner,
   createSignerFromEnv,
   createSignerFromHex,
+  deriveAddressFromPrivateKey,
   type ProdSignerConfig,
 } from "./crypto-signer-prod.js";
 
