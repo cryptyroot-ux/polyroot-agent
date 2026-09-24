@@ -164,44 +164,60 @@ function isFirstRun(): boolean {
 
 function prompt(message: string): Promise<string> {
   return new Promise((resolve) => {
-    process.stdout.write(message);
-    process.stdin.once("data", (data) => {
-      resolve(data.toString().trim());
+    const rl = require("readline").createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    rl.question(message, (answer: string) => {
+      rl.close();
+      resolve(answer.trim());
     });
   });
 }
 
 function promptSecret(message: string): Promise<string> {
   return new Promise((resolve) => {
+    const rl = require("readline").createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    // Disable echo for secret input
     const stdin = process.stdin;
-    const stdout = process.stdout;
-    stdin.setRawMode(true);
-    stdout.write(message);
+    const isTTY = stdin.isTTY;
+    if (isTTY) {
+      stdin.setRawMode(true);
+    }
     let input = "";
-    stdin.on("data", (char) => {
+    const onData = (char: Buffer) => {
       const c = char.toString();
       if (c === "\n" || c === "\r") {
-        stdin.setRawMode(false);
-        stdout.write("\n");
-        stdin.pause();
+        stdin.removeListener("data", onData);
+        if (isTTY) {
+          stdin.setRawMode(false);
+          console.log("");
+        }
+        rl.close();
         resolve(input);
         return;
       }
       if (c === "\u0003") {
-        stdin.setRawMode(false);
         process.exit(1);
       }
       if (c === "\u007f" || c === "\b") {
         if (input.length > 0) {
           input = input.slice(0, -1);
-          stdout.write("\b \b");
+          if (isTTY) process.stdout.write("\b \b");
         }
         return;
       }
       input += c;
-      stdout.write("*");
-    });
-    stdin.resume();
+      if (isTTY) process.stdout.write("*");
+    };
+    if (isTTY) {
+      stdin.on("data", onData);
+    }
+    rl.question(message, () => {}); // rl.question just to show prompt
+    // The actual input is handled by the raw mode listener above
   });
 }
 
@@ -245,14 +261,14 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let baseUrl = "";
   let apiKey = "";
 
-  if (provider.includes("OpenAI")) {
+  if (provider === "OpenAI (GPT-4o, GPT-4o-mini)") {
     model = await selectOption("Select model:", ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"]);
     apiKey = await promptSecret("Enter OpenAI API Key (sk-...): ");
-  } else if (provider.includes("9Router")) {
+  } else if (provider === "9Router / OpenAI-compatible") {
     model = await prompt("Model name (e.g., gpt-4o-mini): ");
     baseUrl = await prompt("Base URL [https://files.pango.fun/v1]: ") || "https://files.pango.fun/v1";
     apiKey = await promptSecret("Enter 9Router API Key: ");
-  } else if (provider.includes("Ollama")) {
+  } else if (provider === "Ollama (local)") {
     model = await prompt("Model name (e.g., llama3.1): ");
     baseUrl = await prompt("Base URL [http://localhost:11434/v1]: ") || "http://localhost:11434/v1";
     apiKey = "ollama"; // dummy
