@@ -9,7 +9,6 @@ async function startServer(): Promise<{ server: MetricsServer; base: string }> {
   const metrics = new Metrics();
   metrics.increment("totalOrders", 3);
   const server = new MetricsServer({
-    metrics,
     exporter: new MetricsExporter(metrics),
     ownerKey: OWNER_KEY,
     host: "127.0.0.1",

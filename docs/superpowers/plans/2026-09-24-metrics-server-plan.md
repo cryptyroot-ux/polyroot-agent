@@ -41,7 +41,6 @@ async function startServer(): Promise<{ server: MetricsServer; base: string }> {
   const metrics = new Metrics();
   metrics.increment("totalOrders", 3);
   const server = new MetricsServer({
-    metrics,
     exporter: new MetricsExporter(metrics),
     ownerKey: OWNER_KEY,
     host: "127.0.0.1",
@@ -134,7 +133,7 @@ git commit -m "test(obs): failing contract for metrics HTTP server"
 
 **Interfaces:**
 - Consumes: `Metrics` from `@polyroot/observability` (has `snapshot()`); `MetricsExporter` from `./metrics-exporter.js` (has `getMetrics(): string`).
-- Produces: `MetricsServer` with `constructor(opts: MetricsServerOptions)`, `start(): Promise<{ host: string; port: number }>`, `stop(): Promise<void>`; `MetricsServerOptions { metrics: Metrics; exporter: MetricsExporter; ownerKey: string; host?: string; port?: number }` (defaults `127.0.0.1:9090`; `port: 0` = ephemeral for tests).
+- Produces: `MetricsServer` with `constructor(opts: MetricsServerOptions)`, `start(): Promise<{ host: string; port: number }>`, `stop(): Promise<void>`; `MetricsServerOptions { exporter: MetricsExporter; ownerKey: string; host?: string; port?: number }` (defaults `127.0.0.1:9090`; `port: 0` = ephemeral for tests).
 
 - [ ] **Step 1: Write minimal implementation**
 
@@ -146,7 +145,6 @@ import type { MetricsExporter } from "./metrics-exporter.js";
 
 /** Options for MetricsServer. Port 0 selects an ephemeral port (tests). */
 export interface MetricsServerOptions {
-  metrics: Metrics;
   exporter: MetricsExporter;
   /** Owner API key (from env POLYROOT_METRICS_OWNER_KEY). Never logged. */
   ownerKey: string;
