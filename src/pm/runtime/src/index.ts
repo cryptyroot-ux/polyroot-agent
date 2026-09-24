@@ -32,8 +32,16 @@ export * from "./micro-live-guard.js";
 export * from "./platform-safety.js";
 export {
   bootstrapAgent,
+  buildWalletIdentity,
+  deterministicWalletId,
   recordG4Metrics,
   type BootstrapAgentOptions,
 } from "./main.js";
-export { parseArgs, startAgent, main } from "./cli.js";
+export {
+  parseArgs,
+  startAgent,
+  main,
+  assertRuntimeEnv,
+  loadDotEnv,
+} from "./cli.js";
 export type { CLIConfig } from "./cli.js";

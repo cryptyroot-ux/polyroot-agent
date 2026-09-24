@@ -78,12 +78,29 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
   });
 
   it("bootstrapAgent MICRO_LIVE with injected signer+venue proceeds past the guard", async () => {
-    const agent = await bootstrapAgent(DUMMY_DB, "MICRO_LIVE", {
-      cryptoSigner: async () => "0x_test_sig",
-      venueAdapter: fakeVenueAdapter(),
-    });
-    assert.ok(agent.pool);
-    assert.ok(agent.pipeline);
-    await agent.pool.end().catch(() => undefined);
+    const prevKey = process.env["WALLET_PRIVATE_KEY"];
+    const prevAccount = process.env["WALLET_ACCOUNT"];
+    const prevFunder = process.env["WALLET_FUNDER"];
+    process.env["WALLET_PRIVATE_KEY"] =
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    process.env["WALLET_ACCOUNT"] =
+      "0x1111111111111111111111111111111111111111";
+    process.env["WALLET_FUNDER"] = "0x2222222222222222222222222222222222222222";
+    try {
+      const agent = await bootstrapAgent(DUMMY_DB, "MICRO_LIVE", {
+        cryptoSigner: async () => "0x_test_sig",
+        venueAdapter: fakeVenueAdapter(),
+      });
+      assert.ok(agent.pool);
+      assert.ok(agent.pipeline);
+      await agent.pool.end().catch(() => undefined);
+    } finally {
+      if (prevKey === undefined) delete process.env["WALLET_PRIVATE_KEY"];
+      else process.env["WALLET_PRIVATE_KEY"] = prevKey;
+      if (prevAccount === undefined) delete process.env["WALLET_ACCOUNT"];
+      else process.env["WALLET_ACCOUNT"] = prevAccount;
+      if (prevFunder === undefined) delete process.env["WALLET_FUNDER"];
+      else process.env["WALLET_FUNDER"] = prevFunder;
+    }
   });
 });
