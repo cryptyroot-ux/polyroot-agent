@@ -35,6 +35,9 @@ export * from "./secure-client.js";
 // Domain SignedOrder → CLOB limit-order translation (pure, no network).
 export * from "./order-translation.js";
 
+// Explicit market universe + live input collection.
+export * from "./market-universe.js";
+
 // Permit store with atomic claim (PR-EXE-02, PR-OPS-02)
 export * from "./permit-store.js";
 

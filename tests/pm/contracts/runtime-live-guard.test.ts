@@ -88,6 +88,8 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
       "0x1111111111111111111111111111111111111111";
     process.env["WALLET_FUNDER"] = "0x2222222222222222222222222222222222222222";
     process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = "100";
+    const prevUniverse = process.env["POLYROOT_MARKET_IDS"];
+    process.env["POLYROOT_MARKET_IDS"] = "12345";
     try {
       const agent = await bootstrapAgent(DUMMY_DB, "MICRO_LIVE", {
         cryptoSigner: async () => "0x_test_sig",
@@ -106,6 +108,8 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
       if (prevLossCap === undefined)
         delete process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
       else process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = prevLossCap;
+      if (prevUniverse === undefined) delete process.env["POLYROOT_MARKET_IDS"];
+      else process.env["POLYROOT_MARKET_IDS"] = prevUniverse;
     }
   });
 
@@ -120,6 +124,8 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
       "0x1111111111111111111111111111111111111111";
     process.env["WALLET_FUNDER"] = "0x2222222222222222222222222222222222222222";
     delete process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+    const prevUniverse = process.env["POLYROOT_MARKET_IDS"];
+    process.env["POLYROOT_MARKET_IDS"] = "12345";
     try {
       await assert.rejects(
         bootstrapAgent(DUMMY_DB, "MICRO_LIVE", {
@@ -137,6 +143,44 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
       else process.env["WALLET_FUNDER"] = prevFunder;
       if (prev !== undefined)
         process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = prev;
+      if (prevUniverse === undefined) delete process.env["POLYROOT_MARKET_IDS"];
+      else process.env["POLYROOT_MARKET_IDS"] = prevUniverse;
+    }
+  });
+
+  it("bootstrapAgent MICRO_LIVE without a market universe refuses fail-closed", async () => {
+    const prevKey = process.env["WALLET_PRIVATE_KEY"];
+    const prevAccount = process.env["WALLET_ACCOUNT"];
+    const prevFunder = process.env["WALLET_FUNDER"];
+    const prevUniverse = process.env["POLYROOT_MARKET_IDS"];
+    const prevLossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+    process.env["WALLET_PRIVATE_KEY"] =
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    process.env["WALLET_ACCOUNT"] =
+      "0x1111111111111111111111111111111111111111";
+    process.env["WALLET_FUNDER"] = "0x2222222222222222222222222222222222222222";
+    process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = "100";
+    delete process.env["POLYROOT_MARKET_IDS"];
+    try {
+      await assert.rejects(
+        bootstrapAgent(DUMMY_DB, "MICRO_LIVE", {
+          cryptoSigner: async () => "0x_test_sig",
+          venueAdapter: fakeVenueAdapter(),
+        }),
+        /MARKET_UNIVERSE_MISSING/,
+      );
+    } finally {
+      if (prevKey === undefined) delete process.env["WALLET_PRIVATE_KEY"];
+      else process.env["WALLET_PRIVATE_KEY"] = prevKey;
+      if (prevAccount === undefined) delete process.env["WALLET_ACCOUNT"];
+      else process.env["WALLET_ACCOUNT"] = prevAccount;
+      if (prevFunder === undefined) delete process.env["WALLET_FUNDER"];
+      else process.env["WALLET_FUNDER"] = prevFunder;
+      if (prevUniverse === undefined) delete process.env["POLYROOT_MARKET_IDS"];
+      else process.env["POLYROOT_MARKET_IDS"] = prevUniverse;
+      if (prevLossCap === undefined)
+        delete process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+      else process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = prevLossCap;
     }
   });
 });

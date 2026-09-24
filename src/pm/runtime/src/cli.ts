@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync, chmodSync } from "node:fs";
 import { Pool } from "pg";
-import { deriveAddressFromPrivateKey } from "@polyroot/signer";
+import { deriveAddressFromPrivateKey, sealPrivateKey } from "@polyroot/signer";
 import {
   PgLiveGuardStore,
   checkShadowBaselineRow,
@@ -382,6 +382,39 @@ export async function main(
       console.log(`${c.ok ? "PASS" : "FAIL"} ${c.name}: ${c.detail}`);
     }
     if (!result.ok) process.exit(1);
+    return;
+  }
+  if (argv[0] === "wallet" && argv[1] === "seal") {
+    const rawKey =
+      process.env["PRIVATE_KEY_HEX"] ?? process.env["WALLET_PRIVATE_KEY"] ?? "";
+    const passphrase = process.env["POLYROOT_KEYSTORE_PASSPHRASE"] ?? "";
+    if (!rawKey || !passphrase) {
+      console.error(
+        "Usage: PRIVATE_KEY_HEX=0x... POLYROOT_KEYSTORE_PASSPHRASE=... " +
+          "polyroot wallet seal [--out <path>] " +
+          "(prints the sealed envelope; the raw key is never printed)",
+      );
+      process.exit(1);
+    }
+    const envelope = sealPrivateKey(rawKey, passphrase);
+    const outIdx = argv.indexOf("--out");
+    const outPath =
+      outIdx >= 0 && argv[outIdx + 1] && !argv[outIdx + 1]?.startsWith("--")
+        ? (argv[outIdx + 1] as string)
+        : "";
+    if (outPath) {
+      writeFileSync(outPath, JSON.stringify(envelope, null, 2) + "\n", {
+        mode: 0o600,
+      });
+      try {
+        chmodSync(outPath, 0o600);
+      } catch {
+        // best-effort hardening on platforms without chmod semantics
+      }
+      console.log(`PASS wallet-seal: envelope written to ${outPath}`);
+    } else {
+      console.log(JSON.stringify(envelope));
+    }
     return;
   }
   if (argv[0] === "venue" && argv[1] === "check") {

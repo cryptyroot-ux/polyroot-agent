@@ -27,6 +27,7 @@ import {
   computeFinancialGate,
   executeG4Step,
   createG4Core,
+  buildLoopInputs,
 } from "./g4-core.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -175,33 +176,38 @@ export class G4Pipeline {
 
     while (this.running) {
       try {
-        // In a real implementation, this would fetch markets from the venue adapter
-        // For now, we'll run a single iteration with mock data
-        const mockInput = {
-          market_id: "mock_market_1",
-          bid: 0.45,
-          ask: 0.55,
-        };
-
-        const result = await this.processMarket(mockInput);
-
-        if (
-          result.fill &&
-          (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")
-        ) {
-          console.log(
-            `✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}`,
-          );
-        } else if (result.decision !== "NO_TRADE") {
-          console.log(
-            `📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})`,
-          );
-        } else {
-          console.log(`⏭️  No trade: ${result.reason}`);
+        // PAPER replays the mock fixture; every other mode iterates the
+        // wired market universe (buildLoopInputs throws rather than
+        // fabricating mock markets when live-configured).
+        const inputs = await buildLoopInputs(this.config, this.deps);
+        if (inputs.length === 0) {
+          console.log("⏭️  No live markets with prices this pass.");
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          continue;
         }
 
-        // Wait for next interval
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        for (const loopInput of inputs) {
+          const result = await this.processMarket(loopInput);
+
+          if (
+            result.fill &&
+            (result.fill.status === "FILLED" ||
+              result.fill.status === "PARTIAL")
+          ) {
+            console.log(
+              `✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}`,
+            );
+          } else if (result.decision !== "NO_TRADE") {
+            console.log(
+              `📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})`,
+            );
+          } else {
+            console.log(`⏭️  No trade: ${result.reason}`);
+          }
+
+          // Wait for next interval
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
       } catch (error) {
         console.error("❌ Pipeline error:", error);
         // Continue running even if one iteration fails
