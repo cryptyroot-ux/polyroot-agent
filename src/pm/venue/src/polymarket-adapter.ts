@@ -48,6 +48,22 @@ export interface PolymarketVenueAdapterDeps {
   defaultCollateral?: string;
 }
 
+const CLOB_ORDER_FIELDS = [
+  "tokenId",
+  "maker",
+  "takerAmount",
+  "salt",
+  "signatureType",
+  "signature",
+] as const;
+
+function isClobSignedOrder(order: unknown): boolean {
+  if (typeof order !== "object" || order === null) return false;
+  return CLOB_ORDER_FIELDS.every(
+    (field) => (order as Record<string, unknown>)[field] !== undefined,
+  );
+}
+
 export class PolymarketVenueAdapter {
   private _mode: VenueMode = "NORMAL";
   private readonly client: PolymarketClientLike;
@@ -164,11 +180,25 @@ export class PolymarketVenueAdapter {
     };
   }
 
-  /** Submit a typed signed order if and only if the venue-mode gate allows it. */
-  async placeOrder(order: SignedOrder): Promise<SubmitOutcome> {
+  /**
+   * Submit a typed signed order if and only if the venue-mode gate allows
+   * it. Only CLOB-shaped orders reach the SDK: our domain SignedOrder
+   * (order_id/market_id/price/size) is NOT a CLOB-signed order and must
+   * never be posted to the real exchange — refuse it fail-closed until
+   * domain→CLOB order translation is implemented.
+   */
+  async placeOrder(order: SignedOrder | unknown): Promise<SubmitOutcome> {
     const gate = venueActionGate(this._mode, "ORDER_SUBMIT");
     if (!gate.allowed) {
       return { ok: false, code: gate.code, reason: gate.reason };
+    }
+    if (!isClobSignedOrder(order)) {
+      return {
+        ok: false,
+        code: "VENUE_ORDER_SHAPE_UNSUPPORTED",
+        reason:
+          "order is not a CLOB-signed order (missing tokenId/maker/takerAmount/salt/signatureType/signature); domain SignedOrder translation is not implemented",
+      };
     }
     try {
       const result = (await this.client.postOrder?.(order)) as
