@@ -162,32 +162,52 @@ function isFirstRun(): boolean {
   return !existsSync(ENV_PATH);
 }
 
-function prompt(message: string): Promise<string> {
-  return new Promise((resolve) => {
-    const rl = require("readline").createInterface({
+// Single readline instance for all prompts - avoids stdin conflicts
+let _rl: any = null;
+
+async function getRL(): Promise<any> {
+  if (!_rl) {
+    const readline = await import("readline");
+    _rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
+      terminal: true,
     });
+    // Handle Ctrl+C gracefully
+    _rl.on("SIGINT", () => {
+      process.exit(1);
+    });
+  }
+  return _rl;
+}
+
+function closeRL(): void {
+  if (_rl) {
+    _rl.close();
+    _rl = null;
+  }
+}
+
+async function prompt(message: string): Promise<string> {
+  const rl = await getRL();
+  return new Promise((resolve) => {
     rl.question(message, (answer: string) => {
-      rl.close();
       resolve(answer.trim());
     });
   });
 }
 
-function promptSecret(message: string): Promise<string> {
-  return new Promise((resolve) => {
-    const rl = require("readline").createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-    // Disable echo for secret input
-    const stdin = process.stdin;
-    const isTTY = stdin.isTTY;
-    if (isTTY) {
-      stdin.setRawMode(true);
-    }
-    let input = "";
+async function promptSecret(message: string): Promise<string> {
+  const stdin = process.stdin;
+  const isTTY = stdin.isTTY;
+  
+  if (isTTY) {
+    stdin.setRawMode(true);
+  }
+  
+  let input = "";
+  
+  return new Promise<string>((resolve) => {
     const onData = (char: Buffer) => {
       const c = char.toString();
       if (c === "\n" || c === "\r") {
@@ -196,7 +216,6 @@ function promptSecret(message: string): Promise<string> {
           stdin.setRawMode(false);
           console.log("");
         }
-        rl.close();
         resolve(input);
         return;
       }
@@ -213,22 +232,24 @@ function promptSecret(message: string): Promise<string> {
       input += c;
       if (isTTY) process.stdout.write("*");
     };
+    
     if (isTTY) {
       stdin.on("data", onData);
     }
-    rl.question(message, () => {}); // rl.question just to show prompt
-    // The actual input is handled by the raw mode listener above
+    
+    // Show prompt
+    process.stdout.write(message);
   });
 }
 
-function selectOption(message: string, options: string[]): Promise<string> {
+async function selectOption(message: string, options: string[]): Promise<string> {
+  const rl = await getRL();
   return new Promise((resolve) => {
     console.log(message);
     options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt}`));
     const ask = () => {
-      process.stdout.write("Select [1-" + options.length + "]: ");
-      process.stdin.once("data", (data) => {
-        const idx = parseInt(data.toString().trim(), 10) - 1;
+      rl.question("Select [1-" + options.length + "]: ", (answer: string) => {
+        const idx = parseInt(answer.trim(), 10) - 1;
         if (idx >= 0 && idx < options.length) {
           const selected = options[idx];
           if (selected) resolve(selected);
@@ -242,6 +263,11 @@ function selectOption(message: string, options: string[]): Promise<string> {
     ask();
   });
 }
+
+// Cleanup on exit
+process.on("exit", closeRL);
+process.on("SIGINT", () => { closeRL(); process.exit(1); });
+process.on("SIGTERM", () => { closeRL(); process.exit(1); });
 
 async function runOnboarding(): Promise<OnboardingConfig> {
   console.log("\n═══════════════════════════════════════════════");
