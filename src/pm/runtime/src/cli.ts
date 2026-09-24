@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync, chmodSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
 import { Pool } from "pg";
 import { deriveAddressFromPrivateKey, sealPrivateKey } from "@polyroot/signer";
 import { randomBytes } from "node:crypto";
@@ -200,10 +200,16 @@ async function prompt(message: string): Promise<string> {
 async function promptSecret(message: string): Promise<string> {
   const stdin = process.stdin;
   const isTTY = stdin.isTTY;
-  
-  if (isTTY) {
-    stdin.setRawMode(true);
+
+  // Piped/non-TTY input cannot mask: fall back to a normal prompt instead of hanging.
+  if (!isTTY) {
+    return prompt(message);
   }
+
+  // The shared readline instance and raw-mode byte reading must never both
+  // own stdin: drop the shared instance before taking over the stream.
+  closeRL();
+  stdin.setRawMode(true);
   
   let input = "";
   
@@ -249,6 +255,9 @@ async function selectOption(message: string, options: string[]): Promise<string>
     options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt}`));
     const ask = () => {
       rl.question("Select [1-" + options.length + "]: ", (answer: string) => {
+        if (answer === null || answer === undefined) {
+          throw new Error("Setup cancelled (no input)");
+        }
         const idx = parseInt(answer.trim(), 10) - 1;
         if (idx >= 0 && idx < options.length) {
           const selected = options[idx];
@@ -302,6 +311,13 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     model = await prompt("Model name: ");
     baseUrl = await prompt("Base URL: ");
     apiKey = await promptSecret("API Key: ");
+  }
+
+  if (!model.trim()) {
+    throw new Error("Model name is required");
+  }
+  if (!apiKey.trim()) {
+    throw new Error("API key is required (Ollama local uses any placeholder)");
   }
 
   // 2. Wallet
@@ -363,7 +379,7 @@ function writeEnv(config: OnboardingConfig): void {
     `WALLET_ADDRESS=${deriveAddressFromPrivateKey(config.privateKey!)}`,
     `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
     `RPC_URL=https://polygon-rpc.com`,
-    `POLYROOT_FORECAST_PROVIDER=${config.provider.includes("OpenAI") ? "openai" : "custom"}`,
+    `POLYROOT_FORECAST_PROVIDER=${config.provider === "OpenAI (GPT-4o, GPT-4o-mini)" ? "openai" : "custom"}`,
     `POLYROOT_FORECAST_MODEL=${config.model}`,
     `OPENAI_API_KEY=${config.apiKey}`,
     ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
@@ -381,13 +397,12 @@ function writeEnv(config: OnboardingConfig): void {
   console.log(`\n✅ Configuration saved to ${ENV_PATH} (600 perms)`);
 }
 
-async function runFirstTimeSetup(): Promise<void> {
-  if (!isFirstRun()) return;
-
-  console.log("\n🎉 First run detected — launching interactive setup...\n");
+async function runOnboardingFlow(): Promise<void> {
   try {
     const config = await runOnboarding();
     writeEnv(config);
+    // Release stdin before the agent run so no prompt listener leaks into it.
+    closeRL();
     console.log("\n═══════════════════════════════════════════════");
     console.log("  Setup complete! Starting PolyRoot Agent...");
     console.log("═══════════════════════════════════════════════\n");
@@ -395,9 +410,17 @@ async function runFirstTimeSetup(): Promise<void> {
     // Reload env for current process
     process.loadEnvFile(ENV_PATH as string);
   } catch (err) {
+    closeRL();
     console.error("\n❌ Setup failed:", (err as Error).message);
     process.exit(1);
   }
+}
+
+async function runFirstTimeSetup(): Promise<void> {
+  if (!isFirstRun()) return;
+
+  console.log("\n🎉 First run detected — launching interactive setup...\n");
+  await runOnboardingFlow();
 }
 
 import { createSignerFromEnv } from "@polyroot/signer";
@@ -922,10 +945,15 @@ export async function main(
     await runDockerFix();
     return;
   }
+  if (argv[0] === "onboard") {
+    await runOnboardingFlow();
+    return;
+  }
 
   // First-run onboarding (skip for subcommands)
   if (argv[0] !== "wallet" && argv[0] !== "venue" && argv[0] !== "guard" &&
-      argv[0] !== "status" && argv[0] !== "update" && argv[0] !== "doctor" && argv[0] !== "docker-fix") {
+      argv[0] !== "status" && argv[0] !== "update" && argv[0] !== "doctor" && argv[0] !== "docker-fix" &&
+      argv[0] !== "onboard") {
     await runFirstTimeSetup();
   }
 
