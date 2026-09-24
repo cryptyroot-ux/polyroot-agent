@@ -30,6 +30,10 @@ export * from "./g4-core.js";
 export * from "./reality-gap.js";
 export * from "./micro-live-guard.js";
 export * from "./platform-safety.js";
-export { bootstrapAgent, type BootstrapAgentOptions } from "./main.js";
+export {
+  bootstrapAgent,
+  recordG4Metrics,
+  type BootstrapAgentOptions,
+} from "./main.js";
 export { parseArgs, startAgent, main } from "./cli.js";
 export type { CLIConfig } from "./cli.js";

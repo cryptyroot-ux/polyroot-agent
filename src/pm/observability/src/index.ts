@@ -16,6 +16,11 @@ export class Metrics {
     this.counters.set(name, (this.counters.get(name) ?? 0) + amount);
   }
 
+  /** Set a counter to an absolute cumulative value (pipeline snapshots). */
+  setCounter(name: string, value: number): void {
+    this.counters.set(name, value);
+  }
+
   gauge(name: string, value: number): void {
     this.gauges.set(name, value);
   }

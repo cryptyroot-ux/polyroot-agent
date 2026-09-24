@@ -20,6 +20,23 @@ import {
 import { Executor } from "@polyroot/executor";
 import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
+import { Metrics } from "@polyroot/observability";
+import type { G4CoreMetrics } from "./g4-core.js";
+
+/**
+ * Record a cumulative G4 metrics snapshot into shared Metrics.
+ * Totals are set (not incremented) because pipeline snapshots are cumulative.
+ */
+export function recordG4Metrics(metrics: Metrics, m: G4CoreMetrics): void {
+  metrics.setCounter("totalOrders", m.totalOrders);
+  metrics.setCounter("filledOrders", m.filledOrders);
+  metrics.setCounter("totalPnl", m.totalPnl);
+  metrics.setCounter("totalFees", m.totalFees);
+  metrics.gauge("maxDrawdown", m.maxDrawdown);
+  metrics.gauge("fillRatio", m.fillRatio);
+  metrics.gauge("currentExposureUsd", m.currentExposureUsd);
+  metrics.gauge("maxExposureUsd", m.maxExposureUsd);
+}
 
 export interface BootstrapAgentOptions {
   /**
@@ -134,11 +151,15 @@ export async function bootstrapAgent(
     verified_at: new Date(),
   };
 
-  // 7. Create G4 Pipeline
+  // 7. Shared metrics + G4 Pipeline (observability wired to Metrics).
+  const metrics = new Metrics();
   const pipeline = createG4Pipeline({
     config: {
       mode,
       minEdgeAfterCost: 0.03,
+    },
+    observability: {
+      emitMetrics: (m) => recordG4Metrics(metrics, m),
     },
     kernel,
     signer,
@@ -162,5 +183,6 @@ export async function bootstrapAgent(
     signer,
     executor,
     pipeline,
+    metrics,
   };
 }
