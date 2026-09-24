@@ -88,7 +88,7 @@ clone_repo() {
 install_deps() {
   log "Installing dependencies (this may take a minute)..."
   cd "${INSTALL_DIR}"
-  npm ci --omit=dev 2>/dev/null || npm ci
+  npm ci
   ok "Dependencies installed"
 }
 
