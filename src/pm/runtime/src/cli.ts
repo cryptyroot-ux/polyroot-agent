@@ -107,16 +107,16 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
       console.log(
-        "PolyRoot Agent — perintah:\n" +
-          "  polyroot                 Jalankan agen (mode dari pengaturan)\n" +
-          "  polyroot onboard         Pengaturan awal (baru pertama kali)\n" +
-          "  polyroot setup           Ubah mode, modal, batas rugi, pasar\n" +
-          "  polyroot status          Lihat konfigurasi saat ini\n" +
-          "  polyroot doctor          Cek kesehatan dasar\n" +
-          "  polyroot doctor --live   Tes kesiapan LIVE, wajib sebelum uang asli\n" +
-          "  polyroot wallet verify   Cek dompet tanpa jaringan\n" +
-          "  polyroot guard reset --loss <rugi>   Buka kunci berhenti-rugi\n" +
-          "  polyroot --once          Jalan sekali lalu berhenti (tes)",
+        "PolyRoot Agent — commands:\n" +
+          "  polyroot                 Run the agent (mode from settings)\n" +
+          "  polyroot onboard         First-time setup (new users)\n" +
+          "  polyroot setup           Change mode, capital, loss cap, markets\n" +
+          "  polyroot status          Show current configuration\n" +
+          "  polyroot doctor          Basic health check\n" +
+          "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
+          "  polyroot wallet verify   Check wallet with no network\n" +
+          "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
+          "  polyroot --once          Run once then stop (test)",
       );
       process.exit(0);
     } else if (a === "--mode") {
@@ -289,14 +289,14 @@ async function askText(
     const text = answer.trim();
     if (text) return text;
     if (opts.defaultValue !== undefined) return opts.defaultValue;
-    console.log("Ketik nilai (atau Ctrl-C untuk batal).");
+    console.log("Type a value (or press Ctrl-C to cancel).");
   }
 }
 
 /** Secret input on the shared session with output muted, so typed
  *  characters never echo. Same stdin lifetime as normal prompts. */
 async function askSecret(message: string): Promise<string> {
-  process.stdout.write(`${message} (ketikan disembunyikan): `);
+  process.stdout.write(`${message} (typing hidden): `);
   return askOnShared("", { muted: true });
 }
 
@@ -335,14 +335,14 @@ async function askChoice(
 
 async function runOnboarding(): Promise<OnboardingConfig> {
   console.log("\n═══════════════════════════════════════════════");
-  console.log("  Selamat datang di PolyRoot Agent — Pengaturan Awal");
-  console.log("  3 langkah. Semua ada pilihan bawaan: cukup tekan Enter.");
+  console.log("  Welcome to PolyRoot Agent — First-Time Setup");
+  console.log("  3 steps. Every step has a safe default: just press Enter.");
   console.log("═══════════════════════════════════════════════\n");
 
   // 1. AI Provider & Model — the brain that reads markets.
-  console.log("📡 Langkah 1/3: Otak AI (yang membaca pasar)");
+  console.log("📡 Step 1/3: AI brain (reads the markets)");
   const provider = await askChoice(
-    "Pilih penyedia AI (Enter = bawaan):",
+    "Choose AI provider (Enter = default):",
     [
       "OpenAI (GPT-4o, GPT-4o-mini)",
       "9Router / OpenAI-compatible",
@@ -380,12 +380,12 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     throw new Error("API key is required (Ollama local uses any placeholder)");
   }
 
-  // 2. Wallet — keys are sealed in a locked keystore on this machine and
+  // 2. Wallet — keys are sealed in a locked vault on this machine and
   // are never sent anywhere.
-  console.log("\n🔐 Langkah 2/3: Dompet (tempat kunci disimpan)");
-  console.log("   Kunci dikunci di brankas komputer ini, tidak dikirim ke mana pun.");
+  console.log("\n🔐 Step 2/3: Wallet (where your keys live)");
+  console.log("   Keys stay locked in a vault on this computer, never sent anywhere.");
   const walletChoice = await askChoice(
-    "Dompet (Enter = buat baru):",
+    "Wallet (Enter = create new):",
     ["Create new wallet (generates keystore)", "Import existing private key"],
     0,
   );
@@ -395,24 +395,24 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   if (walletChoice.startsWith("Create")) {
     for (;;) {
-      passphrase = await askRequiredSecret("Buat kata sandi brankas");
-      const confirm = await askRequiredSecret("Ulangi kata sandi");
+      passphrase = await askRequiredSecret("Create a vault passphrase");
+      const confirm = await askRequiredSecret("Repeat the passphrase");
       if (passphrase === confirm) break;
-      console.log("Kata sandi tidak sama — coba lagi.");
+      console.log("Passphrases do not match — try again.");
     }
     // Generate random key
     privateKey = "0x" + randomBytes(32).toString("hex");
-    console.log(`\n✅ Dompet baru dibuat!`);
-    console.log(`   Alamat: ${deriveAddressFromPrivateKey(privateKey)}`);
-    console.log(`   (Catat baik-baik — hanya ditampilkan sekali)`);
+    console.log(`\n✅ New wallet created!`);
+    console.log(`   Address: ${deriveAddressFromPrivateKey(privateKey)}`);
+    console.log(`   (Write this down — it is shown only once)`);
   } else {
     for (;;) {
-      privateKey = await askRequiredSecret("Kunci privat (0x...)");
+      privateKey = await askRequiredSecret("Private key (0x...)");
       if (/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) break;
-      console.log("Format salah — harus 64 karakter hex.");
+      console.log("Wrong format — expected 64 hex characters.");
     }
-    passphrase = await askRequiredSecret("Buat kata sandi brankas");
-    console.log(`\n✅ Dompet dimasukkan. Alamat: ${deriveAddressFromPrivateKey(privateKey)}`);
+    passphrase = await askRequiredSecret("Create a vault passphrase");
+    console.log(`\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`);
   }
 
   // Seal keystore
@@ -423,10 +423,10 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   console.log(`🔐 Keystore saved to ${KEYSTORE_PATH} (encrypted, 600 perms)`);
 
   // 3. Mode selection — PAPER = practice with play money (100% safe).
-  console.log("\n🚀 Langkah 3/3: Pilih Mode");
-  console.log("   PAPER = latihan, uang mainan (aman 100%). LIVE = uang asli.");
+  console.log("\n🚀 Step 3/3: Choose Mode");
+  console.log("   PAPER = practice, play money (100% safe). LIVE = real money.");
   const modeChoice = await askChoice(
-    "Pilih mode (Enter = PAPER):",
+    "Choose mode (Enter = PAPER):",
     [
       "PAPER — Safe simulation, mock data, no real money",
       "LIVE — Real trading on Polymarket (requires capital, API keys)",
@@ -438,14 +438,14 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
   if (modeChoice.startsWith("LIVE")) {
     console.log(
-      "\nLIVE memakai UANG ASLI. Batas rugi harian akan mematikan sistem",
-      "otomatis kalau tercapai (butuh reset manual oleh Anda).",
+      "\nLIVE uses REAL MONEY. The daily loss cap shuts the system",
+      "down automatically when reached (needs your manual reset).",
     );
-    const confirm = await askText("Ketik LIVE untuk lanjut (selain itu tetap PAPER)");
+    const confirm = await askText("Type LIVE to continue (anything else stays PAPER)");
     if (confirm.trim() === "LIVE") {
       mode = "LIVE";
       const capitalRaw = await askText(
-        `Batas modal USD — uang maksimal yang boleh dipakai (bawaan ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
+        `Capital cap in USD — max money allowed in play (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
         { defaultValue: String(AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
       );
       const capitalParsed = Number(capitalRaw);
@@ -454,7 +454,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           ? capitalParsed
           : AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
       const bpsRaw = await askText(
-        `Batas rugi harian dalam bps, 500 = 5% (bawaan ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})`,
+        `Daily loss cap in bps, 500 = 5% (default ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})`,
         { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
       );
       const bpsParsed = Number(bpsRaw);
@@ -464,10 +464,10 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
       const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
       console.log(
-        `\n✅ Batas Anda: modal $${capitalUsd}, berhenti rugi $${lossCap}/hari.`,
+        `\n✅ Your limits: capital $${capitalUsd}, stop-loss $${lossCap}/day.`,
       );
     } else {
-      console.log("Tetap PAPER. Nanti bisa ubah via: polyroot setup");
+      console.log("Staying on PAPER. Change later with: polyroot setup");
     }
   }
 
@@ -511,7 +511,7 @@ async function runOnboardingFlow(): Promise<void> {
     const config = await runOnboarding();
     writeEnv(config);
     console.log("\n═══════════════════════════════════════════════");
-    console.log("  Pengaturan selesai! PolyRoot Agent siap.");
+    console.log("  Setup complete! PolyRoot Agent is ready.");
     console.log("═══════════════════════════════════════════════");
     console.log(formatNextSteps(config.mode));
 
@@ -521,10 +521,10 @@ async function runOnboardingFlow(): Promise<void> {
   } catch (err) {
     closeSharedSession();
     if (err instanceof OnboardingCancelled) {
-      console.log("\nDibatalkan. Jalankan 'polyroot onboard' kapan saja.");
+      console.log("\nCancelled. Run 'polyroot onboard' any time.");
       process.exit(0);
     }
-    console.error("\n❌ Pengaturan gagal:", (err as Error).message);
+    console.error("\n❌ Setup failed:", (err as Error).message);
     process.exit(1);
   }
 }
@@ -532,7 +532,7 @@ async function runOnboardingFlow(): Promise<void> {
 async function runFirstTimeSetup(): Promise<void> {
   if (!isFirstRun()) return;
 
-  console.log("\n🎉 Pertama kali jalan — mulai pengaturan interaktif...\n");
+  console.log("\n🎉 First run — starting interactive setup...\n");
   await runOnboardingFlow();
 }
 
@@ -545,15 +545,15 @@ async function runSetupFlow(): Promise<void> {
   try {
     loadDotEnv();
     console.log("\n═══════════════════════════════════════════════");
-    console.log("  PolyRoot Setup — Ubah Pengaturan (aman)");
-    console.log("  Dompet & kunci TIDAK disentuh di sini.");
+    console.log("  PolyRoot Setup — Change Settings (safe)");
+    console.log("  Wallet & keys are NEVER touched here.");
     console.log("═══════════════════════════════════════════════\n");
 
     const currentMode = process.env["RUNTIME_MODE"] ?? "PAPER";
-    console.log("Mode saat ini: " + currentMode);
-    console.log("PAPER = latihan uang mainan. LIVE = uang asli.\n");
+    console.log("Current mode: " + currentMode);
+    console.log("PAPER = practice with play money. LIVE = real money.\n");
     const modeChoice = await askChoice(
-      "Pilih mode (Enter = biarkan seperti sekarang):",
+      "Choose mode (Enter = keep current):",
       [
         "PAPER — Safe simulation, mock data, no real money",
         "LIVE — Real trading on Polymarket (requires capital, API keys)",
@@ -566,7 +566,7 @@ async function runSetupFlow(): Promise<void> {
 
     const bounds = parseBoundsEnv(process.env);
     const capitalRaw = await askText(
-      `Batas modal USD (saat ini ${bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD}, Enter = tidak ubah)`,
+      `Capital cap in USD (current ${bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD}, Enter = keep)`,
       { defaultValue: String(bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
     );
     const capitalParsed = Number(capitalRaw);
@@ -576,10 +576,10 @@ async function runSetupFlow(): Promise<void> {
         : (bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD);
 
     console.log(
-      "\nBatas rugi harian: kalau rugi sampai batas ini, sistem MATI otomatis.",
+      "\nDaily loss cap: when losses reach this, the system STOPS automatically.",
     );
     const bpsRaw = await askText(
-      "Batas rugi dalam bps, 500 = 5% (Enter = tidak ubah)",
+      "Loss cap in bps, 500 = 5% (Enter = keep)",
       { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
     );
     const bpsParsed = Number(bpsRaw);
@@ -589,10 +589,10 @@ async function runSetupFlow(): Promise<void> {
         : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
 
     const currentUniverse = process.env["POLYROOT_MARKET_IDS"] ?? "";
-    console.log("\nDaftar pasar = ID token Polymarket, pisahkan koma.");
-    console.log("Kosongkan untuk tidak mengubah.");
+    console.log("\nMarket list = Polymarket token IDs, separated by commas.");
+    console.log("Leave empty to keep unchanged.");
     const universeRaw = await askText(
-      `Daftar pasar${currentUniverse ? " (saat ini: " + currentUniverse + ")" : ""}`,
+      `Market list${currentUniverse ? " (current: " + currentUniverse + ")" : ""}`,
       { defaultValue: currentUniverse },
     );
     let universe: string[] = [];
@@ -602,7 +602,7 @@ async function runSetupFlow(): Promise<void> {
         universe = readMarketUniverse({ POLYROOT_MARKET_IDS: trimmed });
       } catch (err) {
         console.log(
-          `⚠️  Daftar pasar tidak valid (${(err as Error).message}) — dibiarkan seperti semula.`,
+          `⚠️  Invalid market list (${(err as Error).message}) — keeping the old one.`,
         );
       }
     }
@@ -613,9 +613,9 @@ async function runSetupFlow(): Promise<void> {
     writeFileSync(ENV_PATH, upsertEnvLines(existing, updates) + "\n", { mode: 0o600 });
     chmodSync(ENV_PATH, 0o600);
     const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
-    console.log(`\n✅ Tersimpan: mode ${mode}, modal $${capitalUsd}, berhenti rugi $${lossCap}/hari.`);
+    console.log(`\n✅ Saved: mode ${mode}, capital $${capitalUsd}, stop-loss $${lossCap}/day.`);
     if (universe.length > 0) {
-      console.log(`   Pasar: ${universe.join(", ")}`);
+      console.log(`   Markets: ${universe.join(", ")}`);
     }
     console.log(formatNextSteps(mode));
     process.loadEnvFile(ENV_PATH as string);
@@ -623,10 +623,10 @@ async function runSetupFlow(): Promise<void> {
   } catch (err) {
     closeSharedSession();
     if (err instanceof OnboardingCancelled) {
-      console.log("\nDibatalkan, tidak ada yang diubah. Jalankan 'polyroot setup' kapan saja.");
+      console.log("\nCancelled, nothing changed. Run 'polyroot setup' any time.");
       process.exit(0);
     }
-    console.error("\n❌ Setup gagal:", (err as Error).message);
+    console.error("\n❌ Setup failed:", (err as Error).message);
     process.exit(1);
   }
 }

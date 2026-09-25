@@ -2,10 +2,10 @@
  * @polyroot/runtime — Lay-friendly setup guide.
  *
  * The community operating PolyRoot is not expected to know coding. All
- * user-facing setup copy lives here in plain Indonesian-first language:
- * short steps, one idea per line, safe defaults on Enter, and an exact
- * command cheat-sheet at the end. The AI execution path never reads these
- * strings — they are operator UI only.
+ * user-facing setup copy lives here in plain simple English: short steps,
+ * one idea per line, safe defaults on Enter, and an exact command
+ * cheat-sheet at the end. The AI execution path never reads these strings —
+ * they are operator UI only.
  */
 
 import {
@@ -73,42 +73,42 @@ export function upsertEnvLines(existing: string, updates: string[]): string {
 export function formatNextSteps(mode: "PAPER" | "LIVE"): string {
   const lines = [
     "",
-    "═══ Langkah selanjutnya (jalankan satu per satu) ═══",
+    "═══ Next steps (run one at a time) ═══",
     "",
-    "1) Cek konfigurasi:",
+    "1) Check your configuration:",
     "     polyroot status",
-    "     → pastikan Mode, Dompet, dan Batas Rugi sudah benar.",
+    "     → make sure Mode, Wallet, and Loss Cap look right.",
     "",
   ];
   if (mode === "LIVE") {
     lines.push(
-      "2) Tes kesiapan LIVE (wajib sebelum uang asli):",
+      "2) Test LIVE readiness (required before real money):",
       "     polyroot doctor --live",
-      "     → semua harus ✅ PASS. Kalau ada ❌, perbaiki dulu.",
+      "     → everything must be ✅ PASS. Fix any ❌ first.",
       "",
-      "3) Jalankan latihan 48 jam tanpa uang (mode SHADOW):",
+      "3) Practice 48 hours with no money (SHADOW mode):",
       "     RUNTIME_MODE=SHADOW polyroot",
-      "     → biarkan berjalan, pastikan tidak ada error.",
+      "     → let it run, make sure there are no errors.",
       "",
-      "4) Mulai dengan modal kecil dulu:",
+      "4) Start small first:",
       "     polyroot",
-      "     → awasi 1-2 hari sebelum menaikkan modal.",
+      "     → watch for 1-2 days before raising capital.",
       "",
     );
   } else {
     lines.push(
-      "2) Jalankan mode latihan (uang mainan, aman 100%):",
+      "2) Run practice mode (play money, 100% safe):",
       "     polyroot",
-      "     → tekan Ctrl+C untuk berhenti.",
+      "     → press Ctrl+C to stop.",
       "",
-      "3) Kalau nanti siap uang asli, jalankan:",
+      "3) When you are ready for real money, run:",
       "     polyroot setup",
-      "     → ikuti panduan, lalu polyroot doctor --live.",
+      "     → follow the guide, then polyroot doctor --live.",
       "",
     );
   }
   lines.push(
-    "Butuh bantuan? Jalankan: polyroot status",
+    "Need help? Run: polyroot status",
     "",
   );
   return lines.join("\n");
