@@ -372,7 +372,9 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
     const ex = new Executor(deps);
 
     // 1. Expired permit validation
-    const expiredPermit = makePermit({ expires_at: new Date("2020-01-01T00:00:00Z") });
+    const expiredPermit = makePermit({
+      expires_at: new Date("2020-01-01T00:00:00Z"),
+    });
     const res1 = await ex.submit(makeSignedOrder("ord_fail_1"), expiredPermit);
     assert.equal(res1.outcome, "PERMIT_INVALID");
 
@@ -383,7 +385,11 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
       deps.leaseEpoch,
       30,
     );
-    assert.equal(acquiredAfter1, true, "lease must be released after expired permit rejection");
+    assert.equal(
+      acquiredAfter1,
+      true,
+      "lease must be released after expired permit rejection",
+    );
     await deps.leaseStore.releaseExecutorLease(deps.walletId, "other_holder");
 
     // 2. Amount exceeds permit
@@ -396,7 +402,11 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
       deps.leaseEpoch,
       30,
     );
-    assert.equal(acquiredAfter2, true, "lease must be released after amount exceeds rejection");
+    assert.equal(
+      acquiredAfter2,
+      true,
+      "lease must be released after amount exceeds rejection",
+    );
     await deps.leaseStore.releaseExecutorLease(deps.walletId, "other_holder");
   });
 });

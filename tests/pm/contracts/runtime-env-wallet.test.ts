@@ -24,15 +24,23 @@ describe("runtime env validation (fail-closed)", () => {
       WALLET_ACCOUNT: "0x1111111111111111111111111111111111111111",
       WALLET_FUNDER: "0x2222222222222222222222222222222222222222",
     });
-    assert.throws(() => assertRuntimeEnv("LIVE", {
-      POLYROOT_KEYSTORE_JSON: '{"v":1}',
-      WALLET_ACCOUNT: "0x1111111111111111111111111111111111111111",
-    }), /PASSPHRASE/);
-    assert.throws(() => assertRuntimeEnv("LIVE", {
-      POLYROOT_KEYSTORE_JSON: '{"v":1}',
-      POLYROOT_KEYSTORE_PASSPHRASE: "test-passphrase",
-      WALLET_ACCOUNT: "0x1111111111111111111111111111111111111111",
-    }), /WALLET_FUNDER/);
+    assert.throws(
+      () =>
+        assertRuntimeEnv("LIVE", {
+          POLYROOT_KEYSTORE_JSON: '{"v":1}',
+          WALLET_ACCOUNT: "0x1111111111111111111111111111111111111111",
+        }),
+      /PASSPHRASE/,
+    );
+    assert.throws(
+      () =>
+        assertRuntimeEnv("LIVE", {
+          POLYROOT_KEYSTORE_JSON: '{"v":1}',
+          POLYROOT_KEYSTORE_PASSPHRASE: "test-passphrase",
+          WALLET_ACCOUNT: "0x1111111111111111111111111111111111111111",
+        }),
+      /WALLET_FUNDER/,
+    );
     assertRuntimeEnv("LIVE", {
       POLYROOT_KEYSTORE_JSON: '{"v":1}',
       POLYROOT_KEYSTORE_PASSPHRASE: "test-passphrase",
