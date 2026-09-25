@@ -6,7 +6,11 @@
  */
 
 import { Pool } from "pg";
-import { createPgStores } from "@polyroot/risk";
+import {
+  createPgStores,
+  ReservationManager,
+  startReservationExpiryJob,
+} from "@polyroot/risk";
 import { MoneyKernel } from "@polyroot/risk";
 import { createHash } from "node:crypto";
 import {
@@ -207,6 +211,19 @@ export async function bootstrapAgent(
   const recoveryLedger = new PgRecoveryLedger(pool);
   const leaseStore = new PgLeaseStore(pool);
 
+  // 5b. Reservation expiry: stranded ACTIVE reservations (e.g. after a
+  // crash between permit issue and consume/release) are terminally expired
+  // back to available funds every 30s. Fail-closed: expiry errors are logged,
+  // never thrown into the pipeline.
+  const reservationManager = new ReservationManager({
+    balanceStore: stores.balanceStore,
+    permitStore,
+    pool,
+  });
+  const stopReservationExpiry = startReservationExpiryJob({
+    reservations: reservationManager,
+  });
+
   const seenMap = new Map();
   const executor = new Executor({
     adapter: venueAdapter,
@@ -339,5 +356,7 @@ export async function bootstrapAgent(
     executor,
     pipeline,
     metrics,
+    reservationManager,
+    stopReservationExpiry,
   };
 }
