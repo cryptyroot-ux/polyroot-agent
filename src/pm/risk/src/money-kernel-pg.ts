@@ -13,6 +13,7 @@
 import { Pool, type PoolConfig, type PoolClient } from "pg";
 import { randomUUID } from "crypto";
 import { createHash } from "crypto";
+import { toBaseUnits } from "./reservation-manager.js";
 import type {
   BalanceStore,
   KernelEventSink,
@@ -59,8 +60,8 @@ export class PgBalanceStore implements BalanceStore {
     return {
       account,
       asset,
-      availableBase: BigInt(row.available_base),
-      committedBase: BigInt(row.committed_base),
+      availableBase: toBaseUnits(row.available_base),
+      committedBase: toBaseUnits(row.committed_base),
     };
   }
 
@@ -291,7 +292,7 @@ export class PgMoneyAuthority implements MoneyAuthority {
           code: "BALANCE_ROW_MISSING",
         };
       }
-      if (BigInt(bal.rows[0].available_base) < cashNeededBase) {
+      if (toBaseUnits(bal.rows[0].available_base) < cashNeededBase) {
         await client.query("ROLLBACK");
         return {
           ok: false,

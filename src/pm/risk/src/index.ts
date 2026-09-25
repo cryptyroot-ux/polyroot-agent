@@ -33,6 +33,7 @@ export {
   type Reservation,
   isReservationValid,
   startReservationExpiryJob,
+  toBaseUnits,
 } from "./reservation-manager.js";
 
 // Money Kernel (PM-RISK-01..08, Blueprint B9)

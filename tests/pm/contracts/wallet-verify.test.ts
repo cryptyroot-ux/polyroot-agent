@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadDotEnv, runWalletVerify } from "@polyroot/runtime";
+import { sealPrivateKey } from "@polyroot/signer";
 
 describe("loadDotEnv resolution", () => {
   it("loads an explicit path and returns it", () => {
@@ -83,5 +84,27 @@ describe("polyroot wallet verify (no agent, no network)", () => {
       WALLET_FUNDER: FUND,
     });
     assert.equal(colliding.ok, false);
+  });
+  it("accepts a sealed keystore with no raw key present", () => {
+    const envelope = sealPrivateKey(`0x${KEY}`, "test-pass");
+    const r = runWalletVerify({
+      POLYROOT_KEYSTORE_JSON: JSON.stringify(envelope),
+      POLYROOT_KEYSTORE_PASSPHRASE: "test-pass",
+      WALLET_ADDRESS: ADDR,
+      WALLET_ACCOUNT: ACCT,
+      WALLET_FUNDER: FUND,
+    });
+    assert.equal(r.ok, true);
+    assert.equal(r.address, ADDR);
+  });
+  it("fails when the keystore passphrase is wrong", () => {
+    const envelope = sealPrivateKey(`0x${KEY}`, "test-pass");
+    const r = runWalletVerify({
+      POLYROOT_KEYSTORE_JSON: JSON.stringify(envelope),
+      POLYROOT_KEYSTORE_PASSPHRASE: "wrong-pass",
+      WALLET_ACCOUNT: ACCT,
+      WALLET_FUNDER: FUND,
+    });
+    assert.equal(r.ok, false);
   });
 });

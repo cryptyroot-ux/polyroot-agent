@@ -6,7 +6,7 @@ import {
   mkdirSync,
 } from "node:fs";
 import { Pool } from "pg";
-import { deriveAddressFromPrivateKey, sealPrivateKey } from "@polyroot/signer";
+import { deriveAddressFromPrivateKey, sealPrivateKey, resolveWalletKey } from "@polyroot/signer";
 import { randomBytes } from "node:crypto";
 import {
   PgLiveGuardStore,
@@ -1163,12 +1163,20 @@ export function runWalletVerify(
   env: NodeJS.ProcessEnv = process.env,
 ): WalletVerifyResult {
   const checks: WalletCheck[] = [];
-  const rawKey = env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"] ?? "";
+  // Sealed keystore first (never requires the raw key on disk), raw key
+  // second. Either path must yield a usable 64-hex key.
+  let rawKey: string;
+  try {
+    rawKey = resolveWalletKey(env);
+  } catch {
+    rawKey = "";
+  }
   if (!rawKey) {
     checks.push({
       name: "key-present",
       ok: false,
-      detail: "PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY) is not set",
+      detail:
+        "no wallet key: set POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE, or PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY)",
     });
     return { ok: false, checks };
   }

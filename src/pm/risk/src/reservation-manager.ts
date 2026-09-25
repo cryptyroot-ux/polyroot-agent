@@ -18,6 +18,19 @@ import type { BalanceStore } from "./money-kernel.js";
 export type ReservationStatus =
   "ACTIVE" | "PARTIALLY_CONSUMED" | "CONSUMED" | "RELEASED" | "EXPIRED";
 
+/**
+ * Parse a base-unit integer from a pg NUMERIC value. Real PostgreSQL
+ * NUMERIC(18,8) columns arrive as decimal strings ("500000.00000000") and
+ * BigInt() throws on those — every consume/release crashed against a real
+ * DB. Truncate (never round up: accounting must not invent money).
+ */
+export function toBaseUnits(value: string | number | bigint): bigint {
+  if (typeof value === "bigint") return value;
+  const s = String(value).trim();
+  const dot = s.indexOf(".");
+  return BigInt(dot >= 0 ? s.slice(0, dot) : s);
+}
+
 export interface Reservation {
   id: string;
   intentId: string;
@@ -183,8 +196,8 @@ export class ReservationManager {
           reason: `reservation is ${row.status}`,
         };
       }
-      const reserved = BigInt(row.amount);
-      const alreadyConsumed = BigInt(row.consumed_amount ?? "0");
+      const reserved = toBaseUnits(row.amount);
+      const alreadyConsumed = toBaseUnits(row.consumed_amount ?? "0");
       const newConsumed = alreadyConsumed + filledAmount;
       if (newConsumed > reserved) {
         await client.query("ROLLBACK");
@@ -268,9 +281,9 @@ export class ReservationManager {
           reason: `reservation is ${row.status}`,
         };
       }
-      const reserved = BigInt(row.amount);
-      const consumed = BigInt(row.consumed_amount ?? "0");
-      const released = BigInt(row.released_amount ?? "0");
+      const reserved = toBaseUnits(row.amount);
+      const consumed = toBaseUnits(row.consumed_amount ?? "0");
+      const released = toBaseUnits(row.released_amount ?? "0");
       // Release only the remaining (unconsumed, unreleased) portion.
       const remaining = reserved - consumed - released;
       if (remaining < 0n) {
@@ -387,9 +400,9 @@ export class ReservationManager {
       decisionId: row.decision_id ?? row.risk_decision_id ?? "",
       account: row.account,
       asset: row.asset,
-      amount: BigInt(row.amount ?? 0),
-      consumedAmount: BigInt(row.consumed_amount ?? 0),
-      releasedAmount: BigInt(row.released_amount ?? 0),
+      amount: toBaseUnits(row.amount ?? 0),
+      consumedAmount: toBaseUnits(row.consumed_amount ?? 0),
+      releasedAmount: toBaseUnits(row.released_amount ?? 0),
       currency: row.currency ?? "pUSD",
       status: row.status as ReservationStatus,
       createdAt: row.created_at,
