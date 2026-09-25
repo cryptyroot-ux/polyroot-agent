@@ -12,7 +12,7 @@
  *   venue       = VenueAdapter provided by caller
  */
 
-import type { PoolConfig } from "pg";
+import { Pool, type PoolConfig } from "pg";
 import type {
   ExecutionPermit,
   Forecast,
@@ -53,6 +53,12 @@ export interface OrchestratorPgDeps {
   now: () => Date;
   /** PostgreSQL connection (string or PoolConfig). */
   pgConfig: PoolConfig | string;
+  /**
+   * Shared pool. When provided, EVERY store reuses it (single-pool invariant:
+   * no hidden second pool, no pool exhaustion). When omitted, the factory
+   * creates exactly one pool and owns it (ended on shutdown).
+   */
+  pool?: Pool;
 }
 
 export interface OrchestrateInput {
@@ -92,18 +98,27 @@ export interface WiredOrchestrator {
 export async function createOrchestratorPg(
   deps: OrchestratorPgDeps,
 ): Promise<WiredOrchestrator> {
+  // ── ONE shared pool for every store (R5). Never open a second pool
+  // silently: pool exhaustion under load is a liveness risk.
+  const ownsPool = deps.pool === undefined;
+  const sharedPool =
+    deps.pool ??
+    new Pool(
+      typeof deps.pgConfig === "string"
+        ? { connectionString: deps.pgConfig }
+        : deps.pgConfig,
+    );
+
   // ── PostgreSQL-backed Money Kernel ports ──────────────────────────────────
   const {
     balanceStore,
     eventSink,
     authority,
-    pool: riskPool,
   }: {
     balanceStore: import("@polyroot/risk").BalanceStore;
     eventSink: import("@polyroot/risk").KernelEventSink;
     authority: import("@polyroot/risk").MoneyAuthority;
-    pool: import("pg").Pool;
-  } = createPgStores(deps.pgConfig);
+  } = createPgStores({ pool: sharedPool });
 
   // The atomic PgMoneyAuthority is the ONLY financial authority in production.
   // Passing it to the kernel eliminates the non-atomic fallback path
@@ -116,41 +131,41 @@ export async function createOrchestratorPg(
     mode: "LIVE",
   });
 
-  // ── PostgreSQL-backed Permit Store & Recovery Ledger ──────────────────────
+  // ── PostgreSQL-backed Permit Store & Recovery Ledger (shared pool) ──────
   const permitStore = new (await import("@polyroot/venue")).PgPermitStore(
-    deps.pgConfig,
+    sharedPool,
   );
   const recoveryLedger = new (await import("@polyroot/venue")).PgRecoveryLedger(
-    deps.pgConfig,
+    sharedPool,
   );
 
   // ── PostgreSQL-backed Executor Lease Store (epoch fencing, PR-OPS-02) ─────
   const leaseStore = new (await import("@polyroot/venue")).PgLeaseStore(
-    deps.pgConfig,
+    sharedPool,
   );
 
-  // ── Executor with in-memory seen cache (DB-backed recovery ledger for crash safety) ──
-  const seenCache = new Map<
-    string,
-    import("@polyroot/executor").OrderLifecycleState
-  >();
-
-  // Hydrate cache from DB once at startup (survives restarts).
-  const unknownIds = await recoveryLedger.getUnresolved();
-  for (const id of unknownIds) seenCache.set(id.orderId, id.state);
+  // ── Durable seen log (DB-backed, R2): hydrate BEFORE accepting intents ────
+  const { PgSeenStore } = await import("@polyroot/venue");
+  const seenStore = new PgSeenStore(sharedPool);
+  await seenStore.hydrate(await recoveryLedger.getUnresolved());
 
   const executor = new Executor({
     adapter: deps.venue,
     now: deps.now,
     seen: {
-      has: (orderId: string) => seenCache.has(orderId),
+      has: (orderId: string) => seenStore.has(orderId),
       add: (
         orderId: string,
         state: import("@polyroot/executor").OrderLifecycleState,
       ) => {
-        seenCache.set(orderId, state);
+        seenStore.set(orderId, state);
+        void seenStore
+          .flush()
+          .catch((err: unknown) =>
+            console.error("[seen] persist failed:", (err as Error).message),
+          );
       },
-      get: (orderId: string) => seenCache.get(orderId),
+      get: (orderId: string) => seenStore.get(orderId),
     },
     permitStore,
     recoveryLedger,
@@ -161,7 +176,7 @@ export async function createOrchestratorPg(
   });
 
   // ── PostgreSQL-backed Control plane ports (with executor for reconciler) ──
-  const stores = createPgControlStores(deps.pgConfig, executor, deps.policy);
+  const stores = createPgControlStores(sharedPool, executor, deps.policy);
   const persistence = stores.persistence;
   const reconciler = stores.reconciler;
   const supervisor = stores.supervisor;
@@ -266,19 +281,12 @@ export async function createOrchestratorPg(
   }
 
   // ── Shutdown ──────────────────────────────────────────────────────────────
+  // Every store shares `sharedPool`: end it exactly once, and only when this
+  // factory created it. Individual store close() calls would double-end a
+  // shared pool, so they are deliberately not called here.
   async function shutdown(): Promise<void> {
     stopReconciliation();
-    await Promise.all([
-      riskPool.end(),
-      stores.pool.end(),
-      (await import("@polyroot/venue")).PgPermitStore.prototype.close?.call(
-        permitStore,
-      ),
-      (await import("@polyroot/venue")).PgRecoveryLedger.prototype.close?.call(
-        recoveryLedger,
-      ),
-      leaseStore.close(),
-    ]);
+    if (ownsPool) await sharedPool.end().catch(() => undefined);
   }
 
   return {
