@@ -23,6 +23,7 @@ import {
   PgPermitStore,
   PgRecoveryLedger,
   PgLeaseStore,
+  PgSeenStore,
   type PermitStore,
   type VenueAdapter,
 } from "@polyroot/venue";
@@ -224,14 +225,25 @@ export async function bootstrapAgent(
     reservations: reservationManager,
   });
 
-  const seenMap = new Map();
+  // Restart idempotency: hydrate the seen log from durable storage BEFORE
+  // the pipeline accepts new intents, so a restart can never re-submit a
+  // known order. Sync mirror keeps the executor hot path allocation-free.
+  const seenStore = new PgSeenStore(pool);
+  await seenStore.hydrate(await recoveryLedger.getUnresolved());
   const executor = new Executor({
     adapter: venueAdapter,
     now: () => new Date(),
     seen: {
-      has: (id) => seenMap.has(id),
-      add: (id, st) => seenMap.set(id, st),
-      get: (id) => seenMap.get(id),
+      has: (id) => seenStore.has(id),
+      add: (id, st) => {
+        seenStore.set(id, st);
+        void seenStore
+          .flush()
+          .catch((err: unknown) =>
+            console.error("[seen] persist failed:", (err as Error).message),
+          );
+      },
+      get: (id) => seenStore.get(id),
     },
     permitStore,
     recoveryLedger,

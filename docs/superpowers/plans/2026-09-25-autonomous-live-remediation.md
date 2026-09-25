@@ -209,7 +209,7 @@ Expected: FAIL with `Cannot find module .../seen-store.js`
 - [ ] **Step 3: Write minimal implementation**
 
 ```typescript
-import type { OrderLifecycleState } from "@polyroot/executor";
+import type { OrderLifecycleState } from "@polyroot/domain";
 
 interface QueryablePool {
   query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
