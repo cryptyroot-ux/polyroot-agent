@@ -365,4 +365,38 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
     assert.equal(state, "ACKNOWLEDGED");
     assert.equal(queried, false, "must not query venue for non-UNKNOWN order");
   });
+
+  it("releases executor lease on validation failure (expired permit, amount exceeds, permit mismatch)", async () => {
+    const adapter = new FakeAdapter();
+    const { deps } = makeDeps(adapter);
+    const ex = new Executor(deps);
+
+    // 1. Expired permit validation
+    const expiredPermit = makePermit({ expires_at: new Date("2020-01-01T00:00:00Z") });
+    const res1 = await ex.submit(makeSignedOrder("ord_fail_1"), expiredPermit);
+    assert.equal(res1.outcome, "PERMIT_INVALID");
+
+    // Must be able to immediately acquire lease because it was released
+    const acquiredAfter1 = await deps.leaseStore.acquireExecutorLease(
+      deps.walletId,
+      "other_holder",
+      deps.leaseEpoch,
+      30,
+    );
+    assert.equal(acquiredAfter1, true, "lease must be released after expired permit rejection");
+    await deps.leaseStore.releaseExecutorLease(deps.walletId, "other_holder");
+
+    // 2. Amount exceeds permit
+    const bigOrder = { ...makeSignedOrder("ord_fail_2"), size: 500 };
+    const res2 = await ex.submit(bigOrder, makePermit());
+    assert.equal(res2.outcome, "PERMIT_INVALID");
+    const acquiredAfter2 = await deps.leaseStore.acquireExecutorLease(
+      deps.walletId,
+      "other_holder",
+      deps.leaseEpoch,
+      30,
+    );
+    assert.equal(acquiredAfter2, true, "lease must be released after amount exceeds rejection");
+    await deps.leaseStore.releaseExecutorLease(deps.walletId, "other_holder");
+  });
 });

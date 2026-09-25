@@ -211,6 +211,21 @@ export class Executor {
       };
     }
 
+    try {
+      return await this.submitInner(order, permit);
+    } finally {
+      await this.deps.leaseStore.releaseExecutorLease(
+        this.deps.walletId,
+        this.deps.holder,
+      ).catch(() => {});
+    }
+  }
+
+  private async submitInner(
+    order: SignedOrder,
+    permit: ExecutionPermit,
+  ): Promise<TrySubmitResult> {
+
     // Check for duplicate order ID (idempotency) FIRST — before any permit checks.
     // This ensures resubmitting the exact same order_id returns DUPLICATE
     // rather than PERMIT_REUSED when the permit was already claimed by a
