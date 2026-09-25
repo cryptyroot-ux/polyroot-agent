@@ -31,6 +31,7 @@ export * from "./reality-gap.js";
 export * from "./micro-live-guard.js";
 export * from "./live-guard-store.js";
 export * from "./autonomy-bounds.js";
+export * from "./live-preflight.js";
 export * from "./platform-safety.js";
 export {
   bootstrapAgent,

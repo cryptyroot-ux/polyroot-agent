@@ -512,8 +512,11 @@ import { createSignerFromEnv } from "@polyroot/signer";
 import {
   buildLiveVenueAdapter,
   buildPublicVenueAdapter,
+  readMarketUniverse,
   runVenueCheck,
 } from "@polyroot/venue";
+import { parseBoundsEnv } from "./autonomy-bounds.js";
+import { runLivePreflight } from "./live-preflight.js";
 
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
@@ -848,6 +851,72 @@ async function runDoctor(): Promise<void> {
   if (!allOk) process.exit(1);
 }
 
+/**
+ * Strict LIVE preflight: `polyroot doctor --live`.
+ * Proves production infrastructure before real money moves. Unlike `doctor`
+ * (informational warnings), EVERY check here is a hard gate — any failure
+ * exits non-zero. Passing proves readiness, never authorization: the owner
+ * sign-off for LIVE is still required out of band.
+ */
+async function runLiveDoctor(): Promise<void> {
+  console.log("\n🏥 PolyRoot Agent — LIVE Preflight (strict)\n");
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.log("❌ db-connect: DATABASE_URL is not set");
+    console.log("\n❌ LIVE preflight REFUSED (database unconfigured)");
+    process.exit(1);
+  }
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    const venue = buildPublicVenueAdapter();
+    const result = await runLivePreflight({
+      queryDb: (text: string, params?: unknown[]) =>
+        pool.query(text, params as never[]) as never,
+      readBounds: async () => parseBoundsEnv(process.env),
+      readUniverse: async () => readMarketUniverse(process.env),
+      verifyWallet: async () => {
+        const w = runWalletVerify();
+        return {
+          ok: w.ok,
+          detail: w.ok
+            ? `wallet verified${w.address ? `: ${w.address}` : ""}`
+            : w.checks
+                .filter((c) => !c.ok)
+                .map((c) => `${c.name}: ${c.detail}`)
+                .join("; "),
+        };
+      },
+      venueCredsPresent: async () =>
+        Boolean(
+          process.env["POLYMARKET_API_KEY"] &&
+            process.env["POLYMARKET_API_SECRET"] &&
+            process.env["POLYMARKET_API_PASSPHRASE"],
+        ),
+      fetchBook: async (marketId: string) => {
+        const snap = await venue.getOrderBook(marketId);
+        if (snap.yes_price === undefined || snap.no_price === undefined)
+          return null;
+        return { bid: snap.yes_price, ask: snap.no_price };
+      },
+      metricsKeyPresent: async () =>
+        Boolean(process.env["POLYROOT_METRICS_OWNER_KEY"]),
+    });
+    for (const c of result.checks) {
+      console.log(`${c.ok ? "✅" : "❌"} ${c.name}: ${c.detail}`);
+    }
+    console.log(
+      "\n" +
+        (result.ok
+          ? "✅ LIVE preflight PASSED — infrastructure proven (owner sign-off still required to trade)"
+          : "❌ LIVE preflight REFUSED — fix the failed checks above; no real money moves until all pass"),
+    );
+    if (!result.ok) process.exit(1);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
 /** Docker fix - restart postgres container. */
 async function runDockerFix(): Promise<void> {
   console.log("\n🐳 Fixing Docker PostgreSQL...\n");
@@ -1038,7 +1107,11 @@ export async function main(
     return;
   }
   if (argv[0] === "doctor") {
-    await runDoctor();
+    if (argv.includes("--live")) {
+      await runLiveDoctor();
+    } else {
+      await runDoctor();
+    }
     return;
   }
   if (argv[0] === "docker-fix") {
