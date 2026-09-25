@@ -25,3 +25,4 @@ Thumbs.db
 # Coverage + local tool artifacts (never committed)
 coverage/
 .codebase-memory/
+.worktrees/
