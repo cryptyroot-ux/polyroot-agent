@@ -68,13 +68,22 @@ export class MetricsServer {
     });
   }
 
+  /** Attach baseline security headers to every response. */
+  private secure(res: ServerResponse): ServerResponse {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Cache-Control", "no-store");
+    return res;
+  }
+
   private async handle(
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
     try {
       if (req.method !== "GET") {
-        res
+        this.secure(res)
           .writeHead(405, { "content-type": "text/plain" })
           .end("method not allowed");
         return;
@@ -85,24 +94,28 @@ export class MetricsServer {
           status: "ok",
           uptime_s: Math.floor((Date.now() - this.startedAt) / 1000),
         });
-        res.writeHead(200, { "content-type": "application/json" }).end(body);
+        this.secure(res)
+          .writeHead(200, { "content-type": "application/json" })
+          .end(body);
         return;
       }
       if (url.pathname === "/metrics") {
         if (!this.ownerKey || !this.hasValidBearer(req.headers.authorization)) {
-          res
+          this.secure(res)
             .writeHead(401, { "content-type": "text/plain" })
             .end("unauthorized");
           return;
         }
-        res
+        this.secure(res)
           .writeHead(200, { "content-type": "text/plain; version=0.0.4" })
           .end(this.exporter.getMetrics());
         return;
       }
-      res.writeHead(404, { "content-type": "text/plain" }).end("not found");
+      this.secure(res)
+        .writeHead(404, { "content-type": "text/plain" })
+        .end("not found");
     } catch {
-      res
+      this.secure(res)
         .writeHead(500, { "content-type": "text/plain" })
         .end("internal error");
     }
