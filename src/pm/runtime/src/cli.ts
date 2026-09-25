@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
 import { Pool } from "pg";
 import { deriveAddressFromPrivateKey, sealPrivateKey } from "@polyroot/signer";
 import { randomBytes } from "node:crypto";
@@ -107,7 +107,16 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: polyroot --mode PAPER --db <DATABASE_URL> --kms-key <KEY_ID> [--once]",
+        "PolyRoot Agent — perintah:\n" +
+          "  polyroot                 Jalankan agen (mode dari pengaturan)\n" +
+          "  polyroot onboard         Pengaturan awal (baru pertama kali)\n" +
+          "  polyroot setup           Ubah mode, modal, batas rugi, pasar\n" +
+          "  polyroot status          Lihat konfigurasi saat ini\n" +
+          "  polyroot doctor          Cek kesehatan dasar\n" +
+          "  polyroot doctor --live   Tes kesiapan LIVE, wajib sebelum uang asli\n" +
+          "  polyroot wallet verify   Cek dompet tanpa jaringan\n" +
+          "  polyroot guard reset --loss <rugi>   Buka kunci berhenti-rugi\n" +
+          "  polyroot --once          Jalan sekali lalu berhenti (tes)",
       );
       process.exit(0);
     } else if (a === "--mode") {
@@ -171,15 +180,101 @@ function isFirstRun(): boolean {
 }
 
 /**
- * Onboarding prompts, Hermes-style: one self-contained mechanism per question,
- * never shared stdin state. Normal input uses a fresh readline per question
- * (created and closed inside the call); secrets use a standalone masked reader
- * with no readline involved at all. Ctrl-C / EOF always cancels cleanly with a
- * message instead of leaking keystrokes to the shell.
+ * Onboarding prompts: ONE shared readline interface per interactive session.
+ * A fresh interface per question breaks stdin after the first close (the
+ * second prompt sees EOF and the whole flow cancels). Secrets reuse the same
+ * interface with output muted, so typed characters never echo.
  */
 class OnboardingCancelled extends Error {
   constructor() {
     super("Setup cancelled");
+  }
+}
+
+interface SharedSession {
+  rl: import("node:readline").Interface;
+  setMuted: (muted: boolean) => void;
+  close: () => void;
+}
+
+let sharedSession: SharedSession | undefined;
+
+async function getSharedSession(): Promise<SharedSession> {
+  if (!sharedSession) {
+    const readline = await import("node:readline");
+    const { Writable } = await import("node:stream");
+    let muted = false;
+    const output = new Writable({
+      write(chunk, _encoding, cb): void {
+        if (!muted) process.stdout.write(chunk);
+        cb();
+      },
+    });
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output,
+      terminal: true,
+    });
+    sharedSession = {
+      rl,
+      setMuted: (m: boolean): void => {
+        muted = m;
+      },
+      close: (): void => {
+        try {
+          rl.close();
+        } catch {
+          // already closed — session teardown is best-effort
+        }
+      },
+    };
+  }
+  return sharedSession;
+}
+
+function closeSharedSession(): void {
+  sharedSession?.close();
+  sharedSession = undefined;
+}
+
+/** Ask one question on the shared session. Ctrl-C / EOF cancels cleanly. */
+async function askOnShared(
+  prompt: string,
+  opts: { muted: boolean },
+): Promise<string> {
+  const session = await getSharedSession();
+  session.setMuted(opts.muted);
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      let settled = false;
+      const onSigint = (): void => {
+        if (!settled) {
+          settled = true;
+          session.rl.removeListener("SIGINT", onSigint);
+          reject(new OnboardingCancelled());
+        }
+      };
+      const onClose = (): void => {
+        if (!settled) {
+          settled = true;
+          session.rl.removeListener("SIGINT", onSigint);
+          reject(new OnboardingCancelled());
+        }
+      };
+      session.rl.once("SIGINT", onSigint);
+      session.rl.once("close", onClose);
+      session.rl.question(prompt, (a: string) => {
+        if (!settled) {
+          settled = true;
+          session.rl.removeListener("SIGINT", onSigint);
+          session.rl.removeListener("close", onClose);
+          resolve(a ?? "");
+        }
+      });
+    });
+  } finally {
+    session.setMuted(false);
+    console.log("");
   }
 }
 
@@ -188,94 +283,21 @@ async function askText(
   message: string,
   opts: { defaultValue?: string } = {},
 ): Promise<string> {
-  const readline = await import("node:readline");
   const hint = opts.defaultValue !== undefined ? ` [${opts.defaultValue}]` : "";
   for (;;) {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: true,
-    });
-    try {
-      const answer = await new Promise<string>((resolve, reject) => {
-        let settled = false;
-        rl.on("SIGINT", () => {
-          if (!settled) {
-            settled = true;
-            reject(new OnboardingCancelled());
-          }
-        });
-        rl.on("close", () => {
-          if (!settled) {
-            settled = true;
-            reject(new OnboardingCancelled());
-          }
-        });
-        rl.question(`${message}${hint}: `, (a: string) => {
-          if (!settled) {
-            settled = true;
-            resolve(a ?? "");
-          }
-        });
-      });
-      const text = answer.trim();
-      if (text) return text;
-      if (opts.defaultValue !== undefined) return opts.defaultValue;
-      console.log("Please type a value (or press Ctrl-C to cancel).");
-    } finally {
-      rl.close();
-    }
+    const answer = await askOnShared(`${message}${hint}: `, { muted: false });
+    const text = answer.trim();
+    if (text) return text;
+    if (opts.defaultValue !== undefined) return opts.defaultValue;
+    console.log("Ketik nilai (atau Ctrl-C untuk batal).");
   }
 }
 
-/** Secret input with `*` masking and no readline involved (mirrors Hermes'
- *  `masked_secret_prompt`: raw byte reading, backspace support, arrow-key
- *  sequences never become secret text). Falls back to visible input off-TTY. */
+/** Secret input on the shared session with output muted, so typed
+ *  characters never echo. Same stdin lifetime as normal prompts. */
 async function askSecret(message: string): Promise<string> {
-  // Sudo-style hidden input: echo is swallowed by a muted output stream, so
-  // typed characters are invisible. Deliberately NO raw-mode byte reading and
-  // NO shared state -- this is just a normal readline question whose echo goes
-  // nowhere, which means it can never fight other prompts over stdin.
-  const readline = await import("node:readline");
-  const { Writable } = await import("node:stream");
-  const mute = new Writable({
-    write(_chunk, _encoding, cb): void {
-      cb();
-    },
-  });
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: mute,
-    terminal: true,
-  });
-  try {
-    process.stdout.write(`${message} (typing hidden): `);
-    const answer = await new Promise<string>((resolve, reject) => {
-      let settled = false;
-      rl.on("SIGINT", () => {
-        if (!settled) {
-          settled = true;
-          reject(new OnboardingCancelled());
-        }
-      });
-      rl.on("close", () => {
-        if (!settled) {
-          settled = true;
-          reject(new OnboardingCancelled());
-        }
-      });
-      rl.question("", (a: string) => {
-        if (!settled) {
-          settled = true;
-          resolve(a ?? "");
-        }
-      });
-    });
-    return answer;
-  } finally {
-    console.log("");
-    rl.close();
-  }
+  process.stdout.write(`${message} (ketikan disembunyikan): `);
+  return askOnShared("", { muted: true });
 }
 
 /** Secret input that must not be empty (loops instead of aborting setup). */
@@ -313,13 +335,14 @@ async function askChoice(
 
 async function runOnboarding(): Promise<OnboardingConfig> {
   console.log("\n═══════════════════════════════════════════════");
-  console.log("  Welcome to PolyRoot Agent — First Run Setup");
+  console.log("  Selamat datang di PolyRoot Agent — Pengaturan Awal");
+  console.log("  3 langkah. Semua ada pilihan bawaan: cukup tekan Enter.");
   console.log("═══════════════════════════════════════════════\n");
 
-  // 1. AI Provider & Model
-  console.log("📡 Step 1/3: Choose AI Provider & Model");
+  // 1. AI Provider & Model — the brain that reads markets.
+  console.log("📡 Langkah 1/3: Otak AI (yang membaca pasar)");
   const provider = await askChoice(
-    "Select AI provider (Enter = recommended):",
+    "Pilih penyedia AI (Enter = bawaan):",
     [
       "OpenAI (GPT-4o, GPT-4o-mini)",
       "9Router / OpenAI-compatible",
@@ -357,10 +380,12 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     throw new Error("API key is required (Ollama local uses any placeholder)");
   }
 
-  // 2. Wallet
-  console.log("\n🔐 Step 2/3: Wallet Setup");
+  // 2. Wallet — keys are sealed in a locked keystore on this machine and
+  // are never sent anywhere.
+  console.log("\n🔐 Langkah 2/3: Dompet (tempat kunci disimpan)");
+  console.log("   Kunci dikunci di brankas komputer ini, tidak dikirim ke mana pun.");
   const walletChoice = await askChoice(
-    "Wallet (Enter = create new):",
+    "Dompet (Enter = buat baru):",
     ["Create new wallet (generates keystore)", "Import existing private key"],
     0,
   );
@@ -370,24 +395,24 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   if (walletChoice.startsWith("Create")) {
     for (;;) {
-      passphrase = await askRequiredSecret("Set keystore passphrase");
-      const confirm = await askRequiredSecret("Confirm passphrase");
+      passphrase = await askRequiredSecret("Buat kata sandi brankas");
+      const confirm = await askRequiredSecret("Ulangi kata sandi");
       if (passphrase === confirm) break;
-      console.log("Passphrases do not match — try again.");
+      console.log("Kata sandi tidak sama — coba lagi.");
     }
     // Generate random key
     privateKey = "0x" + randomBytes(32).toString("hex");
-    console.log(`\n✅ New wallet generated!`);
-    console.log(`   Address: ${deriveAddressFromPrivateKey(privateKey)}`);
-    console.log(`   (Save these — they are shown only once)`);
+    console.log(`\n✅ Dompet baru dibuat!`);
+    console.log(`   Alamat: ${deriveAddressFromPrivateKey(privateKey)}`);
+    console.log(`   (Catat baik-baik — hanya ditampilkan sekali)`);
   } else {
     for (;;) {
-      privateKey = await askRequiredSecret("Private key (0x...)");
+      privateKey = await askRequiredSecret("Kunci privat (0x...)");
       if (/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) break;
-      console.log("Invalid private key format — expected 64 hex characters.");
+      console.log("Format salah — harus 64 karakter hex.");
     }
-    passphrase = await askRequiredSecret("Set keystore passphrase");
-    console.log(`\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`);
+    passphrase = await askRequiredSecret("Buat kata sandi brankas");
+    console.log(`\n✅ Dompet dimasukkan. Alamat: ${deriveAddressFromPrivateKey(privateKey)}`);
   }
 
   // Seal keystore
@@ -397,10 +422,11 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   chmodSync(KEYSTORE_PATH, 0o600);
   console.log(`🔐 Keystore saved to ${KEYSTORE_PATH} (encrypted, 600 perms)`);
 
-  // 3. Mode selection
-  console.log("\n🚀 Step 3/3: Select Mode");
+  // 3. Mode selection — PAPER = practice with play money (100% safe).
+  console.log("\n🚀 Langkah 3/3: Pilih Mode");
+  console.log("   PAPER = latihan, uang mainan (aman 100%). LIVE = uang asli.");
   const modeChoice = await askChoice(
-    "Select mode (Enter = PAPER):",
+    "Pilih mode (Enter = PAPER):",
     [
       "PAPER — Safe simulation, mock data, no real money",
       "LIVE — Real trading on Polymarket (requires capital, API keys)",
@@ -412,15 +438,14 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
   if (modeChoice.startsWith("LIVE")) {
     console.log(
-      "\nLIVE uses real money. You will still need: Polymarket API credentials, " +
-        "WALLET_ACCOUNT + WALLET_FUNDER (3 distinct addresses), and " +
-        "POLYROOT_MICRO_LIVE_LOSS_CAP_USD in ~/.polyroot/.env.",
+      "\nLIVE memakai UANG ASLI. Batas rugi harian akan mematikan sistem",
+      "otomatis kalau tercapai (butuh reset manual oleh Anda).",
     );
-    const confirm = await askText("Type LIVE to confirm (anything else keeps PAPER)");
+    const confirm = await askText("Ketik LIVE untuk lanjut (selain itu tetap PAPER)");
     if (confirm.trim() === "LIVE") {
       mode = "LIVE";
       const capitalRaw = await askText(
-        `Capital cap in USD (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
+        `Batas modal USD — uang maksimal yang boleh dipakai (bawaan ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
         { defaultValue: String(AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
       );
       const capitalParsed = Number(capitalRaw);
@@ -429,7 +454,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           ? capitalParsed
           : AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
       const bpsRaw = await askText(
-        `Daily loss latch in bps, 500 = 5% (default ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})`,
+        `Batas rugi harian dalam bps, 500 = 5% (bawaan ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})`,
         { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
       );
       const bpsParsed = Number(bpsRaw);
@@ -439,10 +464,10 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
       const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
       console.log(
-        `Owner bounds set: capital $${capitalUsd}, loss latch ${lossBps} bps (~$${lossCap}/day).`,
+        `\n✅ Batas Anda: modal $${capitalUsd}, berhenti rugi $${lossCap}/hari.`,
       );
     } else {
-      console.log("Keeping PAPER. Switch later via RUNTIME_MODE.");
+      console.log("Tetap PAPER. Nanti bisa ubah via: polyroot setup");
     }
   }
 
@@ -486,17 +511,20 @@ async function runOnboardingFlow(): Promise<void> {
     const config = await runOnboarding();
     writeEnv(config);
     console.log("\n═══════════════════════════════════════════════");
-    console.log("  Setup complete! Starting PolyRoot Agent...");
-    console.log("═══════════════════════════════════════════════\n");
+    console.log("  Pengaturan selesai! PolyRoot Agent siap.");
+    console.log("═══════════════════════════════════════════════");
+    console.log(formatNextSteps(config.mode));
 
     // Reload env for current process
     process.loadEnvFile(ENV_PATH as string);
+    closeSharedSession();
   } catch (err) {
+    closeSharedSession();
     if (err instanceof OnboardingCancelled) {
-      console.log("\nSetup cancelled. Run 'polyroot onboard' any time.");
+      console.log("\nDibatalkan. Jalankan 'polyroot onboard' kapan saja.");
       process.exit(0);
     }
-    console.error("\n❌ Setup failed:", (err as Error).message);
+    console.error("\n❌ Pengaturan gagal:", (err as Error).message);
     process.exit(1);
   }
 }
@@ -504,8 +532,103 @@ async function runOnboardingFlow(): Promise<void> {
 async function runFirstTimeSetup(): Promise<void> {
   if (!isFirstRun()) return;
 
-  console.log("\n🎉 First run detected — launching interactive setup...\n");
+  console.log("\n🎉 Pertama kali jalan — mulai pengaturan interaktif...\n");
   await runOnboardingFlow();
+}
+
+/**
+ * `polyroot setup` — re-runnable guided configuration for lay operators.
+ * Changes mode, capital cap, loss latch and market universe. NEVER touches
+ * the wallet or keys (use `polyroot onboard` for a full reset).
+ */
+async function runSetupFlow(): Promise<void> {
+  try {
+    loadDotEnv();
+    console.log("\n═══════════════════════════════════════════════");
+    console.log("  PolyRoot Setup — Ubah Pengaturan (aman)");
+    console.log("  Dompet & kunci TIDAK disentuh di sini.");
+    console.log("═══════════════════════════════════════════════\n");
+
+    const currentMode = process.env["RUNTIME_MODE"] ?? "PAPER";
+    console.log("Mode saat ini: " + currentMode);
+    console.log("PAPER = latihan uang mainan. LIVE = uang asli.\n");
+    const modeChoice = await askChoice(
+      "Pilih mode (Enter = biarkan seperti sekarang):",
+      [
+        "PAPER — Safe simulation, mock data, no real money",
+        "LIVE — Real trading on Polymarket (requires capital, API keys)",
+      ],
+      currentMode === "LIVE" ? 1 : 0,
+    );
+    const mode = (modeChoice.startsWith("LIVE") ? "LIVE" : "PAPER") as
+      | "PAPER"
+      | "LIVE";
+
+    const bounds = parseBoundsEnv(process.env);
+    const capitalRaw = await askText(
+      `Batas modal USD (saat ini ${bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD}, Enter = tidak ubah)`,
+      { defaultValue: String(bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
+    );
+    const capitalParsed = Number(capitalRaw);
+    const capitalUsd =
+      Number.isFinite(capitalParsed) && capitalParsed > 0
+        ? Math.floor(capitalParsed)
+        : (bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD);
+
+    console.log(
+      "\nBatas rugi harian: kalau rugi sampai batas ini, sistem MATI otomatis.",
+    );
+    const bpsRaw = await askText(
+      "Batas rugi dalam bps, 500 = 5% (Enter = tidak ubah)",
+      { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
+    );
+    const bpsParsed = Number(bpsRaw);
+    const lossBps =
+      Number.isFinite(bpsParsed) && bpsParsed > 0
+        ? Math.floor(bpsParsed)
+        : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
+
+    const currentUniverse = process.env["POLYROOT_MARKET_IDS"] ?? "";
+    console.log("\nDaftar pasar = ID token Polymarket, pisahkan koma.");
+    console.log("Kosongkan untuk tidak mengubah.");
+    const universeRaw = await askText(
+      `Daftar pasar${currentUniverse ? " (saat ini: " + currentUniverse + ")" : ""}`,
+      { defaultValue: currentUniverse },
+    );
+    let universe: string[] = [];
+    const trimmed = universeRaw.trim();
+    if (trimmed) {
+      try {
+        universe = readMarketUniverse({ POLYROOT_MARKET_IDS: trimmed });
+      } catch (err) {
+        console.log(
+          `⚠️  Daftar pasar tidak valid (${(err as Error).message}) — dibiarkan seperti semula.`,
+        );
+      }
+    }
+
+    const updates = buildSetupEnvUpdate({ capitalUsd, lossBps, mode, universe });
+    ensurePolyrootHome();
+    const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
+    writeFileSync(ENV_PATH, upsertEnvLines(existing, updates) + "\n", { mode: 0o600 });
+    chmodSync(ENV_PATH, 0o600);
+    const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
+    console.log(`\n✅ Tersimpan: mode ${mode}, modal $${capitalUsd}, berhenti rugi $${lossCap}/hari.`);
+    if (universe.length > 0) {
+      console.log(`   Pasar: ${universe.join(", ")}`);
+    }
+    console.log(formatNextSteps(mode));
+    process.loadEnvFile(ENV_PATH as string);
+    closeSharedSession();
+  } catch (err) {
+    closeSharedSession();
+    if (err instanceof OnboardingCancelled) {
+      console.log("\nDibatalkan, tidak ada yang diubah. Jalankan 'polyroot setup' kapan saja.");
+      process.exit(0);
+    }
+    console.error("\n❌ Setup gagal:", (err as Error).message);
+    process.exit(1);
+  }
 }
 
 import { createSignerFromEnv } from "@polyroot/signer";
@@ -517,6 +640,11 @@ import {
 } from "@polyroot/venue";
 import { parseBoundsEnv } from "./autonomy-bounds.js";
 import { runLivePreflight } from "./live-preflight.js";
+import {
+  buildSetupEnvUpdate,
+  formatNextSteps,
+  upsertEnvLines,
+} from "./setup-guide.js";
 
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
@@ -1122,11 +1250,15 @@ export async function main(
     await runOnboardingFlow();
     return;
   }
+  if (argv[0] === "setup") {
+    await runSetupFlow();
+    return;
+  }
 
   // First-run onboarding (skip for subcommands)
   if (argv[0] !== "wallet" && argv[0] !== "venue" && argv[0] !== "guard" &&
       argv[0] !== "status" && argv[0] !== "update" && argv[0] !== "doctor" && argv[0] !== "docker-fix" &&
-      argv[0] !== "onboard") {
+      argv[0] !== "onboard" && argv[0] !== "setup") {
     await runFirstTimeSetup();
   }
 
