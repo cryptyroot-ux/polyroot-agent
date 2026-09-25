@@ -371,7 +371,6 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     privateKey = "0x" + randomBytes(32).toString("hex");
     console.log(`\n✅ New wallet generated!`);
     console.log(`   Address: ${deriveAddressFromPrivateKey(privateKey)}`);
-    console.log(`   Private Key: ${privateKey}`);
     console.log(`   (Save these — they are shown only once)`);
   } else {
     for (;;) {

@@ -137,8 +137,7 @@ export class PgRecoveryLedger implements IRecoveryLedger {
       const claimResult = await client.query(
         `UPDATE execution_permits
          SET used_at = now(),
-             claimed_order_id = $2,
-             payload_hash = (SELECT computePermitHash(jsonb_set(to_jsonb(execution_permits), '{used_at}', to_jsonb(now()))))
+             claimed_order_id = $2
          WHERE permit_id = $1
            AND used_at IS NULL
            AND expires_at > now()
