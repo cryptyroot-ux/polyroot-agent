@@ -14,9 +14,9 @@
 | **Autonomy Level** | AI proposes & executes orders end-to-end without human-in-the-loop per order |
 | **Human Authority** | Config changes (capital cap, loss latch, venue) + emergency kill-switch only |
 | **Capital Hard Cap** | Fixed at deployment; AI cannot modify (e.g., $1,000 USDC) |
-| **Daily Loss Latch** | Hard stop at -2% equity/day; auto-halt, manual owner reset required |
+| **Daily Loss Latch** | Default -5% equity/day; auto-halt, manual owner reset required; owner-adjustable via `polyroot setup` |
 | **Venue Pin** | Polymarket CLOB (CTF v2) only; zero fallback |
-| **Config Immutability** | All bounds encoded in constants/deployment, not runtime env |
+| **Config Immutability** | Defaults in code; owner overrides via `polyroot setup` (authenticated, durable); AI has no tool/path to modify |
 | **Safety Gates** | All must pass before every order submission |
 
 **Success = 629/629 tests pass + zero critical audit findings + live gate checklist complete.**
@@ -65,7 +65,7 @@
 | R1 | Missing background reservation expiry | `reservation-expiry-job.test.ts` | Add 30s interval cron in `Supervisor` calling `ReservationManager.expire()` |
 | R2 | Post-crash order reconciler not wired | `restart-reconciliation.test.ts` | Replay unconfirmed orders from `seen_orders` + `recovery_ledger` on startup before new intents |
 | R3 | HTTP auth & security headers missing | `auth-middleware.test.ts` | Add token validation middleware for exposed REST/metrics endpoints |
-| R4 | Hard-coded safe guardrails | `autonomy-bounds.test.ts` | Define strict constants: `MAX_ORDER_USD`, `DAILY_LOSS_CAP_BPS`, `ALLOWED_VENUE` in runtime constants |
+| R4 | Hard-coded safe guardrails | `autonomy-bounds.test.ts` | Defaults in code (`DAILY_LOSS_CAP_BPS=500`); owner-adjustable via `polyroot setup`; AI cannot modify |
 | R5 | Duplicate `pg.Pool` instances | `single-pool.test.ts` | Ensure single pool passed to both `createPgStores` and orchestrator |
 
 ---
@@ -119,13 +119,15 @@ Executor.submit(permit, intent)
 ```typescript
 // src/pm/runtime/src/constants.ts
 export const AUTONOMY_BOUNDS = {
-  CAPITAL_CAP_USD: 1000,           // Hard cap, non-AI mutable
-  DAILY_LOSS_CAP_BPS: 200,         // -2% = 200 bps
+  CAPITAL_CAP_USD: 1000,           // Default; owner-adjustable via `polyroot setup`
+  DAILY_LOSS_CAP_BPS: 500,         // Default -5% = 500 bps; owner-adjustable via `polyroot setup`
   ALLOWED_VENUE: "POLYMARKET_CLOB_CTF_V2",
   MAX_ORDER_USD: 100,              // Per-order ceiling
   MAX_CONCURRENT_ORDERS: 3,        // Concurrency limit
 } as const;
 ```
+
+Owner overrides via `polyroot setup` are authenticated, stored durably, and never exposed to AI tools. Changing bounds requires explicit owner action; the AI execution path is read-only for bounds.
 
 ---
 
