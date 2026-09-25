@@ -7,6 +7,10 @@ import {
   checkShadowBaselineRow,
   decideGuardReset,
 } from "./live-guard-store.js";
+import {
+  AUTONOMY_BOUNDS,
+  resolveLossCapPusd,
+} from "./autonomy-bounds.js";
 import { bootstrapAgent } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
@@ -150,6 +154,10 @@ interface OnboardingConfig {
   privateKey?: string;
   passphrase: string;
   mode: "PAPER" | "LIVE";
+  /** Owner-set capital cap in USD (LIVE only; PAPER ignores it). */
+  capitalUsd: number;
+  /** Owner-set daily loss latch in basis points (500 = 5%). */
+  lossBps: number;
 }
 
 function ensurePolyrootHome(): void {
@@ -400,6 +408,8 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     0,
   );
   let mode: "PAPER" | "LIVE" = "PAPER";
+  let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
+  let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
   if (modeChoice.startsWith("LIVE")) {
     console.log(
       "\nLIVE uses real money. You will still need: Polymarket API credentials, " +
@@ -409,12 +419,34 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     const confirm = await askText("Type LIVE to confirm (anything else keeps PAPER)");
     if (confirm.trim() === "LIVE") {
       mode = "LIVE";
+      const capitalRaw = await askText(
+        `Capital cap in USD (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
+        { defaultValue: String(AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
+      );
+      const capitalParsed = Number(capitalRaw);
+      capitalUsd =
+        Number.isFinite(capitalParsed) && capitalParsed > 0
+          ? capitalParsed
+          : AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
+      const bpsRaw = await askText(
+        `Daily loss latch in bps, 500 = 5% (default ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})`,
+        { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
+      );
+      const bpsParsed = Number(bpsRaw);
+      lossBps =
+        Number.isFinite(bpsParsed) && bpsParsed > 0
+          ? bpsParsed
+          : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
+      const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
+      console.log(
+        `Owner bounds set: capital $${capitalUsd}, loss latch ${lossBps} bps (~$${lossCap}/day).`,
+      );
     } else {
       console.log("Keeping PAPER. Switch later via RUNTIME_MODE.");
     }
   }
 
-  return { provider, model, apiKey, baseUrl, walletType: walletChoice.startsWith("Create") ? "create" : "import", privateKey, passphrase, mode };
+  return { provider, model, apiKey, baseUrl, walletType: walletChoice.startsWith("Create") ? "create" : "import", privateKey, passphrase, mode, capitalUsd, lossBps };
 }
 
 function writeEnv(config: OnboardingConfig): void {
@@ -433,13 +465,16 @@ function writeEnv(config: OnboardingConfig): void {
     `OPENAI_API_KEY=${config.apiKey}`,
     ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
     "",
+    "# Owner-set autonomy bounds (managed via `polyroot setup`; the AI path is read-only):",
+    `POLYROOT_MICRO_LIVE_CAP_USD=${config.capitalUsd}`,
+    `POLYROOT_MICRO_LIVE_LOSS_CAP_USD=${resolveLossCapPusd(config.capitalUsd, config.lossBps) ?? 0}`,
+    "",
     "# For LIVE mode, uncomment and configure:",
     "# POLYMARKET_API_KEY=",
     "# POLYMARKET_API_SECRET=",
     "# POLYMARKET_API_PASSPHRASE=",
     "# WALLET_ACCOUNT=",
     "# WALLET_FUNDER=",
-    "# POLYROOT_MICRO_LIVE_LOSS_CAP_USD=100",
   ];
   writeFileSync(ENV_PATH, lines.join("\n"), { mode: 0o600 });
   chmodSync(ENV_PATH, 0o600);
@@ -506,6 +541,11 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     }) => Promise<unknown>;
   };
 
+  // Restart idempotency gate: load durable seen_orders BEFORE the pipeline
+  // accepts any intent. Fail-closed in live modes (throws after closing the
+  // pool); PAPER/SHADOW warn and continue.
+  await agent.hydrateSeen();
+
   // Metrics/health HTTP server for agent runs. The server is started for
   // continuous runs so public /healthz is available; /metrics stays disabled
   // without POLYROOT_METRICS_OWNER_KEY. `--once` exits before `start()`.
@@ -540,6 +580,11 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     if (stopping) return;
     stopping = true;
     console.log(`Received ${signal} — stopping agent...`);
+    try {
+      agent.stopReservationExpiry();
+    } catch (err: unknown) {
+      console.error("Expiry job stop error:", err);
+    }
     const p = agent.pipeline as unknown as { stop?: () => void };
     if (typeof p.stop === "function") {
       try {
@@ -573,6 +618,11 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   // Resolved without a signal (e.g. stop() called externally):
   // close the pool so the process can exit cleanly.
   if (!stopping) {
+    try {
+      agent.stopReservationExpiry();
+    } catch {
+      // never block shutdown on timer cleanup
+    }
     await metricsServer.stop().catch(() => undefined);
     await agent.pool.end().catch(() => undefined);
   }

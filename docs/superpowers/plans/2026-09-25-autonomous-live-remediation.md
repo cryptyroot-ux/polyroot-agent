@@ -252,7 +252,12 @@ export class PgSeenStore {
 }
 ```
 
-Then in `main.ts`, replace the `seenMap` block:
+Then in `main.ts`, replace the `seenMap` block and expose a startup gate
+(note: hydration is deliberately NOT eager in `bootstrapAgent`, because
+bootstrap must validate config guards without touching the network per the
+take-over audit contract in `runtime-live-guard.test.ts`; the startup entry
+`startAgent` in `cli.ts` awaits `hydrateSeen()` before the pipeline accepts
+intents — the invariant "hydrate before intents" holds at startup):
 
 ```typescript
 const seenStore = new PgSeenStore(pool);
