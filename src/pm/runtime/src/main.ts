@@ -32,10 +32,7 @@ import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
 import { PgLiveGuardStore } from "./live-guard-store.js";
-import {
-  AUTONOMY_BOUNDS,
-  parseBoundsEnv,
-} from "./autonomy-bounds.js";
+import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
 import { readMarketUniverse } from "@polyroot/venue";
 import {
   createForecastProviderFromEnv,

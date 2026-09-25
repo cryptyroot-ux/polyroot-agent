@@ -28,9 +28,7 @@ export interface LivePreflightDeps {
   readUniverse: () => Promise<string[]>;
   verifyWallet: () => Promise<{ ok: boolean; detail: string }>;
   venueCredsPresent: () => Promise<boolean>;
-  fetchBook: (
-    marketId: string,
-  ) => Promise<{ bid: number; ask: number } | null>;
+  fetchBook: (marketId: string) => Promise<{ bid: number; ask: number } | null>;
   metricsKeyPresent: () => Promise<boolean>;
 }
 
@@ -97,10 +95,7 @@ export async function runLivePreflight(
   // 3. Owner bounds (explicit cap + loss cap).
   try {
     const bounds = await deps.readBounds();
-    if (
-      bounds.lossCapPusd === undefined ||
-      bounds.capUsd === undefined
-    ) {
+    if (bounds.lossCapPusd === undefined || bounds.capUsd === undefined) {
       checks.push(
         fail(
           "bounds",
@@ -116,7 +111,9 @@ export async function runLivePreflight(
       );
     }
   } catch (err) {
-    checks.push(fail("bounds", `bounds check failed: ${(err as Error).message}`));
+    checks.push(
+      fail("bounds", `bounds check failed: ${(err as Error).message}`),
+    );
   }
 
   // 4. Market universe (explicit, never mock data).
@@ -131,9 +128,7 @@ export async function runLivePreflight(
         ),
       );
     } else {
-      checks.push(
-        pass("universe", `${universe.length} market(s) curated`),
-      );
+      checks.push(pass("universe", `${universe.length} market(s) curated`));
     }
   } catch (err) {
     checks.push(
@@ -150,7 +145,9 @@ export async function runLivePreflight(
         : fail("wallet", `${wallet.detail} — run \`polyroot wallet verify\``),
     );
   } catch (err) {
-    checks.push(fail("wallet", `wallet check failed: ${(err as Error).message}`));
+    checks.push(
+      fail("wallet", `wallet check failed: ${(err as Error).message}`),
+    );
   }
 
   // 6. Venue credentials present.
@@ -166,7 +163,10 @@ export async function runLivePreflight(
     );
   } catch (err) {
     checks.push(
-      fail("venue-creds", `venue creds check failed: ${(err as Error).message}`),
+      fail(
+        "venue-creds",
+        `venue creds check failed: ${(err as Error).message}`,
+      ),
     );
   }
 
@@ -176,11 +176,7 @@ export async function runLivePreflight(
       checks.push(fail("venue-read", "no market to probe (universe empty)"));
     } else {
       const book = await deps.fetchBook(universe[0] as string);
-      if (
-        !book ||
-        !Number.isFinite(book.bid) ||
-        !Number.isFinite(book.ask)
-      ) {
+      if (!book || !Number.isFinite(book.bid) || !Number.isFinite(book.ask)) {
         checks.push(
           fail(
             "venue-read",
@@ -189,7 +185,10 @@ export async function runLivePreflight(
         );
       } else {
         checks.push(
-          pass("venue-read", `live book ${universe[0]}: bid ${book.bid} / ask ${book.ask}`),
+          pass(
+            "venue-read",
+            `live book ${universe[0]}: bid ${book.bid} / ask ${book.ask}`,
+          ),
         );
       }
     }

@@ -8,10 +8,7 @@
  * they are operator UI only.
  */
 
-import {
-  AUTONOMY_BOUNDS,
-  resolveLossCapPusd,
-} from "./autonomy-bounds.js";
+import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 
 export interface SetupBoundsInput {
   capitalUsd: number;
@@ -107,9 +104,6 @@ export function formatNextSteps(mode: "PAPER" | "LIVE"): string {
       "",
     );
   }
-  lines.push(
-    "Need help? Run: polyroot status",
-    "",
-  );
+  lines.push("Need help? Run: polyroot status", "");
   return lines.join("\n");
 }

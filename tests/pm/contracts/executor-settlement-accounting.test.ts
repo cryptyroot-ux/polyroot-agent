@@ -211,7 +211,10 @@ describe("Executor settlement accounting (cash units, claim receipt)", () => {
     const { deps } = makeDeps(adapter, consumed, recording);
     const ex = new Executor(deps);
     const permit = makePermit();
-    const res = await ex.submit(makeSignedOrder("ord_9", permit.permit_id), permit);
+    const res = await ex.submit(
+      makeSignedOrder("ord_9", permit.permit_id),
+      permit,
+    );
     assert.equal(res.outcome, "SUBMITTED");
     assert.equal(recording.claimHashes.length, 1);
     assert.match(recording.claimHashes[0] ?? "", /^[0-9a-f]{64}$/);

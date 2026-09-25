@@ -29,7 +29,11 @@ import type {
   ReconcilerLike,
   SupervisorLike,
 } from "./persistence-pg.js";
-import { createPgStores, MoneyKernel, ReservationManager } from "@polyroot/risk";
+import {
+  createPgStores,
+  MoneyKernel,
+  ReservationManager,
+} from "@polyroot/risk";
 import { createPgControlStores } from "@polyroot/control";
 import { Executor } from "@polyroot/executor";
 import type { VenueAdapter } from "@polyroot/venue";

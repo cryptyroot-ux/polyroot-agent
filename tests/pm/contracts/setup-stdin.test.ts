@@ -15,15 +15,11 @@ const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
  */
 function runSetupLikeHuman(home: string): Promise<{ code: number }> {
   return new Promise((resolve) => {
-    const child = spawn(
-      process.execPath,
-      ["--import", "tsx", CLI, "setup"],
-      {
-        cwd: process.cwd(),
-        env: { ...process.env, HOME: home },
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
+    const child = spawn(process.execPath, ["--import", "tsx", CLI, "setup"], {
+      cwd: process.cwd(),
+      env: { ...process.env, HOME: home },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     child.stdout.resume();
     child.stderr.resume();
     // Keep pressing Enter until the flow ends: extra Enters only ever

@@ -16,11 +16,7 @@ import type { Pool } from "pg";
 import type { BalanceStore } from "./money-kernel.js";
 
 export type ReservationStatus =
-  | "ACTIVE"
-  | "PARTIALLY_CONSUMED"
-  | "CONSUMED"
-  | "RELEASED"
-  | "EXPIRED";
+  "ACTIVE" | "PARTIALLY_CONSUMED" | "CONSUMED" | "RELEASED" | "EXPIRED";
 
 export interface Reservation {
   id: string;
@@ -444,7 +440,7 @@ export function startReservationExpiryJob(
 
 /**
  * Check if a reservation is still valid for trading.
- */export function isReservationValid(
+ */ export function isReservationValid(
   reservation: {
     status: string;
     expires_at: Date;

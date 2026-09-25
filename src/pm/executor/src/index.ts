@@ -231,7 +231,6 @@ export class Executor {
     order: SignedOrder,
     permit: ExecutionPermit,
   ): Promise<TrySubmitResult> {
-
     // Check for duplicate order ID (idempotency) FIRST — before any permit checks.
     // This ensures resubmitting the exact same order_id returns DUPLICATE
     // rather than PERMIT_REUSED when the permit was already claimed by a
@@ -706,37 +705,37 @@ export class Executor {
       }
       // Order-level terminal states take precedence: a canceled / rejected /
       // expired order will never fill — mark it definitively done.
-        if (
-          result.order_status === "CANCELED" ||
-          result.order_status === "REJECTED" ||
-          result.order_status === "EXPIRED"
-        ) {
-          this.deps.seen.add(orderId, "DEFINITIVE_REJECT");
-          await this.deps.recoveryLedger.resolve(orderId, true, result);
-          // P0-Audit: Release reservations on reconciliation-discovered terminal rejection/cancel
-          if (this.deps.reservationManager) {
-            const rec = await this.deps.recoveryLedger.get(orderId);
-            if (rec && rec.permitId) {
-              const permitObj = await this.deps.permitStore.get(rec.permitId);
-              if (permitObj && permitObj.reservation_ids) {
-                for (const resId of permitObj.reservation_ids) {
-                  await this.deps.reservationManager
-                    .release(
-                      resId,
-                      result.order_status === "CANCELED"
-                        ? "CANCELLED"
-                        : "REJECTED",
-                    )
-                    .catch((err: unknown) =>
-                      console.error(
-                        `[executor] reservation release failed for ${resId}: ${(err as Error).message}`,
-                      ),
-                    );
-                }
+      if (
+        result.order_status === "CANCELED" ||
+        result.order_status === "REJECTED" ||
+        result.order_status === "EXPIRED"
+      ) {
+        this.deps.seen.add(orderId, "DEFINITIVE_REJECT");
+        await this.deps.recoveryLedger.resolve(orderId, true, result);
+        // P0-Audit: Release reservations on reconciliation-discovered terminal rejection/cancel
+        if (this.deps.reservationManager) {
+          const rec = await this.deps.recoveryLedger.get(orderId);
+          if (rec && rec.permitId) {
+            const permitObj = await this.deps.permitStore.get(rec.permitId);
+            if (permitObj && permitObj.reservation_ids) {
+              for (const resId of permitObj.reservation_ids) {
+                await this.deps.reservationManager
+                  .release(
+                    resId,
+                    result.order_status === "CANCELED"
+                      ? "CANCELLED"
+                      : "REJECTED",
+                  )
+                  .catch((err: unknown) =>
+                    console.error(
+                      `[executor] reservation release failed for ${resId}: ${(err as Error).message}`,
+                    ),
+                  );
               }
             }
           }
-          // Release lease if we acquired it
+        }
+        // Release lease if we acquired it
         if (leaseAcquired) {
           await this.deps.leaseStore.releaseExecutorLease(
             this.deps.walletId,

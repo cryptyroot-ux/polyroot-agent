@@ -1,9 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import {
-  runLivePreflight,
-  type LivePreflightDeps,
-} from "@polyroot/runtime";
+import { runLivePreflight, type LivePreflightDeps } from "@polyroot/runtime";
 
 function greenDeps(over: Partial<LivePreflightDeps> = {}): LivePreflightDeps {
   return {

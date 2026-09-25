@@ -1,4 +1,10 @@
-import { existsSync, readFileSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  chmodSync,
+  mkdirSync,
+} from "node:fs";
 import { Pool } from "pg";
 import { deriveAddressFromPrivateKey, sealPrivateKey } from "@polyroot/signer";
 import { randomBytes } from "node:crypto";
@@ -7,10 +13,7 @@ import {
   checkShadowBaselineRow,
   decideGuardReset,
 } from "./live-guard-store.js";
-import {
-  AUTONOMY_BOUNDS,
-  resolveLossCapPusd,
-} from "./autonomy-bounds.js";
+import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 import { bootstrapAgent } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
@@ -47,16 +50,20 @@ export function assertRuntimeEnv(
   if (!isLive) return;
   const hasKeystore = Boolean(env["POLYROOT_KEYSTORE_JSON"]);
   const hasPassphrase = Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]);
-  const hasRawKey = Boolean(env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]);
+  const hasRawKey = Boolean(
+    env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"],
+  );
   if (!hasKeystore && !hasRawKey) {
     throw new Error(
       "LIVE_ENV_MISSING: PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY) is required for MICRO_LIVE/LIVE when not using a keystore.\n" +
-      "Option A: set PRIVATE_KEY_HEX or WALLET_PRIVATE_KEY.\n" +
-      "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE)."
+        "Option A: set PRIVATE_KEY_HEX or WALLET_PRIVATE_KEY.\n" +
+        "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE).",
     );
   }
   if (hasKeystore && !hasPassphrase && !hasRawKey) {
-    throw new Error("LIVE_ENV_MISSING: POLYROOT_KEYSTORE_PASSPHRASE is required with POLYROOT_KEYSTORE_JSON");
+    throw new Error(
+      "LIVE_ENV_MISSING: POLYROOT_KEYSTORE_PASSPHRASE is required with POLYROOT_KEYSTORE_JSON",
+    );
   }
   const account = env["WALLET_ACCOUNT"];
   const funder = env["WALLET_FUNDER"];
@@ -80,7 +87,6 @@ export interface CLIConfig {
   kmsRegion: string;
   once: boolean;
 }
-
 
 function getEnv(key: string): string | undefined {
   return process.env[key];
@@ -133,7 +139,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   if (!databaseUrl) databaseUrl = getEnv("DATABASE_URL") ?? "";
   // KMS is not used: key custody is keystore + dedicated wallet + caps.
   // The flag stays accepted for backwards compatibility but is optional.
-  const hasKeystore = Boolean(getEnv("POLYROOT_KEYSTORE_JSON") || getEnv("POLYROOT_KEYSTORE_FILE"));
+  const hasKeystore = Boolean(
+    getEnv("POLYROOT_KEYSTORE_JSON") || getEnv("POLYROOT_KEYSTORE_FILE"),
+  );
   if (!kmsKeyId) kmsKeyId = getEnv("KMS_KEY_ID") ?? "";
   const envMode = getEnv("RUNTIME_MODE");
   if (mode === "PAPER" && envMode) mode = parseMode(envMode, "RUNTIME_MODE");
@@ -143,14 +151,16 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   if (!hasKeystore && !kmsKeyId)
     throw new Error(
       "KMS_KEY_ID required (--kms-key or KMS_KEY_ID env) when not using a keystore.\n" +
-      "Option A: export KMS_KEY_ID + AWS credentials.\n" +
-      "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE)."
+        "Option A: export KMS_KEY_ID + AWS credentials.\n" +
+        "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE).",
     );
 
   return { mode, databaseUrl, kmsKeyId, kmsEndpoint: "", kmsRegion: "", once };
 }
 
-const POLYROOT_HOME = process.env["HOME"] ? `${process.env["HOME"]}/.polyroot` : "/tmp/.polyroot";
+const POLYROOT_HOME = process.env["HOME"]
+  ? `${process.env["HOME"]}/.polyroot`
+  : "/tmp/.polyroot";
 const ENV_PATH = `${POLYROOT_HOME}/.env`;
 const KEYSTORE_PATH = `${POLYROOT_HOME}/keystore.json`;
 
@@ -357,15 +367,23 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let apiKey = "";
 
   if (provider === "OpenAI (GPT-4o, GPT-4o-mini)") {
-    model = await askChoice("Select model:", ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"], 0);
+    model = await askChoice(
+      "Select model:",
+      ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
+      0,
+    );
     apiKey = await askRequiredSecret("OpenAI API key");
   } else if (provider === "9Router / OpenAI-compatible") {
     model = await askText("Model name", { defaultValue: "gpt-4o-mini" });
-    baseUrl = await askText("Base URL", { defaultValue: "https://files.pango.fun/v1" });
+    baseUrl = await askText("Base URL", {
+      defaultValue: "https://files.pango.fun/v1",
+    });
     apiKey = await askRequiredSecret("9Router API key");
   } else if (provider === "Ollama (local)") {
     model = await askText("Model name", { defaultValue: "llama3.1" });
-    baseUrl = await askText("Base URL", { defaultValue: "http://localhost:11434/v1" });
+    baseUrl = await askText("Base URL", {
+      defaultValue: "http://localhost:11434/v1",
+    });
     apiKey = "ollama"; // dummy
   } else {
     model = await askText("Model name");
@@ -383,7 +401,9 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   // 2. Wallet — keys are sealed in a locked vault on this machine and
   // are never sent anywhere.
   console.log("\n🔐 Step 2/3: Wallet (where your keys live)");
-  console.log("   Keys stay locked in a vault on this computer, never sent anywhere.");
+  console.log(
+    "   Keys stay locked in a vault on this computer, never sent anywhere.",
+  );
   const walletChoice = await askChoice(
     "Wallet (Enter = create new):",
     ["Create new wallet (generates keystore)", "Import existing private key"],
@@ -412,19 +432,25 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       console.log("Wrong format — expected 64 hex characters.");
     }
     passphrase = await askRequiredSecret("Create a vault passphrase");
-    console.log(`\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`);
+    console.log(
+      `\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`,
+    );
   }
 
   // Seal keystore
   const keystore = sealPrivateKey(privateKey, passphrase);
   ensurePolyrootHome();
-  writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", { mode: 0o600 });
+  writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", {
+    mode: 0o600,
+  });
   chmodSync(KEYSTORE_PATH, 0o600);
   console.log(`🔐 Keystore saved to ${KEYSTORE_PATH} (encrypted, 600 perms)`);
 
   // 3. Mode selection — PAPER = practice with play money (100% safe).
   console.log("\n🚀 Step 3/3: Choose Mode");
-  console.log("   PAPER = practice, play money (100% safe). LIVE = real money.");
+  console.log(
+    "   PAPER = practice, play money (100% safe). LIVE = real money.",
+  );
   const modeChoice = await askChoice(
     "Choose mode (Enter = PAPER):",
     [
@@ -441,7 +467,9 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       "\nLIVE uses REAL MONEY. The daily loss cap shuts the system",
       "down automatically when reached (needs your manual reset).",
     );
-    const confirm = await askText("Type LIVE to continue (anything else stays PAPER)");
+    const confirm = await askText(
+      "Type LIVE to continue (anything else stays PAPER)",
+    );
     if (confirm.trim() === "LIVE") {
       mode = "LIVE";
       const capitalRaw = await askText(
@@ -471,7 +499,18 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     }
   }
 
-  return { provider, model, apiKey, baseUrl, walletType: walletChoice.startsWith("Create") ? "create" : "import", privateKey, passphrase, mode, capitalUsd, lossBps };
+  return {
+    provider,
+    model,
+    apiKey,
+    baseUrl,
+    walletType: walletChoice.startsWith("Create") ? "create" : "import",
+    privateKey,
+    passphrase,
+    mode,
+    capitalUsd,
+    lossBps,
+  };
 }
 
 function writeEnv(config: OnboardingConfig): void {
@@ -561,13 +600,14 @@ async function runSetupFlow(): Promise<void> {
       currentMode === "LIVE" ? 1 : 0,
     );
     const mode = (modeChoice.startsWith("LIVE") ? "LIVE" : "PAPER") as
-      | "PAPER"
-      | "LIVE";
+      "PAPER" | "LIVE";
 
     const bounds = parseBoundsEnv(process.env);
     const capitalRaw = await askText(
       `Capital cap in USD (current ${bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD}, Enter = keep)`,
-      { defaultValue: String(bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
+      {
+        defaultValue: String(bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD),
+      },
     );
     const capitalParsed = Number(capitalRaw);
     const capitalUsd =
@@ -578,10 +618,9 @@ async function runSetupFlow(): Promise<void> {
     console.log(
       "\nDaily loss cap: when losses reach this, the system STOPS automatically.",
     );
-    const bpsRaw = await askText(
-      "Loss cap in bps, 500 = 5% (Enter = keep)",
-      { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
-    );
+    const bpsRaw = await askText("Loss cap in bps, 500 = 5% (Enter = keep)", {
+      defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS),
+    });
     const bpsParsed = Number(bpsRaw);
     const lossBps =
       Number.isFinite(bpsParsed) && bpsParsed > 0
@@ -607,13 +646,22 @@ async function runSetupFlow(): Promise<void> {
       }
     }
 
-    const updates = buildSetupEnvUpdate({ capitalUsd, lossBps, mode, universe });
+    const updates = buildSetupEnvUpdate({
+      capitalUsd,
+      lossBps,
+      mode,
+      universe,
+    });
     ensurePolyrootHome();
     const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
-    writeFileSync(ENV_PATH, upsertEnvLines(existing, updates) + "\n", { mode: 0o600 });
+    writeFileSync(ENV_PATH, upsertEnvLines(existing, updates) + "\n", {
+      mode: 0o600,
+    });
     chmodSync(ENV_PATH, 0o600);
     const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
-    console.log(`\n✅ Saved: mode ${mode}, capital $${capitalUsd}, stop-loss $${lossCap}/day.`);
+    console.log(
+      `\n✅ Saved: mode ${mode}, capital $${capitalUsd}, stop-loss $${lossCap}/day.`,
+    );
     if (universe.length > 0) {
       console.log(`   Markets: ${universe.join(", ")}`);
     }
@@ -623,7 +671,9 @@ async function runSetupFlow(): Promise<void> {
   } catch (err) {
     closeSharedSession();
     if (err instanceof OnboardingCancelled) {
-      console.log("\nCancelled, nothing changed. Run 'polyroot setup' any time.");
+      console.log(
+        "\nCancelled, nothing changed. Run 'polyroot setup' any time.",
+      );
       process.exit(0);
     }
     console.error("\n❌ Setup failed:", (err as Error).message);
@@ -827,12 +877,16 @@ async function runStatus(): Promise<void> {
   const mode = env["RUNTIME_MODE"] || "PAPER";
   const dbUrl = env["DATABASE_URL"] ? "✅ Set" : "❌ Missing";
   const rpc = env["RPC_URL"] || "https://polygon-rpc.com";
-  const metricsKey = env["POLYROOT_METRICS_OWNER_KEY"] ? "✅ Set" : "❌ Missing (metrics disabled)";
+  const metricsKey = env["POLYROOT_METRICS_OWNER_KEY"]
+    ? "✅ Set"
+    : "❌ Missing (metrics disabled)";
 
   // Wallet
   const hasKeystore = Boolean(env["POLYROOT_KEYSTORE_JSON"]);
   const hasPassphrase = Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]);
-  const hasRawKey = Boolean(env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]);
+  const hasRawKey = Boolean(
+    env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"],
+  );
   const walletAddr = env["WALLET_ADDRESS"] || "Not set";
   const account = env["WALLET_ACCOUNT"] || "Not set";
   const funder = env["WALLET_FUNDER"] || "Not set";
@@ -840,7 +894,9 @@ async function runStatus(): Promise<void> {
   // Venue
   const venueKey = env["POLYMARKET_API_KEY"] ? "✅ Set" : "❌ Missing";
   const venueSecret = env["POLYMARKET_API_SECRET"] ? "✅ Set" : "❌ Missing";
-  const venuePassphrase = env["POLYMARKET_API_PASSPHRASE"] ? "✅ Set" : "❌ Missing";
+  const venuePassphrase = env["POLYMARKET_API_PASSPHRASE"]
+    ? "✅ Set"
+    : "❌ Missing";
 
   // Live caps
   const lossCap = env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] || "Not set";
@@ -854,7 +910,9 @@ async function runStatus(): Promise<void> {
   console.log("");
   console.log("🔐 Wallet:");
   console.log(`  Keystore:          ${hasKeystore ? "✅ Set" : "❌ Missing"}`);
-  console.log(`  Passphrase:        ${hasPassphrase ? "✅ Set" : "❌ Missing"}`);
+  console.log(
+    `  Passphrase:        ${hasPassphrase ? "✅ Set" : "❌ Missing"}`,
+  );
   console.log(`  Raw Key:           ${hasRawKey ? "✅ Set" : "❌ Missing"}`);
   console.log(`  Address:           ${walletAddr}`);
   console.log(`  Account:           ${account}`);
@@ -878,7 +936,9 @@ async function runStatus(): Promise<void> {
 async function runUpdate(): Promise<void> {
   console.log("\n🔄 Updating PolyRoot Agent...\n");
   const { execSync } = await import("node:child_process");
-  const installDir = process.env["HOME"] ? `${process.env["HOME"]}/.polyroot` : "/tmp/.polyroot";
+  const installDir = process.env["HOME"]
+    ? `${process.env["HOME"]}/.polyroot`
+    : "/tmp/.polyroot";
 
   try {
     console.log("📥 Pulling latest changes...");
@@ -926,7 +986,9 @@ async function runDoctor(): Promise<void> {
   // 2. Check wallet
   const hasKeystore = Boolean(process.env["POLYROOT_KEYSTORE_JSON"]);
   const hasPassphrase = Boolean(process.env["POLYROOT_KEYSTORE_PASSPHRASE"]);
-  const hasRawKey = Boolean(process.env["PRIVATE_KEY_HEX"] ?? process.env["WALLET_PRIVATE_KEY"]);
+  const hasRawKey = Boolean(
+    process.env["PRIVATE_KEY_HEX"] ?? process.env["WALLET_PRIVATE_KEY"],
+  );
   if (!hasKeystore && !hasRawKey) {
     console.log("❌ No wallet key configured (keystore or raw)");
     allOk = false;
@@ -944,10 +1006,18 @@ async function runDoctor(): Promise<void> {
     const res = await fetch(rpc, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "eth_blockNumber",
+        params: [],
+        id: 1,
+      }),
     });
     if (res.ok) console.log("✅ RPC reachable");
-    else { console.log("❌ RPC unreachable"); allOk = false; }
+    else {
+      console.log("❌ RPC unreachable");
+      allOk = false;
+    }
   } catch {
     console.log("❌ RPC unreachable");
     allOk = false;
@@ -956,9 +1026,15 @@ async function runDoctor(): Promise<void> {
   // 4. Venue credentials (only for live modes)
   const mode = process.env["RUNTIME_MODE"] || "PAPER";
   if (mode !== "PAPER") {
-    const venueOk = Boolean(process.env["POLYMARKET_API_KEY"] && process.env["POLYMARKET_API_SECRET"] && process.env["POLYMARKET_API_PASSPHRASE"]);
+    const venueOk = Boolean(
+      process.env["POLYMARKET_API_KEY"] &&
+      process.env["POLYMARKET_API_SECRET"] &&
+      process.env["POLYMARKET_API_PASSPHRASE"],
+    );
     if (!venueOk) {
-      console.log("⚠️  Polymarket API credentials incomplete (required for " + mode + ")");
+      console.log(
+        "⚠️  Polymarket API credentials incomplete (required for " + mode + ")",
+      );
     } else {
       console.log("✅ Polymarket API credentials present");
     }
@@ -968,14 +1044,20 @@ async function runDoctor(): Promise<void> {
   if (mode !== "PAPER") {
     const lossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
     if (!lossCap) {
-      console.log("⚠️  POLYROOT_MICRO_LIVE_LOSS_CAP_USD not set (required for " + mode + ")");
+      console.log(
+        "⚠️  POLYROOT_MICRO_LIVE_LOSS_CAP_USD not set (required for " +
+          mode +
+          ")",
+      );
       allOk = false;
     } else {
       console.log("✅ Loss cap configured: " + lossCap + " pUSD");
     }
   }
 
-  console.log("\n" + (allOk ? "✅ All checks passed" : "❌ Some checks failed"));
+  console.log(
+    "\n" + (allOk ? "✅ All checks passed" : "❌ Some checks failed"),
+  );
   if (!allOk) process.exit(1);
 }
 
@@ -1018,8 +1100,8 @@ async function runLiveDoctor(): Promise<void> {
       venueCredsPresent: async () =>
         Boolean(
           process.env["POLYMARKET_API_KEY"] &&
-            process.env["POLYMARKET_API_SECRET"] &&
-            process.env["POLYMARKET_API_PASSPHRASE"],
+          process.env["POLYMARKET_API_SECRET"] &&
+          process.env["POLYMARKET_API_PASSPHRASE"],
         ),
       fetchBook: async (marketId: string) => {
         const snap = await venue.getOrderBook(marketId);
@@ -1256,9 +1338,17 @@ export async function main(
   }
 
   // First-run onboarding (skip for subcommands)
-  if (argv[0] !== "wallet" && argv[0] !== "venue" && argv[0] !== "guard" &&
-      argv[0] !== "status" && argv[0] !== "update" && argv[0] !== "doctor" && argv[0] !== "docker-fix" &&
-      argv[0] !== "onboard" && argv[0] !== "setup") {
+  if (
+    argv[0] !== "wallet" &&
+    argv[0] !== "venue" &&
+    argv[0] !== "guard" &&
+    argv[0] !== "status" &&
+    argv[0] !== "update" &&
+    argv[0] !== "doctor" &&
+    argv[0] !== "docker-fix" &&
+    argv[0] !== "onboard" &&
+    argv[0] !== "setup"
+  ) {
     await runFirstTimeSetup();
   }
 

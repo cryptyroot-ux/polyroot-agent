@@ -34,11 +34,12 @@ describe("setup guide (lay-friendly)", () => {
   });
 
   it("replaces existing keys instead of duplicating them", () => {
-    const out = upsertEnvLines(
-      "A=1\nPOLYROOT_MICRO_LIVE_CAP_USD=500\nB=2\n",
-      ["POLYROOT_MICRO_LIVE_CAP_USD=1000"],
-    );
-    const hits = out.split("\n").filter((l) => l.startsWith("POLYROOT_MICRO_LIVE_CAP_USD="));
+    const out = upsertEnvLines("A=1\nPOLYROOT_MICRO_LIVE_CAP_USD=500\nB=2\n", [
+      "POLYROOT_MICRO_LIVE_CAP_USD=1000",
+    ]);
+    const hits = out
+      .split("\n")
+      .filter((l) => l.startsWith("POLYROOT_MICRO_LIVE_CAP_USD="));
     assert.equal(hits.length, 1);
     assert.ok(out.includes("A=1"));
     assert.ok(out.includes("B=2"));
@@ -46,7 +47,11 @@ describe("setup guide (lay-friendly)", () => {
 
   it("next steps guide names the exact commands in order", () => {
     const guide = formatNextSteps("LIVE");
-    for (const cmd of ["polyroot status", "polyroot doctor --live", "polyroot"]) {
+    for (const cmd of [
+      "polyroot status",
+      "polyroot doctor --live",
+      "polyroot",
+    ]) {
       assert.ok(guide.includes(cmd), `guide must mention: ${cmd}`);
     }
     const paper = formatNextSteps("PAPER");
