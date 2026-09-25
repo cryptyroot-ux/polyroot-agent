@@ -6,7 +6,11 @@
  */
 
 import { Pool } from "pg";
-import { createPgStores } from "@polyroot/risk";
+import {
+  createPgStores,
+  ReservationManager,
+  startReservationExpiryJob,
+} from "@polyroot/risk";
 import { MoneyKernel } from "@polyroot/risk";
 import { createHash } from "node:crypto";
 import {
@@ -19,6 +23,7 @@ import {
   PgPermitStore,
   PgRecoveryLedger,
   PgLeaseStore,
+  PgSeenStore,
   type PermitStore,
   type VenueAdapter,
 } from "@polyroot/venue";
@@ -27,6 +32,7 @@ import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
 import { PgLiveGuardStore } from "./live-guard-store.js";
+import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
 import { readMarketUniverse } from "@polyroot/venue";
 import {
   createForecastProviderFromEnv,
@@ -207,14 +213,58 @@ export async function bootstrapAgent(
   const recoveryLedger = new PgRecoveryLedger(pool);
   const leaseStore = new PgLeaseStore(pool);
 
-  const seenMap = new Map();
+  // 5b. Reservation expiry: stranded ACTIVE reservations (e.g. after a
+  // crash between permit issue and consume/release) are terminally expired
+  // back to available funds every 30s. Fail-closed: expiry errors are logged,
+  // never thrown into the pipeline.
+  const reservationManager = new ReservationManager({
+    balanceStore: stores.balanceStore,
+    permitStore,
+    pool,
+  });
+  const stopReservationExpiry = startReservationExpiryJob({
+    reservations: reservationManager,
+  });
+
+  // Restart idempotency: the seen log is hydrated from durable storage by
+  // hydrateSeen() BEFORE the pipeline accepts new intents, so a restart can
+  // never re-submit a known order. Sync mirror keeps the executor hot path
+  // allocation-free. Hydration is deliberately NOT eager here: bootstrapAgent
+  // must validate config guards without touching the network (see
+  // runtime-live-guard tests). The startup entry (startAgent) awaits
+  // hydrateSeen() before running the pipeline. Live modes fail closed when
+  // the DB is unreachable; PAPER/SHADOW (zero financial I/O) warn and
+  // continue with an empty mirror.
+  const seenStore = new PgSeenStore(pool);
+  const hydrateSeen = async (): Promise<void> => {
+    try {
+      await seenStore.hydrate(await recoveryLedger.getUnresolved());
+    } catch (err) {
+      if (isLive) {
+        await pool.end().catch(() => undefined);
+        throw new Error(
+          `SEEN_HYDRATE_FAILED: cannot load durable seen_orders for ${mode}: ${(err as Error).message}`,
+        );
+      }
+      console.warn(
+        `[seen] hydrate skipped (non-live): ${(err as Error).message}`,
+      );
+    }
+  };
   const executor = new Executor({
     adapter: venueAdapter,
     now: () => new Date(),
     seen: {
-      has: (id) => seenMap.has(id),
-      add: (id, st) => seenMap.set(id, st),
-      get: (id) => seenMap.get(id),
+      has: (id) => seenStore.has(id),
+      add: (id, st) => {
+        seenStore.set(id, st);
+        void seenStore
+          .flush()
+          .catch((err: unknown) =>
+            console.error("[seen] persist failed:", (err as Error).message),
+          );
+      },
+      get: (id) => seenStore.get(id),
     },
     permitStore,
     recoveryLedger,
@@ -222,6 +272,9 @@ export async function bootstrapAgent(
     walletId: "00000000-0000-0000-0000-000000000001",
     holder: "prod-runtime-node-1",
     leaseStore,
+    // Authoritative settlement accounting: consume on fill, release on
+    // reject/cancel. Without this, committed funds strand forever.
+    reservationManager,
   });
 
   // 6. Wallet Identity: derived from the user's key on live modes,
@@ -255,30 +308,29 @@ export async function bootstrapAgent(
   const metrics = new Metrics();
 
   // Live enforcement inputs (fail-closed): an explicit owner loss cap is
-  // REQUIRED in live modes; the exposure cap defaults to 500 USDC and can
-  // be overridden down via env (never up without code review).
+  // REQUIRED in live modes; the exposure cap defaults to the approved
+  // AUTONOMY_BOUNDS.CAPITAL_CAP_USD and can only be changed by the owner
+  // via `polyroot setup` (never by the AI path).
   const isLiveMode = mode === "MICRO_LIVE" || mode === "LIVE";
-  const lossCapRaw = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
-  const liveLossCapPusd =
-    lossCapRaw === undefined ? undefined : Number(lossCapRaw);
-  if (isLiveMode && (liveLossCapPusd === undefined || liveLossCapPusd <= 0)) {
+  const bounds = parseBoundsEnv(process.env);
+  const liveLossCapPusd = bounds.lossCapPusd;
+  if (isLiveMode && liveLossCapPusd === undefined) {
     await pool.end().catch(() => undefined);
     throw new Error(
       "LIVE_LOSS_CAP_UNCONFIGURED: POLYROOT_MICRO_LIVE_LOSS_CAP_USD must be a positive number for MICRO_LIVE/LIVE",
     );
   }
-  const capOverrideRaw = process.env["POLYROOT_MICRO_LIVE_CAP_USD"];
-  const microLiveCapUsd =
-    capOverrideRaw === undefined ? undefined : Number(capOverrideRaw);
   if (
-    microLiveCapUsd !== undefined &&
-    (!Number.isFinite(microLiveCapUsd) || microLiveCapUsd <= 0)
+    process.env["POLYROOT_MICRO_LIVE_CAP_USD"] !== undefined &&
+    bounds.capUsd === undefined
   ) {
     await pool.end().catch(() => undefined);
     throw new Error(
       "LIVE_CAP_INVALID: POLYROOT_MICRO_LIVE_CAP_USD must be a positive number when set",
     );
   }
+  const microLiveCapUsd =
+    bounds.capUsd ?? (isLiveMode ? AUTONOMY_BOUNDS.CAPITAL_CAP_USD : undefined);
   const liveGuardStore = new PgLiveGuardStore(pool);
   const pipeline = createG4Pipeline({
     config: {
@@ -339,5 +391,9 @@ export async function bootstrapAgent(
     executor,
     pipeline,
     metrics,
+    reservationManager,
+    stopReservationExpiry,
+    seenStore,
+    hydrateSeen,
   };
 }

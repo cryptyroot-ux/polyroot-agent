@@ -27,6 +27,7 @@ export interface PermitStore {
     permitId: string,
     orderId: string,
     venueOrderId?: string,
+    payload_hash?: string,
   ): Promise<
     { ok: true; permitId: string } | { ok: false; code: string; reason: string }
   >;
@@ -130,6 +131,7 @@ export class PgPermitStore implements PermitStore {
     permitId: string,
     orderId: string,
     venueOrderId?: string,
+    payload_hash?: string,
   ): Promise<
     { ok: true; permitId: string } | { ok: false; code: string; reason: string }
   > {
@@ -139,10 +141,10 @@ export class PgPermitStore implements PermitStore {
       // 1. Atomically claim the permit (fails if already used or expired).
       const upd = await client.query(
         `UPDATE execution_permits
-         SET used_at = now(), claimed_order_id = $2
+         SET used_at = now(), claimed_order_id = $2, payload_hash = COALESCE($3, payload_hash)
          WHERE permit_id = $1 AND used_at IS NULL AND expires_at > now()
          RETURNING permit_id`,
-        [permitId, orderId],
+        [permitId, orderId, payload_hash ?? null],
       );
       if (upd.rowCount === 0) {
         await client.query("ROLLBACK");
@@ -272,6 +274,7 @@ export class MemPermitStore implements PermitStore {
     permitId: string,
     orderId: string,
     _venueOrderId?: string,
+    _payload_hash?: string,
   ): Promise<
     { ok: true; permitId: string } | { ok: false; code: string; reason: string }
   > {

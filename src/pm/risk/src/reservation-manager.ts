@@ -15,7 +15,8 @@ import { randomUUID } from "crypto";
 import type { Pool } from "pg";
 import type { BalanceStore } from "./money-kernel.js";
 
-export type ReservationStatus = "ACTIVE" | "CONSUMED" | "RELEASED" | "EXPIRED";
+export type ReservationStatus =
+  "ACTIVE" | "PARTIALLY_CONSUMED" | "CONSUMED" | "RELEASED" | "EXPIRED";
 
 export interface Reservation {
   id: string;
@@ -42,7 +43,7 @@ export interface ReservationManagerDeps {
     get(permitId: string): Promise<{
       permit_id: string;
       reservation_ids: string[];
-      used_at: Date | null;
+      used_at?: Date | null | undefined;
       expires_at: Date;
       single_use: boolean;
     } | null>;
@@ -320,6 +321,28 @@ export class ReservationManager {
     return this.release(reservationId, "EXPIRED");
   }
 
+  /**
+   * Expire every overdue ACTIVE/PARTIALLY_CONSUMED reservation.
+   * Idempotent: already-terminal rows are never selected, and each per-id
+   * expire() is itself atomic. Returns the count actually expired.
+   */
+  async expireOverdue(
+    now: Date = new Date(),
+  ): Promise<{ ok: true; expired: number }> {
+    if (!this.deps.pool) return { ok: true, expired: 0 };
+    const r = await this.deps.pool.query(
+      `SELECT id FROM reservations
+       WHERE status IN ('ACTIVE', 'PARTIALLY_CONSUMED') AND expires_at <= $1`,
+      [now],
+    );
+    let expired = 0;
+    for (const row of r.rows as Array<{ id: string }>) {
+      const res = await this.expire(row.id);
+      if (res.ok) expired += 1;
+    }
+    return { ok: true, expired };
+  }
+
   async getActive(account: string, asset: string): Promise<Reservation[]> {
     if (!this.deps.pool) return [];
     const r = await this.deps.pool.query(
@@ -381,9 +404,43 @@ export class ReservationManager {
 }
 
 /**
- * Check if a reservation is still valid for trading.
+ * Start a periodic reservation-expiry scheduler.
+ * Runs `expireOverdue()` every `intervalMs`, guarded against overlapping
+ * executions. Returns a stop function. The timer is unref'd so it never
+ * holds the process open. Expiry failures are logged, never thrown.
  */
-export function isReservationValid(
+export function startReservationExpiryJob(
+  deps: {
+    reservations: Pick<ReservationManager, "expireOverdue">;
+    now?: () => Date;
+  },
+  intervalMs = 30_000,
+): () => void {
+  let running = false;
+  let stopped = false;
+  const timer = setInterval(async () => {
+    if (running || stopped) return;
+    running = true;
+    try {
+      await deps.reservations.expireOverdue(deps.now?.() ?? new Date());
+    } catch (err) {
+      console.error(
+        `[reservations] periodic expiry failed: ${(err as Error).message}`,
+      );
+    } finally {
+      running = false;
+    }
+  }, intervalMs);
+  timer.unref();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
+/**
+ * Check if a reservation is still valid for trading.
+ */ export function isReservationValid(
   reservation: {
     status: string;
     expires_at: Date;

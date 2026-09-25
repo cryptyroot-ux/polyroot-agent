@@ -67,7 +67,8 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
     } finally {
       if (origKey === undefined) delete process.env["KMS_KEY_ID"];
       else process.env["KMS_KEY_ID"] = origKey;
-      if (origKeystore === undefined) delete process.env["POLYROOT_KEYSTORE_JSON"];
+      if (origKeystore === undefined)
+        delete process.env["POLYROOT_KEYSTORE_JSON"];
       else process.env["POLYROOT_KEYSTORE_JSON"] = origKeystore;
     }
   });

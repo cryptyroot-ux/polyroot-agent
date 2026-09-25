@@ -1,4 +1,10 @@
-import { existsSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  chmodSync,
+  mkdirSync,
+} from "node:fs";
 import { Pool } from "pg";
 import { deriveAddressFromPrivateKey, sealPrivateKey } from "@polyroot/signer";
 import { randomBytes } from "node:crypto";
@@ -7,6 +13,7 @@ import {
   checkShadowBaselineRow,
   decideGuardReset,
 } from "./live-guard-store.js";
+import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 import { bootstrapAgent } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
@@ -43,16 +50,20 @@ export function assertRuntimeEnv(
   if (!isLive) return;
   const hasKeystore = Boolean(env["POLYROOT_KEYSTORE_JSON"]);
   const hasPassphrase = Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]);
-  const hasRawKey = Boolean(env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]);
+  const hasRawKey = Boolean(
+    env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"],
+  );
   if (!hasKeystore && !hasRawKey) {
     throw new Error(
       "LIVE_ENV_MISSING: PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY) is required for MICRO_LIVE/LIVE when not using a keystore.\n" +
-      "Option A: set PRIVATE_KEY_HEX or WALLET_PRIVATE_KEY.\n" +
-      "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE)."
+        "Option A: set PRIVATE_KEY_HEX or WALLET_PRIVATE_KEY.\n" +
+        "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE).",
     );
   }
   if (hasKeystore && !hasPassphrase && !hasRawKey) {
-    throw new Error("LIVE_ENV_MISSING: POLYROOT_KEYSTORE_PASSPHRASE is required with POLYROOT_KEYSTORE_JSON");
+    throw new Error(
+      "LIVE_ENV_MISSING: POLYROOT_KEYSTORE_PASSPHRASE is required with POLYROOT_KEYSTORE_JSON",
+    );
   }
   const account = env["WALLET_ACCOUNT"];
   const funder = env["WALLET_FUNDER"];
@@ -76,7 +87,6 @@ export interface CLIConfig {
   kmsRegion: string;
   once: boolean;
 }
-
 
 function getEnv(key: string): string | undefined {
   return process.env[key];
@@ -103,7 +113,16 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: polyroot --mode PAPER --db <DATABASE_URL> --kms-key <KEY_ID> [--once]",
+        "PolyRoot Agent — commands:\n" +
+          "  polyroot                 Run the agent (mode from settings)\n" +
+          "  polyroot onboard         First-time setup (new users)\n" +
+          "  polyroot setup           Change mode, capital, loss cap, markets\n" +
+          "  polyroot status          Show current configuration\n" +
+          "  polyroot doctor          Basic health check\n" +
+          "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
+          "  polyroot wallet verify   Check wallet with no network\n" +
+          "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
+          "  polyroot --once          Run once then stop (test)",
       );
       process.exit(0);
     } else if (a === "--mode") {
@@ -120,7 +139,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   if (!databaseUrl) databaseUrl = getEnv("DATABASE_URL") ?? "";
   // KMS is not used: key custody is keystore + dedicated wallet + caps.
   // The flag stays accepted for backwards compatibility but is optional.
-  const hasKeystore = Boolean(getEnv("POLYROOT_KEYSTORE_JSON") || getEnv("POLYROOT_KEYSTORE_FILE"));
+  const hasKeystore = Boolean(
+    getEnv("POLYROOT_KEYSTORE_JSON") || getEnv("POLYROOT_KEYSTORE_FILE"),
+  );
   if (!kmsKeyId) kmsKeyId = getEnv("KMS_KEY_ID") ?? "";
   const envMode = getEnv("RUNTIME_MODE");
   if (mode === "PAPER" && envMode) mode = parseMode(envMode, "RUNTIME_MODE");
@@ -130,14 +151,16 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   if (!hasKeystore && !kmsKeyId)
     throw new Error(
       "KMS_KEY_ID required (--kms-key or KMS_KEY_ID env) when not using a keystore.\n" +
-      "Option A: export KMS_KEY_ID + AWS credentials.\n" +
-      "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE)."
+        "Option A: export KMS_KEY_ID + AWS credentials.\n" +
+        "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE).",
     );
 
   return { mode, databaseUrl, kmsKeyId, kmsEndpoint: "", kmsRegion: "", once };
 }
 
-const POLYROOT_HOME = process.env["HOME"] ? `${process.env["HOME"]}/.polyroot` : "/tmp/.polyroot";
+const POLYROOT_HOME = process.env["HOME"]
+  ? `${process.env["HOME"]}/.polyroot`
+  : "/tmp/.polyroot";
 const ENV_PATH = `${POLYROOT_HOME}/.env`;
 const KEYSTORE_PATH = `${POLYROOT_HOME}/keystore.json`;
 
@@ -150,6 +173,10 @@ interface OnboardingConfig {
   privateKey?: string;
   passphrase: string;
   mode: "PAPER" | "LIVE";
+  /** Owner-set capital cap in USD (LIVE only; PAPER ignores it). */
+  capitalUsd: number;
+  /** Owner-set daily loss latch in basis points (500 = 5%). */
+  lossBps: number;
 }
 
 function ensurePolyrootHome(): void {
@@ -163,15 +190,101 @@ function isFirstRun(): boolean {
 }
 
 /**
- * Onboarding prompts, Hermes-style: one self-contained mechanism per question,
- * never shared stdin state. Normal input uses a fresh readline per question
- * (created and closed inside the call); secrets use a standalone masked reader
- * with no readline involved at all. Ctrl-C / EOF always cancels cleanly with a
- * message instead of leaking keystrokes to the shell.
+ * Onboarding prompts: ONE shared readline interface per interactive session.
+ * A fresh interface per question breaks stdin after the first close (the
+ * second prompt sees EOF and the whole flow cancels). Secrets reuse the same
+ * interface with output muted, so typed characters never echo.
  */
 class OnboardingCancelled extends Error {
   constructor() {
     super("Setup cancelled");
+  }
+}
+
+interface SharedSession {
+  rl: import("node:readline").Interface;
+  setMuted: (muted: boolean) => void;
+  close: () => void;
+}
+
+let sharedSession: SharedSession | undefined;
+
+async function getSharedSession(): Promise<SharedSession> {
+  if (!sharedSession) {
+    const readline = await import("node:readline");
+    const { Writable } = await import("node:stream");
+    let muted = false;
+    const output = new Writable({
+      write(chunk, _encoding, cb): void {
+        if (!muted) process.stdout.write(chunk);
+        cb();
+      },
+    });
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output,
+      terminal: true,
+    });
+    sharedSession = {
+      rl,
+      setMuted: (m: boolean): void => {
+        muted = m;
+      },
+      close: (): void => {
+        try {
+          rl.close();
+        } catch {
+          // already closed — session teardown is best-effort
+        }
+      },
+    };
+  }
+  return sharedSession;
+}
+
+function closeSharedSession(): void {
+  sharedSession?.close();
+  sharedSession = undefined;
+}
+
+/** Ask one question on the shared session. Ctrl-C / EOF cancels cleanly. */
+async function askOnShared(
+  prompt: string,
+  opts: { muted: boolean },
+): Promise<string> {
+  const session = await getSharedSession();
+  session.setMuted(opts.muted);
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      let settled = false;
+      const onSigint = (): void => {
+        if (!settled) {
+          settled = true;
+          session.rl.removeListener("SIGINT", onSigint);
+          reject(new OnboardingCancelled());
+        }
+      };
+      const onClose = (): void => {
+        if (!settled) {
+          settled = true;
+          session.rl.removeListener("SIGINT", onSigint);
+          reject(new OnboardingCancelled());
+        }
+      };
+      session.rl.once("SIGINT", onSigint);
+      session.rl.once("close", onClose);
+      session.rl.question(prompt, (a: string) => {
+        if (!settled) {
+          settled = true;
+          session.rl.removeListener("SIGINT", onSigint);
+          session.rl.removeListener("close", onClose);
+          resolve(a ?? "");
+        }
+      });
+    });
+  } finally {
+    session.setMuted(false);
+    console.log("");
   }
 }
 
@@ -180,94 +293,21 @@ async function askText(
   message: string,
   opts: { defaultValue?: string } = {},
 ): Promise<string> {
-  const readline = await import("node:readline");
   const hint = opts.defaultValue !== undefined ? ` [${opts.defaultValue}]` : "";
   for (;;) {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: true,
-    });
-    try {
-      const answer = await new Promise<string>((resolve, reject) => {
-        let settled = false;
-        rl.on("SIGINT", () => {
-          if (!settled) {
-            settled = true;
-            reject(new OnboardingCancelled());
-          }
-        });
-        rl.on("close", () => {
-          if (!settled) {
-            settled = true;
-            reject(new OnboardingCancelled());
-          }
-        });
-        rl.question(`${message}${hint}: `, (a: string) => {
-          if (!settled) {
-            settled = true;
-            resolve(a ?? "");
-          }
-        });
-      });
-      const text = answer.trim();
-      if (text) return text;
-      if (opts.defaultValue !== undefined) return opts.defaultValue;
-      console.log("Please type a value (or press Ctrl-C to cancel).");
-    } finally {
-      rl.close();
-    }
+    const answer = await askOnShared(`${message}${hint}: `, { muted: false });
+    const text = answer.trim();
+    if (text) return text;
+    if (opts.defaultValue !== undefined) return opts.defaultValue;
+    console.log("Type a value (or press Ctrl-C to cancel).");
   }
 }
 
-/** Secret input with `*` masking and no readline involved (mirrors Hermes'
- *  `masked_secret_prompt`: raw byte reading, backspace support, arrow-key
- *  sequences never become secret text). Falls back to visible input off-TTY. */
+/** Secret input on the shared session with output muted, so typed
+ *  characters never echo. Same stdin lifetime as normal prompts. */
 async function askSecret(message: string): Promise<string> {
-  // Sudo-style hidden input: echo is swallowed by a muted output stream, so
-  // typed characters are invisible. Deliberately NO raw-mode byte reading and
-  // NO shared state -- this is just a normal readline question whose echo goes
-  // nowhere, which means it can never fight other prompts over stdin.
-  const readline = await import("node:readline");
-  const { Writable } = await import("node:stream");
-  const mute = new Writable({
-    write(_chunk, _encoding, cb): void {
-      cb();
-    },
-  });
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: mute,
-    terminal: true,
-  });
-  try {
-    process.stdout.write(`${message} (typing hidden): `);
-    const answer = await new Promise<string>((resolve, reject) => {
-      let settled = false;
-      rl.on("SIGINT", () => {
-        if (!settled) {
-          settled = true;
-          reject(new OnboardingCancelled());
-        }
-      });
-      rl.on("close", () => {
-        if (!settled) {
-          settled = true;
-          reject(new OnboardingCancelled());
-        }
-      });
-      rl.question("", (a: string) => {
-        if (!settled) {
-          settled = true;
-          resolve(a ?? "");
-        }
-      });
-    });
-    return answer;
-  } finally {
-    console.log("");
-    rl.close();
-  }
+  process.stdout.write(`${message} (typing hidden): `);
+  return askOnShared("", { muted: true });
 }
 
 /** Secret input that must not be empty (loops instead of aborting setup). */
@@ -305,13 +345,14 @@ async function askChoice(
 
 async function runOnboarding(): Promise<OnboardingConfig> {
   console.log("\n═══════════════════════════════════════════════");
-  console.log("  Welcome to PolyRoot Agent — First Run Setup");
+  console.log("  Welcome to PolyRoot Agent — First-Time Setup");
+  console.log("  3 steps. Every step has a safe default: just press Enter.");
   console.log("═══════════════════════════════════════════════\n");
 
-  // 1. AI Provider & Model
-  console.log("📡 Step 1/3: Choose AI Provider & Model");
+  // 1. AI Provider & Model — the brain that reads markets.
+  console.log("📡 Step 1/3: AI brain (reads the markets)");
   const provider = await askChoice(
-    "Select AI provider (Enter = recommended):",
+    "Choose AI provider (Enter = default):",
     [
       "OpenAI (GPT-4o, GPT-4o-mini)",
       "9Router / OpenAI-compatible",
@@ -326,15 +367,23 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let apiKey = "";
 
   if (provider === "OpenAI (GPT-4o, GPT-4o-mini)") {
-    model = await askChoice("Select model:", ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"], 0);
+    model = await askChoice(
+      "Select model:",
+      ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
+      0,
+    );
     apiKey = await askRequiredSecret("OpenAI API key");
   } else if (provider === "9Router / OpenAI-compatible") {
     model = await askText("Model name", { defaultValue: "gpt-4o-mini" });
-    baseUrl = await askText("Base URL", { defaultValue: "https://files.pango.fun/v1" });
+    baseUrl = await askText("Base URL", {
+      defaultValue: "https://files.pango.fun/v1",
+    });
     apiKey = await askRequiredSecret("9Router API key");
   } else if (provider === "Ollama (local)") {
     model = await askText("Model name", { defaultValue: "llama3.1" });
-    baseUrl = await askText("Base URL", { defaultValue: "http://localhost:11434/v1" });
+    baseUrl = await askText("Base URL", {
+      defaultValue: "http://localhost:11434/v1",
+    });
     apiKey = "ollama"; // dummy
   } else {
     model = await askText("Model name");
@@ -349,8 +398,12 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     throw new Error("API key is required (Ollama local uses any placeholder)");
   }
 
-  // 2. Wallet
-  console.log("\n🔐 Step 2/3: Wallet Setup");
+  // 2. Wallet — keys are sealed in a locked vault on this machine and
+  // are never sent anywhere.
+  console.log("\n🔐 Step 2/3: Wallet (where your keys live)");
+  console.log(
+    "   Keys stay locked in a vault on this computer, never sent anywhere.",
+  );
   const walletChoice = await askChoice(
     "Wallet (Enter = create new):",
     ["Create new wallet (generates keystore)", "Import existing private key"],
@@ -362,38 +415,44 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   if (walletChoice.startsWith("Create")) {
     for (;;) {
-      passphrase = await askRequiredSecret("Set keystore passphrase");
-      const confirm = await askRequiredSecret("Confirm passphrase");
+      passphrase = await askRequiredSecret("Create a vault passphrase");
+      const confirm = await askRequiredSecret("Repeat the passphrase");
       if (passphrase === confirm) break;
       console.log("Passphrases do not match — try again.");
     }
     // Generate random key
     privateKey = "0x" + randomBytes(32).toString("hex");
-    console.log(`\n✅ New wallet generated!`);
+    console.log(`\n✅ New wallet created!`);
     console.log(`   Address: ${deriveAddressFromPrivateKey(privateKey)}`);
-    console.log(`   Private Key: ${privateKey}`);
-    console.log(`   (Save these — they are shown only once)`);
+    console.log(`   (Write this down — it is shown only once)`);
   } else {
     for (;;) {
       privateKey = await askRequiredSecret("Private key (0x...)");
       if (/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) break;
-      console.log("Invalid private key format — expected 64 hex characters.");
+      console.log("Wrong format — expected 64 hex characters.");
     }
-    passphrase = await askRequiredSecret("Set keystore passphrase");
-    console.log(`\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`);
+    passphrase = await askRequiredSecret("Create a vault passphrase");
+    console.log(
+      `\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`,
+    );
   }
 
   // Seal keystore
   const keystore = sealPrivateKey(privateKey, passphrase);
   ensurePolyrootHome();
-  writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", { mode: 0o600 });
+  writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", {
+    mode: 0o600,
+  });
   chmodSync(KEYSTORE_PATH, 0o600);
   console.log(`🔐 Keystore saved to ${KEYSTORE_PATH} (encrypted, 600 perms)`);
 
-  // 3. Mode selection
-  console.log("\n🚀 Step 3/3: Select Mode");
+  // 3. Mode selection — PAPER = practice with play money (100% safe).
+  console.log("\n🚀 Step 3/3: Choose Mode");
+  console.log(
+    "   PAPER = practice, play money (100% safe). LIVE = real money.",
+  );
   const modeChoice = await askChoice(
-    "Select mode (Enter = PAPER):",
+    "Choose mode (Enter = PAPER):",
     [
       "PAPER — Safe simulation, mock data, no real money",
       "LIVE — Real trading on Polymarket (requires capital, API keys)",
@@ -401,21 +460,57 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     0,
   );
   let mode: "PAPER" | "LIVE" = "PAPER";
+  let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
+  let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
   if (modeChoice.startsWith("LIVE")) {
     console.log(
-      "\nLIVE uses real money. You will still need: Polymarket API credentials, " +
-        "WALLET_ACCOUNT + WALLET_FUNDER (3 distinct addresses), and " +
-        "POLYROOT_MICRO_LIVE_LOSS_CAP_USD in ~/.polyroot/.env.",
+      "\nLIVE uses REAL MONEY. The daily loss cap shuts the system",
+      "down automatically when reached (needs your manual reset).",
     );
-    const confirm = await askText("Type LIVE to confirm (anything else keeps PAPER)");
+    const confirm = await askText(
+      "Type LIVE to continue (anything else stays PAPER)",
+    );
     if (confirm.trim() === "LIVE") {
       mode = "LIVE";
+      const capitalRaw = await askText(
+        `Capital cap in USD — max money allowed in play (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
+        { defaultValue: String(AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
+      );
+      const capitalParsed = Number(capitalRaw);
+      capitalUsd =
+        Number.isFinite(capitalParsed) && capitalParsed > 0
+          ? capitalParsed
+          : AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
+      const bpsRaw = await askText(
+        `Daily loss cap in bps, 500 = 5% (default ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})`,
+        { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
+      );
+      const bpsParsed = Number(bpsRaw);
+      lossBps =
+        Number.isFinite(bpsParsed) && bpsParsed > 0
+          ? bpsParsed
+          : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
+      const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
+      console.log(
+        `\n✅ Your limits: capital $${capitalUsd}, stop-loss $${lossCap}/day.`,
+      );
     } else {
-      console.log("Keeping PAPER. Switch later via RUNTIME_MODE.");
+      console.log("Staying on PAPER. Change later with: polyroot setup");
     }
   }
 
-  return { provider, model, apiKey, baseUrl, walletType: walletChoice.startsWith("Create") ? "create" : "import", privateKey, passphrase, mode };
+  return {
+    provider,
+    model,
+    apiKey,
+    baseUrl,
+    walletType: walletChoice.startsWith("Create") ? "create" : "import",
+    privateKey,
+    passphrase,
+    mode,
+    capitalUsd,
+    lossBps,
+  };
 }
 
 function writeEnv(config: OnboardingConfig): void {
@@ -434,13 +529,16 @@ function writeEnv(config: OnboardingConfig): void {
     `OPENAI_API_KEY=${config.apiKey}`,
     ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
     "",
+    "# Owner-set autonomy bounds (managed via `polyroot setup`; the AI path is read-only):",
+    `POLYROOT_MICRO_LIVE_CAP_USD=${config.capitalUsd}`,
+    `POLYROOT_MICRO_LIVE_LOSS_CAP_USD=${resolveLossCapPusd(config.capitalUsd, config.lossBps) ?? 0}`,
+    "",
     "# For LIVE mode, uncomment and configure:",
     "# POLYMARKET_API_KEY=",
     "# POLYMARKET_API_SECRET=",
     "# POLYMARKET_API_PASSPHRASE=",
     "# WALLET_ACCOUNT=",
     "# WALLET_FUNDER=",
-    "# POLYROOT_MICRO_LIVE_LOSS_CAP_USD=100",
   ];
   writeFileSync(ENV_PATH, lines.join("\n"), { mode: 0o600 });
   chmodSync(ENV_PATH, 0o600);
@@ -452,14 +550,17 @@ async function runOnboardingFlow(): Promise<void> {
     const config = await runOnboarding();
     writeEnv(config);
     console.log("\n═══════════════════════════════════════════════");
-    console.log("  Setup complete! Starting PolyRoot Agent...");
-    console.log("═══════════════════════════════════════════════\n");
+    console.log("  Setup complete! PolyRoot Agent is ready.");
+    console.log("═══════════════════════════════════════════════");
+    console.log(formatNextSteps(config.mode));
 
     // Reload env for current process
     process.loadEnvFile(ENV_PATH as string);
+    closeSharedSession();
   } catch (err) {
+    closeSharedSession();
     if (err instanceof OnboardingCancelled) {
-      console.log("\nSetup cancelled. Run 'polyroot onboard' any time.");
+      console.log("\nCancelled. Run 'polyroot onboard' any time.");
       process.exit(0);
     }
     console.error("\n❌ Setup failed:", (err as Error).message);
@@ -470,16 +571,130 @@ async function runOnboardingFlow(): Promise<void> {
 async function runFirstTimeSetup(): Promise<void> {
   if (!isFirstRun()) return;
 
-  console.log("\n🎉 First run detected — launching interactive setup...\n");
+  console.log("\n🎉 First run — starting interactive setup...\n");
   await runOnboardingFlow();
+}
+
+/**
+ * `polyroot setup` — re-runnable guided configuration for lay operators.
+ * Changes mode, capital cap, loss latch and market universe. NEVER touches
+ * the wallet or keys (use `polyroot onboard` for a full reset).
+ */
+async function runSetupFlow(): Promise<void> {
+  try {
+    loadDotEnv();
+    console.log("\n═══════════════════════════════════════════════");
+    console.log("  PolyRoot Setup — Change Settings (safe)");
+    console.log("  Wallet & keys are NEVER touched here.");
+    console.log("═══════════════════════════════════════════════\n");
+
+    const currentMode = process.env["RUNTIME_MODE"] ?? "PAPER";
+    console.log("Current mode: " + currentMode);
+    console.log("PAPER = practice with play money. LIVE = real money.\n");
+    const modeChoice = await askChoice(
+      "Choose mode (Enter = keep current):",
+      [
+        "PAPER — Safe simulation, mock data, no real money",
+        "LIVE — Real trading on Polymarket (requires capital, API keys)",
+      ],
+      currentMode === "LIVE" ? 1 : 0,
+    );
+    const mode = (modeChoice.startsWith("LIVE") ? "LIVE" : "PAPER") as
+      "PAPER" | "LIVE";
+
+    const bounds = parseBoundsEnv(process.env);
+    const capitalRaw = await askText(
+      `Capital cap in USD (current ${bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD}, Enter = keep)`,
+      {
+        defaultValue: String(bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD),
+      },
+    );
+    const capitalParsed = Number(capitalRaw);
+    const capitalUsd =
+      Number.isFinite(capitalParsed) && capitalParsed > 0
+        ? Math.floor(capitalParsed)
+        : (bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD);
+
+    console.log(
+      "\nDaily loss cap: when losses reach this, the system STOPS automatically.",
+    );
+    const bpsRaw = await askText("Loss cap in bps, 500 = 5% (Enter = keep)", {
+      defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS),
+    });
+    const bpsParsed = Number(bpsRaw);
+    const lossBps =
+      Number.isFinite(bpsParsed) && bpsParsed > 0
+        ? Math.floor(bpsParsed)
+        : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
+
+    const currentUniverse = process.env["POLYROOT_MARKET_IDS"] ?? "";
+    console.log("\nMarket list = Polymarket token IDs, separated by commas.");
+    console.log("Leave empty to keep unchanged.");
+    const universeRaw = await askText(
+      `Market list${currentUniverse ? " (current: " + currentUniverse + ")" : ""}`,
+      { defaultValue: currentUniverse },
+    );
+    let universe: string[] = [];
+    const trimmed = universeRaw.trim();
+    if (trimmed) {
+      try {
+        universe = readMarketUniverse({ POLYROOT_MARKET_IDS: trimmed });
+      } catch (err) {
+        console.log(
+          `⚠️  Invalid market list (${(err as Error).message}) — keeping the old one.`,
+        );
+      }
+    }
+
+    const updates = buildSetupEnvUpdate({
+      capitalUsd,
+      lossBps,
+      mode,
+      universe,
+    });
+    ensurePolyrootHome();
+    const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
+    writeFileSync(ENV_PATH, upsertEnvLines(existing, updates) + "\n", {
+      mode: 0o600,
+    });
+    chmodSync(ENV_PATH, 0o600);
+    const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
+    console.log(
+      `\n✅ Saved: mode ${mode}, capital $${capitalUsd}, stop-loss $${lossCap}/day.`,
+    );
+    if (universe.length > 0) {
+      console.log(`   Markets: ${universe.join(", ")}`);
+    }
+    console.log(formatNextSteps(mode));
+    process.loadEnvFile(ENV_PATH as string);
+    closeSharedSession();
+  } catch (err) {
+    closeSharedSession();
+    if (err instanceof OnboardingCancelled) {
+      console.log(
+        "\nCancelled, nothing changed. Run 'polyroot setup' any time.",
+      );
+      process.exit(0);
+    }
+    console.error("\n❌ Setup failed:", (err as Error).message);
+    process.exit(1);
+  }
 }
 
 import { createSignerFromEnv } from "@polyroot/signer";
 import {
   buildLiveVenueAdapter,
   buildPublicVenueAdapter,
+  readMarketUniverse,
   runVenueCheck,
 } from "@polyroot/venue";
+import { parseBoundsEnv } from "./autonomy-bounds.js";
+import { runLivePreflight } from "./live-preflight.js";
+import {
+  buildSetupEnvUpdate,
+  formatNextSteps,
+  upsertEnvLines,
+} from "./setup-guide.js";
 
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
@@ -506,6 +721,11 @@ export async function startAgent(config: CLIConfig): Promise<void> {
       ask: number;
     }) => Promise<unknown>;
   };
+
+  // Restart idempotency gate: load durable seen_orders BEFORE the pipeline
+  // accepts any intent. Fail-closed in live modes (throws after closing the
+  // pool); PAPER/SHADOW warn and continue.
+  await agent.hydrateSeen();
 
   // Metrics/health HTTP server for agent runs. The server is started for
   // continuous runs so public /healthz is available; /metrics stays disabled
@@ -541,6 +761,11 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     if (stopping) return;
     stopping = true;
     console.log(`Received ${signal} — stopping agent...`);
+    try {
+      agent.stopReservationExpiry();
+    } catch (err: unknown) {
+      console.error("Expiry job stop error:", err);
+    }
     const p = agent.pipeline as unknown as { stop?: () => void };
     if (typeof p.stop === "function") {
       try {
@@ -574,6 +799,11 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   // Resolved without a signal (e.g. stop() called externally):
   // close the pool so the process can exit cleanly.
   if (!stopping) {
+    try {
+      agent.stopReservationExpiry();
+    } catch {
+      // never block shutdown on timer cleanup
+    }
     await metricsServer.stop().catch(() => undefined);
     await agent.pool.end().catch(() => undefined);
   }
@@ -647,12 +877,16 @@ async function runStatus(): Promise<void> {
   const mode = env["RUNTIME_MODE"] || "PAPER";
   const dbUrl = env["DATABASE_URL"] ? "✅ Set" : "❌ Missing";
   const rpc = env["RPC_URL"] || "https://polygon-rpc.com";
-  const metricsKey = env["POLYROOT_METRICS_OWNER_KEY"] ? "✅ Set" : "❌ Missing (metrics disabled)";
+  const metricsKey = env["POLYROOT_METRICS_OWNER_KEY"]
+    ? "✅ Set"
+    : "❌ Missing (metrics disabled)";
 
   // Wallet
   const hasKeystore = Boolean(env["POLYROOT_KEYSTORE_JSON"]);
   const hasPassphrase = Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]);
-  const hasRawKey = Boolean(env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"]);
+  const hasRawKey = Boolean(
+    env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"],
+  );
   const walletAddr = env["WALLET_ADDRESS"] || "Not set";
   const account = env["WALLET_ACCOUNT"] || "Not set";
   const funder = env["WALLET_FUNDER"] || "Not set";
@@ -660,7 +894,9 @@ async function runStatus(): Promise<void> {
   // Venue
   const venueKey = env["POLYMARKET_API_KEY"] ? "✅ Set" : "❌ Missing";
   const venueSecret = env["POLYMARKET_API_SECRET"] ? "✅ Set" : "❌ Missing";
-  const venuePassphrase = env["POLYMARKET_API_PASSPHRASE"] ? "✅ Set" : "❌ Missing";
+  const venuePassphrase = env["POLYMARKET_API_PASSPHRASE"]
+    ? "✅ Set"
+    : "❌ Missing";
 
   // Live caps
   const lossCap = env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] || "Not set";
@@ -674,7 +910,9 @@ async function runStatus(): Promise<void> {
   console.log("");
   console.log("🔐 Wallet:");
   console.log(`  Keystore:          ${hasKeystore ? "✅ Set" : "❌ Missing"}`);
-  console.log(`  Passphrase:        ${hasPassphrase ? "✅ Set" : "❌ Missing"}`);
+  console.log(
+    `  Passphrase:        ${hasPassphrase ? "✅ Set" : "❌ Missing"}`,
+  );
   console.log(`  Raw Key:           ${hasRawKey ? "✅ Set" : "❌ Missing"}`);
   console.log(`  Address:           ${walletAddr}`);
   console.log(`  Account:           ${account}`);
@@ -698,7 +936,9 @@ async function runStatus(): Promise<void> {
 async function runUpdate(): Promise<void> {
   console.log("\n🔄 Updating PolyRoot Agent...\n");
   const { execSync } = await import("node:child_process");
-  const installDir = process.env["HOME"] ? `${process.env["HOME"]}/.polyroot` : "/tmp/.polyroot";
+  const installDir = process.env["HOME"]
+    ? `${process.env["HOME"]}/.polyroot`
+    : "/tmp/.polyroot";
 
   try {
     console.log("📥 Pulling latest changes...");
@@ -746,7 +986,9 @@ async function runDoctor(): Promise<void> {
   // 2. Check wallet
   const hasKeystore = Boolean(process.env["POLYROOT_KEYSTORE_JSON"]);
   const hasPassphrase = Boolean(process.env["POLYROOT_KEYSTORE_PASSPHRASE"]);
-  const hasRawKey = Boolean(process.env["PRIVATE_KEY_HEX"] ?? process.env["WALLET_PRIVATE_KEY"]);
+  const hasRawKey = Boolean(
+    process.env["PRIVATE_KEY_HEX"] ?? process.env["WALLET_PRIVATE_KEY"],
+  );
   if (!hasKeystore && !hasRawKey) {
     console.log("❌ No wallet key configured (keystore or raw)");
     allOk = false;
@@ -764,10 +1006,18 @@ async function runDoctor(): Promise<void> {
     const res = await fetch(rpc, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "eth_blockNumber",
+        params: [],
+        id: 1,
+      }),
     });
     if (res.ok) console.log("✅ RPC reachable");
-    else { console.log("❌ RPC unreachable"); allOk = false; }
+    else {
+      console.log("❌ RPC unreachable");
+      allOk = false;
+    }
   } catch {
     console.log("❌ RPC unreachable");
     allOk = false;
@@ -776,9 +1026,15 @@ async function runDoctor(): Promise<void> {
   // 4. Venue credentials (only for live modes)
   const mode = process.env["RUNTIME_MODE"] || "PAPER";
   if (mode !== "PAPER") {
-    const venueOk = Boolean(process.env["POLYMARKET_API_KEY"] && process.env["POLYMARKET_API_SECRET"] && process.env["POLYMARKET_API_PASSPHRASE"]);
+    const venueOk = Boolean(
+      process.env["POLYMARKET_API_KEY"] &&
+      process.env["POLYMARKET_API_SECRET"] &&
+      process.env["POLYMARKET_API_PASSPHRASE"],
+    );
     if (!venueOk) {
-      console.log("⚠️  Polymarket API credentials incomplete (required for " + mode + ")");
+      console.log(
+        "⚠️  Polymarket API credentials incomplete (required for " + mode + ")",
+      );
     } else {
       console.log("✅ Polymarket API credentials present");
     }
@@ -788,15 +1044,87 @@ async function runDoctor(): Promise<void> {
   if (mode !== "PAPER") {
     const lossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
     if (!lossCap) {
-      console.log("⚠️  POLYROOT_MICRO_LIVE_LOSS_CAP_USD not set (required for " + mode + ")");
+      console.log(
+        "⚠️  POLYROOT_MICRO_LIVE_LOSS_CAP_USD not set (required for " +
+          mode +
+          ")",
+      );
       allOk = false;
     } else {
       console.log("✅ Loss cap configured: " + lossCap + " pUSD");
     }
   }
 
-  console.log("\n" + (allOk ? "✅ All checks passed" : "❌ Some checks failed"));
+  console.log(
+    "\n" + (allOk ? "✅ All checks passed" : "❌ Some checks failed"),
+  );
   if (!allOk) process.exit(1);
+}
+
+/**
+ * Strict LIVE preflight: `polyroot doctor --live`.
+ * Proves production infrastructure before real money moves. Unlike `doctor`
+ * (informational warnings), EVERY check here is a hard gate — any failure
+ * exits non-zero. Passing proves readiness, never authorization: the owner
+ * sign-off for LIVE is still required out of band.
+ */
+async function runLiveDoctor(): Promise<void> {
+  console.log("\n🏥 PolyRoot Agent — LIVE Preflight (strict)\n");
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.log("❌ db-connect: DATABASE_URL is not set");
+    console.log("\n❌ LIVE preflight REFUSED (database unconfigured)");
+    process.exit(1);
+  }
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    const venue = buildPublicVenueAdapter();
+    const result = await runLivePreflight({
+      queryDb: (text: string, params?: unknown[]) =>
+        pool.query(text, params as never[]) as never,
+      readBounds: async () => parseBoundsEnv(process.env),
+      readUniverse: async () => readMarketUniverse(process.env),
+      verifyWallet: async () => {
+        const w = runWalletVerify();
+        return {
+          ok: w.ok,
+          detail: w.ok
+            ? `wallet verified${w.address ? `: ${w.address}` : ""}`
+            : w.checks
+                .filter((c) => !c.ok)
+                .map((c) => `${c.name}: ${c.detail}`)
+                .join("; "),
+        };
+      },
+      venueCredsPresent: async () =>
+        Boolean(
+          process.env["POLYMARKET_API_KEY"] &&
+          process.env["POLYMARKET_API_SECRET"] &&
+          process.env["POLYMARKET_API_PASSPHRASE"],
+        ),
+      fetchBook: async (marketId: string) => {
+        const snap = await venue.getOrderBook(marketId);
+        if (snap.yes_price === undefined || snap.no_price === undefined)
+          return null;
+        return { bid: snap.yes_price, ask: snap.no_price };
+      },
+      metricsKeyPresent: async () =>
+        Boolean(process.env["POLYROOT_METRICS_OWNER_KEY"]),
+    });
+    for (const c of result.checks) {
+      console.log(`${c.ok ? "✅" : "❌"} ${c.name}: ${c.detail}`);
+    }
+    console.log(
+      "\n" +
+        (result.ok
+          ? "✅ LIVE preflight PASSED — infrastructure proven (owner sign-off still required to trade)"
+          : "❌ LIVE preflight REFUSED — fix the failed checks above; no real money moves until all pass"),
+    );
+    if (!result.ok) process.exit(1);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
 }
 
 /** Docker fix - restart postgres container. */
@@ -989,7 +1317,11 @@ export async function main(
     return;
   }
   if (argv[0] === "doctor") {
-    await runDoctor();
+    if (argv.includes("--live")) {
+      await runLiveDoctor();
+    } else {
+      await runDoctor();
+    }
     return;
   }
   if (argv[0] === "docker-fix") {
@@ -1000,11 +1332,23 @@ export async function main(
     await runOnboardingFlow();
     return;
   }
+  if (argv[0] === "setup") {
+    await runSetupFlow();
+    return;
+  }
 
   // First-run onboarding (skip for subcommands)
-  if (argv[0] !== "wallet" && argv[0] !== "venue" && argv[0] !== "guard" &&
-      argv[0] !== "status" && argv[0] !== "update" && argv[0] !== "doctor" && argv[0] !== "docker-fix" &&
-      argv[0] !== "onboard") {
+  if (
+    argv[0] !== "wallet" &&
+    argv[0] !== "venue" &&
+    argv[0] !== "guard" &&
+    argv[0] !== "status" &&
+    argv[0] !== "update" &&
+    argv[0] !== "doctor" &&
+    argv[0] !== "docker-fix" &&
+    argv[0] !== "onboard" &&
+    argv[0] !== "setup"
+  ) {
     await runFirstTimeSetup();
   }
 

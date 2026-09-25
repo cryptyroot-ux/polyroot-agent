@@ -47,5 +47,8 @@ export * from "./recovery-ledger.js";
 // Lease store with epoch fencing (PR-OPS-02)
 export * from "./lease-store.js";
 
+// Durable seen-orders store for restart idempotency (R2)
+export * from "./seen-store.js";
+
 // Re-export domain types used by the public surface.
 export type { AccountMode, VenueCapability };

@@ -48,7 +48,9 @@ import type {
 import { ExecutionPermitSchema } from "@polyroot/domain";
 import { venueActionGate } from "@polyroot/venue";
 import { cashNeededFor } from "@polyroot/risk";
+import { createHash } from "node:crypto";
 import { decimalToBase } from "@polyroot/signer";
+import type { ReservationManager } from "@polyroot/risk";
 
 /* ── Executor dependencies ──────────────────────────────────────────────── */
 
@@ -74,6 +76,8 @@ export interface ExecutorDeps {
   holder: string;
   /** Durable lease store with epoch fencing. */
   leaseStore: LeaseStore;
+  /** Authoritative reservation manager to consume/release funds. */
+  reservationManager?: ReservationManager;
 }
 
 /* ── Order lifecycle state machine (TABLE 16) ───────────────────────────── */
@@ -208,6 +212,25 @@ export class Executor {
       };
     }
 
+    try {
+      return await this.submitInner(order, permit);
+    } finally {
+      // Best-effort: a lease-release failure here must never mask the real
+      // submit outcome, but it is logged so stranded leases are visible.
+      await this.deps.leaseStore
+        .releaseExecutorLease(this.deps.walletId, this.deps.holder)
+        .catch((err: unknown) =>
+          console.error(
+            `[executor] lease release failed: ${(err as Error).message}`,
+          ),
+        );
+    }
+  }
+
+  private async submitInner(
+    order: SignedOrder,
+    permit: ExecutionPermit,
+  ): Promise<TrySubmitResult> {
     // Check for duplicate order ID (idempotency) FIRST — before any permit checks.
     // This ensures resubmitting the exact same order_id returns DUPLICATE
     // rather than PERMIT_REUSED when the permit was already claimed by a
@@ -402,11 +425,17 @@ export class Executor {
     // 7. ATOMIC PERMIT CLAIM + SUBMISSION RECORDING (P0-8)
     // Single database transaction: claim permit AND record SUBMITTING state.
     // This eliminates the crash window between permit claim and recovery ledger write.
+    // The claim-binding hash receipts WHICH order claimed the permit for
+    // post-hoc forensics (the permit itself is verified pre-sign by SignerVault).
+    const claimBindingHash = createHash("sha256")
+      .update(`${permit.permit_id}|${order.order_id}`)
+      .digest("hex");
     const claimResult =
       await this.deps.permitStore.claimPermitAndRecordSubmission(
         permit.permit_id,
         order.order_id,
         undefined, // venueOrderId unknown until ACK
+        claimBindingHash,
       );
     if (!claimResult.ok) {
       // Release lease since claim failed
@@ -452,7 +481,12 @@ export class Executor {
     if (!res.ok) {
       // P0-9: distinguish "definitely not sent" from "submission unknown"
       if (res.code === "DEFINITELY_NOT_SENT") {
-        // Request never reached the venue → safe to retry, do NOT release lease.
+        // Request never reached the venue → safe to retry.
+        // P0-Audit: Release lease on DEFINITELY_NOT_SENT so lock is not stranded
+        await this.deps.leaseStore.releaseExecutorLease(
+          this.deps.walletId,
+          this.deps.holder,
+        );
         return {
           ok: true,
           outcome: "NEEDS_RECONCILIATION",
@@ -492,6 +526,18 @@ export class Executor {
         this.deps.walletId,
         this.deps.holder,
       );
+      // P0-Audit: Release any active reservations on definitive reject
+      if (this.deps.reservationManager && permit.reservation_ids) {
+        for (const resId of permit.reservation_ids) {
+          await this.deps.reservationManager
+            .release(resId, "REJECTED")
+            .catch((err: unknown) =>
+              console.error(
+                `[executor] reservation release failed for ${resId}: ${(err as Error).message}`,
+              ),
+            );
+        }
+      }
       return {
         outcome: "PERMIT_INVALID",
         code: res.code,
@@ -519,6 +565,34 @@ export class Executor {
 
     // Resolve in recovery ledger with definitive venue result
     await this.deps.recoveryLedger.resolve(order.order_id, true, res.result);
+
+    // P0-Audit: Consume reservation upon filled size. Reservations are
+    // denominated in CASH base units (pUSD x 1e6), so the fill must be
+    // converted: filled_shares x execution price. Prefer the venue-reported
+    // average price (exact); fall back to the order limit price (conservative
+    // upper bound, still within the reserved max_cash). Failures are logged
+    // but never flip an already-acknowledged submit.
+    if (
+      this.deps.reservationManager &&
+      permit.reservation_ids &&
+      res.result.filled_size &&
+      res.result.filled_size > 0
+    ) {
+      const fillPrice = res.result.average_price ?? order.price;
+      const consumedCash = cashNeededFor(
+        decimalToBase(res.result.filled_size),
+        decimalToBase(fillPrice),
+      );
+      for (const resId of permit.reservation_ids) {
+        await this.deps.reservationManager
+          .consume(resId, consumedCash)
+          .catch((err: unknown) =>
+            console.error(
+              `[executor] reservation consume failed for ${resId}: ${(err as Error).message}`,
+            ),
+          );
+      }
+    }
 
     return { outcome: "SUBMITTED", result: res.result, state: st };
   }
@@ -638,6 +712,29 @@ export class Executor {
       ) {
         this.deps.seen.add(orderId, "DEFINITIVE_REJECT");
         await this.deps.recoveryLedger.resolve(orderId, true, result);
+        // P0-Audit: Release reservations on reconciliation-discovered terminal rejection/cancel
+        if (this.deps.reservationManager) {
+          const rec = await this.deps.recoveryLedger.get(orderId);
+          if (rec && rec.permitId) {
+            const permitObj = await this.deps.permitStore.get(rec.permitId);
+            if (permitObj && permitObj.reservation_ids) {
+              for (const resId of permitObj.reservation_ids) {
+                await this.deps.reservationManager
+                  .release(
+                    resId,
+                    result.order_status === "CANCELED"
+                      ? "CANCELLED"
+                      : "REJECTED",
+                  )
+                  .catch((err: unknown) =>
+                    console.error(
+                      `[executor] reservation release failed for ${resId}: ${(err as Error).message}`,
+                    ),
+                  );
+              }
+            }
+          }
+        }
         // Release lease if we acquired it
         if (leaseAcquired) {
           await this.deps.leaseStore.releaseExecutorLease(
