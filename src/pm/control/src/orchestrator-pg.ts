@@ -29,7 +29,7 @@ import type {
   ReconcilerLike,
   SupervisorLike,
 } from "./persistence-pg.js";
-import { createPgStores, MoneyKernel } from "@polyroot/risk";
+import { createPgStores, MoneyKernel, ReservationManager } from "@polyroot/risk";
 import { createPgControlStores } from "@polyroot/control";
 import { Executor } from "@polyroot/executor";
 import type { VenueAdapter } from "@polyroot/venue";
@@ -173,6 +173,13 @@ export async function createOrchestratorPg(
     walletId: deps.wallet.wallet_id,
     holder: deps.wallet.signer_address,
     leaseEpoch: deps.leaseEpoch(),
+    // Authoritative settlement accounting (consume on fill, release on
+    // reject/cancel) on the same shared pool.
+    reservationManager: new ReservationManager({
+      balanceStore,
+      permitStore,
+      pool: sharedPool,
+    }),
   });
 
   // ── PostgreSQL-backed Control plane ports (with executor for reconciler) ──

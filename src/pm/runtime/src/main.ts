@@ -275,6 +275,9 @@ export async function bootstrapAgent(
     walletId: "00000000-0000-0000-0000-000000000001",
     holder: "prod-runtime-node-1",
     leaseStore,
+    // Authoritative settlement accounting: consume on fill, release on
+    // reject/cancel. Without this, committed funds strand forever.
+    reservationManager,
   });
 
   // 6. Wallet Identity: derived from the user's key on live modes,
