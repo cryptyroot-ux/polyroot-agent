@@ -49,6 +49,7 @@ import { ExecutionPermitSchema } from "@polyroot/domain";
 import { venueActionGate } from "@polyroot/venue";
 import { cashNeededFor } from "@polyroot/risk";
 import { decimalToBase } from "@polyroot/signer";
+import type { ReservationManager } from "@polyroot/risk";
 
 /* ── Executor dependencies ──────────────────────────────────────────────── */
 
@@ -74,6 +75,8 @@ export interface ExecutorDeps {
   holder: string;
   /** Durable lease store with epoch fencing. */
   leaseStore: LeaseStore;
+  /** Authoritative reservation manager to consume/release funds. */
+  reservationManager?: ReservationManager;
 }
 
 /* ── Order lifecycle state machine (TABLE 16) ───────────────────────────── */
@@ -452,7 +455,12 @@ export class Executor {
     if (!res.ok) {
       // P0-9: distinguish "definitely not sent" from "submission unknown"
       if (res.code === "DEFINITELY_NOT_SENT") {
-        // Request never reached the venue → safe to retry, do NOT release lease.
+        // Request never reached the venue → safe to retry.
+        // P0-Audit: Release lease on DEFINITELY_NOT_SENT so lock is not stranded
+        await this.deps.leaseStore.releaseExecutorLease(
+          this.deps.walletId,
+          this.deps.holder,
+        );
         return {
           ok: true,
           outcome: "NEEDS_RECONCILIATION",
@@ -492,6 +500,12 @@ export class Executor {
         this.deps.walletId,
         this.deps.holder,
       );
+      // P0-Audit: Release any active reservations on definitive reject
+      if (this.deps.reservationManager && permit.reservation_ids) {
+        for (const resId of permit.reservation_ids) {
+          await this.deps.reservationManager.release(resId, "REJECTED").catch(() => {});
+        }
+      }
       return {
         outcome: "PERMIT_INVALID",
         code: res.code,
@@ -519,6 +533,19 @@ export class Executor {
 
     // Resolve in recovery ledger with definitive venue result
     await this.deps.recoveryLedger.resolve(order.order_id, true, res.result);
+
+    // P0-Audit: Consume reservation upon filled size
+    if (
+      this.deps.reservationManager &&
+      permit.reservation_ids &&
+      res.result.filled_size &&
+      res.result.filled_size > 0
+    ) {
+      const filledBase = decimalToBase(res.result.filled_size);
+      for (const resId of permit.reservation_ids) {
+        await this.deps.reservationManager.consume(resId, filledBase).catch(() => {});
+      }
+    }
 
     return { outcome: "SUBMITTED", result: res.result, state: st };
   }
@@ -631,14 +658,26 @@ export class Executor {
       }
       // Order-level terminal states take precedence: a canceled / rejected /
       // expired order will never fill — mark it definitively done.
-      if (
-        result.order_status === "CANCELED" ||
-        result.order_status === "REJECTED" ||
-        result.order_status === "EXPIRED"
-      ) {
-        this.deps.seen.add(orderId, "DEFINITIVE_REJECT");
-        await this.deps.recoveryLedger.resolve(orderId, true, result);
-        // Release lease if we acquired it
+        if (
+          result.order_status === "CANCELED" ||
+          result.order_status === "REJECTED" ||
+          result.order_status === "EXPIRED"
+        ) {
+          this.deps.seen.add(orderId, "DEFINITIVE_REJECT");
+          await this.deps.recoveryLedger.resolve(orderId, true, result);
+          // P0-Audit: Release reservations on reconciliation-discovered terminal rejection/cancel
+          if (this.deps.reservationManager) {
+            const rec = await this.deps.recoveryLedger.get(orderId);
+            if (rec && rec.permitId) {
+              const permitObj = await this.deps.permitStore.get(rec.permitId);
+              if (permitObj && permitObj.reservation_ids) {
+                for (const resId of permitObj.reservation_ids) {
+                  await this.deps.reservationManager.release(resId, result.order_status === "CANCELED" ? "CANCELLED" : "REJECTED").catch(() => {});
+                }
+              }
+            }
+          }
+          // Release lease if we acquired it
         if (leaseAcquired) {
           await this.deps.leaseStore.releaseExecutorLease(
             this.deps.walletId,
