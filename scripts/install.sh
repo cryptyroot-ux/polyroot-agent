@@ -102,16 +102,9 @@ build() {
 link_binary() {
   log "Linking 'polyroot' command..."
   mkdir -p "${BIN_DIR}"
-  cat > "${BIN_DIR}/polyroot" <<'EOF'
-#!/usr/bin/env bash
-# PolyRoot Agent launcher — delegates to installed copy
-# Use npx to ensure tsx is found regardless of PATH
-if [[ -d "${HOME}/.polyroot" ]]; then
-  cd "${HOME}/.polyroot" && exec npx --yes tsx src/pm/runtime/src/cli.ts "$@"
-else
-  exec npx --yes tsx src/pm/runtime/src/cli.ts "$@"
-fi
-EOF
+  # Single source of truth: scripts/launcher.sh (also used by `polyroot update`
+  # to heal already-installed launchers). Never inline another copy here.
+  cp "${INSTALL_DIR}/scripts/launcher.sh" "${BIN_DIR}/polyroot"
   chmod +x "${BIN_DIR}/polyroot"
   # Ensure ~/.local/bin is in PATH
   case "${SHELL##*/}" in

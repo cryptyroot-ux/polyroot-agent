@@ -13,8 +13,14 @@ import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 export interface SetupBoundsInput {
   capitalUsd: number;
   lossBps: number;
-  mode: "PAPER" | "LIVE";
+  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
   universe: string[];
+  discovery?: {
+    mode: "auto" | "manual";
+    minVolume24h?: number;
+    maxMarkets?: number;
+    maxSpread?: number;
+  };
 }
 
 /** Build the exact .env lines for owner bounds. Invalid numbers fall back
@@ -36,6 +42,21 @@ export function buildSetupEnvUpdate(input: SetupBoundsInput): string[] {
   ];
   if (input.universe.length > 0) {
     lines.push(`POLYROOT_MARKET_IDS=${[...new Set(input.universe)].join(",")}`);
+  }
+  if (input.discovery) {
+    const minRaw = Number(input.discovery.minVolume24h);
+    const maxRaw = Number(input.discovery.maxMarkets);
+    const spreadRaw = Number(input.discovery.maxSpread);
+    lines.push(`POLYROOT_MARKET_DISCOVERY=${input.discovery.mode}`);
+    lines.push(
+      `POLYROOT_DISCOVERY_MIN_VOLUME_24H=${Number.isFinite(minRaw) && minRaw > 0 ? Math.floor(minRaw) : 10_000}`,
+    );
+    lines.push(
+      `POLYROOT_DISCOVERY_MAX_MARKETS=${Number.isFinite(maxRaw) && maxRaw > 0 ? Math.min(Math.floor(maxRaw), 20) : 5}`,
+    );
+    lines.push(
+      `POLYROOT_DISCOVERY_MAX_SPREAD=${Number.isFinite(spreadRaw) && spreadRaw > 0 ? Math.min(Math.max(spreadRaw, 0.01), 0.5) : 0.1}`,
+    );
   }
   return lines;
 }
@@ -67,7 +88,9 @@ export function upsertEnvLines(existing: string, updates: string[]): string {
 
 /** Numbered cheat-sheet printed after setup/onboarding. Exact commands,
  *  in order, with what PASS looks like. */
-export function formatNextSteps(mode: "PAPER" | "LIVE"): string {
+export function formatNextSteps(
+  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE",
+): string {
   const lines = [
     "",
     "═══ Next steps (run one at a time) ═══",
@@ -77,26 +100,27 @@ export function formatNextSteps(mode: "PAPER" | "LIVE"): string {
     "     → make sure Mode, Wallet, and Loss Cap look right.",
     "",
   ];
-  if (mode === "LIVE") {
+  if (mode !== "PAPER") {
     lines.push(
       "2) Test LIVE readiness (required before real money):",
       "     polyroot doctor --live",
       "     → everything must be ✅ PASS. Fix any ❌ first.",
       "",
       "3) Practice 48 hours with no money (SHADOW mode):",
-      "     RUNTIME_MODE=SHADOW polyroot",
+      "     polyroot setup",
+      "     → choose SHADOW, then: polyroot run",
       "     → let it run, make sure there are no errors.",
       "",
       "4) Start small first:",
-      "     polyroot",
+      "     polyroot run",
       "     → watch for 1-2 days before raising capital.",
       "",
     );
   } else {
     lines.push(
-      "2) Run practice mode (play money, 100% safe):",
+      "2) Open the console and run practice mode (play money, 100% safe):",
       "     polyroot",
-      "     → press Ctrl+C to stop.",
+      "     → type: run (press Ctrl+C to stop, exit to leave).",
       "",
       "3) When you are ready for real money, run:",
       "     polyroot setup",

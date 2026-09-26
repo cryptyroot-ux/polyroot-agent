@@ -33,7 +33,7 @@ import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
 import { PgLiveGuardStore } from "./live-guard-store.js";
 import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
-import { readMarketUniverse } from "@polyroot/venue";
+import { resolveMarketUniverse } from "@polyroot/venue";
 import {
   createForecastProviderFromEnv,
   type ForecastProvider,
@@ -285,11 +285,24 @@ export async function bootstrapAgent(
   const forecastProvider: ForecastProvider | null =
     createForecastProviderFromEnv();
   let warnedNoProvider = false;
+  if (forecastProvider) {
+    const model = process.env["POLYROOT_FORECAST_MODEL"] ?? "unknown";
+    let host = "api.openai.com";
+    try {
+      host = new URL(process.env["OPENAI_BASE_URL"] ?? "https://api.openai.com")
+        .host;
+    } catch {
+      // keep default host label
+    }
+    console.log(`🤖 AI forecaster: ${model} via ${host}`);
+  }
 
-  // 8. Market universe (fail-closed outside PAPER): the loop iterates
-  // exactly these owner-curated CLOB token ids — never mock data.
+  // 8. Market universe (fail-closed outside PAPER). Manual mode iterates
+  // exactly the owner-curated CLOB token ids; auto mode lets the agent
+  // discover the most liquid markets itself within owner guardrails —
+  // never mock data either way.
   const marketUniverse =
-    mode === "PAPER" ? [] : readMarketUniverse(process.env);
+    mode === "PAPER" ? [] : await resolveMarketUniverse(process.env);
   const marketSource =
     marketUniverse.length === 0
       ? undefined
