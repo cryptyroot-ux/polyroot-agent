@@ -162,6 +162,19 @@ export async function validateAndReserve(
       allowed_order_style: ["LIMIT", "POST_ONLY"],
       venue_mode: input.venueMode,
     },
+    intentRef: {
+      marketId: intent.market_id,
+      outcomeSide: intent.side === "SELL" ? "NO" : "YES",
+      priceBase,
+      sizeBase,
+      orderType: "LIMIT",
+      expirationSec:
+        Number.isFinite(intent.expiration_sec) &&
+        (intent.expiration_sec ?? 0) > 0
+          ? Math.floor(intent.expiration_sec ?? 300)
+          : 300,
+      strategy: policy.policy_version,
+    },
   });
 
   if (!reserved.ok) {

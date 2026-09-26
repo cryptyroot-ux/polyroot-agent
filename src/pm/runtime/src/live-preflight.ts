@@ -116,7 +116,7 @@ export async function runLivePreflight(
     );
   }
 
-  // 4. Market universe (explicit, never mock data).
+  // 4. Market universe (explicit or auto-discovered, never mock data).
   let universe: string[] = [];
   try {
     universe = await deps.readUniverse();
@@ -124,7 +124,7 @@ export async function runLivePreflight(
       checks.push(
         fail(
           "universe",
-          "market universe is empty — set POLYROOT_MARKET_IDS to owner-curated CLOB token ids",
+          "market universe is empty — pick markets in `polyroot setup` (Browse/Auto) or set POLYROOT_MARKET_IDS",
         ),
       );
     } else {

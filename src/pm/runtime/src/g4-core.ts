@@ -151,6 +151,37 @@ export interface G4CoreResult {
   outcome?: "SUBMITTED" | "NEEDS_RECONCILIATION" | undefined;
   p?: number | undefined;
   size?: number | undefined;
+  /** AI thinking, surfaced so operators see the LLM working, not just outcomes. */
+  edge?: number | undefined;
+  bookBid?: number | undefined;
+  bookAsk?: number | undefined;
+}
+
+/** One-line rendering of the AI's thinking for operator logs. */
+export function formatAiLine(result: {
+  p?: number | undefined;
+  edge?: number | undefined;
+  bookBid?: number | undefined;
+  bookAsk?: number | undefined;
+}): string {
+  const parts: string[] = [];
+  if (result.p !== undefined && Number.isFinite(result.p)) {
+    parts.push(`AI p=${result.p.toFixed(3)}`);
+  }
+  if (
+    result.bookBid !== undefined &&
+    result.bookAsk !== undefined &&
+    Number.isFinite(result.bookBid) &&
+    Number.isFinite(result.bookAsk)
+  ) {
+    parts.push(
+      `book ${result.bookBid.toFixed(3)}/${result.bookAsk.toFixed(3)}`,
+    );
+  }
+  if (result.edge !== undefined && Number.isFinite(result.edge)) {
+    parts.push(`edge=${result.edge >= 0 ? "+" : ""}${result.edge.toFixed(3)}`);
+  }
+  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
 
 export interface G4CoreObservability {
@@ -389,6 +420,9 @@ export async function executeG4Step(
       market_id,
       decision: "NO_TRADE",
       reason: "forecast uncertain or unavailable",
+      ...(p !== null ? { p } : {}),
+      bookBid: bid,
+      bookAsk: ask,
     };
   }
 
@@ -437,6 +471,10 @@ export async function executeG4Step(
       market_id,
       decision: "NO_TRADE",
       reason: edge.code ?? "MIN_EDGE_UNMET",
+      p,
+      edge: edge.edge_after_fees ?? edge.edge,
+      bookBid: bid,
+      bookAsk: ask,
     };
   }
 
@@ -448,6 +486,10 @@ export async function executeG4Step(
       market_id,
       decision: "NO_TRADE",
       reason: "sizing returned zero",
+      p,
+      edge: edge.edge_after_fees ?? edge.edge,
+      bookBid: bid,
+      bookAsk: ask,
     };
   }
 
@@ -487,6 +529,10 @@ export async function executeG4Step(
       market_id,
       decision: "NO_TRADE",
       reason: gateResult.reason ?? gateResult.code,
+      p,
+      edge: edge.edge_after_fees ?? edge.edge,
+      bookBid: bid,
+      bookAsk: ask,
     };
   }
 
@@ -612,6 +658,10 @@ export async function executeG4Step(
         market_id,
         decision: "NO_TRADE",
         reason: `Executor: ${submitted.reason ?? submitted.code}`,
+        p,
+        edge: edge.edge_after_fees ?? edge.edge,
+        bookBid: bid,
+        bookAsk: ask,
       };
     }
   }
@@ -644,6 +694,9 @@ export async function executeG4Step(
     outcome,
     p,
     size,
+    edge: edge.edge_after_fees ?? edge.edge,
+    bookBid: bid,
+    bookAsk: ask,
   };
   deps.observability?.emitStepComplete?.(input, res);
   return res;

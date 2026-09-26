@@ -30,6 +30,7 @@ import {
   executeG4Step,
   createG4Core,
   buildLoopInputs,
+  formatAiLine,
 } from "./g4-core.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -188,14 +189,16 @@ export class G4AutonomousLoop {
               result.fill.status === "PARTIAL")
           ) {
             console.log(
-              `✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}`,
+              `✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}${formatAiLine(result)}`,
             );
           } else if (result.decision !== "NO_TRADE") {
             console.log(
-              `📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})`,
+              `📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})${formatAiLine(result)}`,
             );
           } else {
-            console.log(`⏭️  No trade: ${result.reason}`);
+            console.log(
+              `⏭️  No trade: ${result.reason}${formatAiLine(result)}`,
+            );
           }
 
           // Wait for next interval

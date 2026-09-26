@@ -6,7 +6,12 @@ import {
   mkdirSync,
 } from "node:fs";
 import { Pool } from "pg";
-import { deriveAddressFromPrivateKey, sealPrivateKey, resolveWalletKey } from "@polyroot/signer";
+import {
+  deriveAddressFromPrivateKey,
+  sealPrivateKey,
+  resolveWalletKey,
+  decimalToBase,
+} from "@polyroot/signer";
 import { randomBytes } from "node:crypto";
 import {
   PgLiveGuardStore,
@@ -14,7 +19,7 @@ import {
   decideGuardReset,
 } from "./live-guard-store.js";
 import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
-import { bootstrapAgent } from "./main.js";
+import { bootstrapAgent, buildWalletIdentity } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
 
@@ -28,13 +33,47 @@ export function loadDotEnv(dotenvPath?: string): string | undefined {
     dotenvPath !== undefined
       ? [dotenvPath]
       : [".env", "../.env", "../../.env", "../../../.env"];
+  let loaded: string | undefined;
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
       process.loadEnvFile(candidate);
-      return candidate;
+      loaded = candidate;
+      break;
     }
   }
-  return undefined;
+  if (dotenvPath !== undefined) return loaded;
+  // Default resolution only: user config (~/.polyroot/.env, written by
+  // onboard/setup) always wins over repo templates: apply it last with
+  // override. Without this, a placeholder repo .env would shadow the
+  // user's real settings. Explicit-path callers keep exact old semantics.
+  try {
+    const home =
+      process.env["HOME"] !== undefined ? process.env["HOME"] : "/tmp";
+    const userEnv = `${home}/.polyroot/.env`;
+    if (existsSync(userEnv)) {
+      const text = readFileSync(userEnv, "utf8");
+      for (const line of text.split("\n")) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        const eq = t.indexOf("=");
+        if (eq <= 0) continue;
+        const key = t.slice(0, eq).trim();
+        let val = t.slice(eq + 1).trim();
+        if (
+          val.length >= 2 &&
+          ((val.startsWith('"') && val.endsWith('"')) ||
+            (val.startsWith("'") && val.endsWith("'")))
+        ) {
+          val = val.slice(1, -1);
+        }
+        if (key) process.env[key] = val;
+      }
+      loaded = userEnv;
+    }
+  } catch {
+    // best-effort: a broken user .env must not crash config loading
+  }
+  return loaded;
 }
 
 /**
@@ -114,15 +153,18 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
     if (a === "--help" || a === "-h") {
       console.log(
         "PolyRoot Agent — commands:\n" +
-          "  polyroot                 Run the agent (mode from settings)\n" +
+          "  polyroot                 Open the interactive console\n" +
+          "  polyroot run             Start the agent (mode from settings)\n" +
           "  polyroot onboard         First-time setup (new users)\n" +
           "  polyroot setup           Change mode, capital, loss cap, markets\n" +
+          "  polyroot shadow-fund --amount <usd>  Credit SHADOW play bankroll\n" +
+          "  polyroot markets         Browse popular markets by name\n" +
           "  polyroot status          Show current configuration\n" +
           "  polyroot doctor          Basic health check\n" +
           "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
           "  polyroot wallet verify   Check wallet with no network\n" +
           "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
-          "  polyroot --once          Run once then stop (test)",
+          "  polyroot run --once      Run once then stop (test)",
       );
       process.exit(0);
     } else if (a === "--mode") {
@@ -529,6 +571,13 @@ function writeEnv(config: OnboardingConfig): void {
     `OPENAI_API_KEY=${config.apiKey}`,
     ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
     "",
+    "# Market discovery: the agent finds liquid markets itself by default.",
+    "# Change to manual curation any time via `polyroot setup`.",
+    `POLYROOT_MARKET_DISCOVERY=auto`,
+    `POLYROOT_DISCOVERY_MIN_VOLUME_24H=10000`,
+    `POLYROOT_DISCOVERY_MAX_MARKETS=5`,
+    `POLYROOT_DISCOVERY_MAX_SPREAD=0.1`,
+    "",
     "# Owner-set autonomy bounds (managed via `polyroot setup`; the AI path is read-only):",
     `POLYROOT_MICRO_LIVE_CAP_USD=${config.capitalUsd}`,
     `POLYROOT_MICRO_LIVE_LOSS_CAP_USD=${resolveLossCapPusd(config.capitalUsd, config.lossBps) ?? 0}`,
@@ -575,33 +624,475 @@ async function runFirstTimeSetup(): Promise<void> {
   await runOnboardingFlow();
 }
 
+/** Helper: Wallet setup flow */
+async function promptWalletSetup(
+  prechoice?: "create" | "import",
+): Promise<void> {
+  console.log("\n🔐 Setting up Wallet (keys locked in vault)...");
+  const walletChoice =
+    prechoice ??
+    (await askChoice(
+      "Wallet:",
+      ["Create new wallet (generates keystore)", "Import existing private key"],
+      0,
+    ));
+  const isCreate = prechoice === "create" || walletChoice.startsWith("Create");
+  let privateKey = "";
+  let passphrase = "";
+  if (isCreate) {
+    for (;;) {
+      passphrase = await askRequiredSecret("Create a vault passphrase");
+      const confirm = await askRequiredSecret("Repeat the passphrase");
+      if (passphrase === confirm) break;
+      console.log("Passphrases do not match — try again.");
+    }
+    privateKey = "0x" + randomBytes(32).toString("hex");
+    console.log(`\n✅ New wallet created!`);
+    console.log(`   Address: ${deriveAddressFromPrivateKey(privateKey)}`);
+  } else {
+    for (;;) {
+      privateKey = await askRequiredSecret("Private key (0x...)");
+      if (/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) break;
+      console.log("Wrong format — expected 64 hex characters.");
+    }
+    passphrase = await askRequiredSecret("Create a vault passphrase");
+  }
+  const keystore = sealPrivateKey(privateKey, passphrase);
+  ensurePolyrootHome();
+  writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", {
+    mode: 0o600,
+  });
+  chmodSync(KEYSTORE_PATH, 0o600);
+
+  const updates = [
+    `POLYROOT_KEYSTORE_JSON=${JSON.stringify(keystore)}`,
+    `POLYROOT_KEYSTORE_PASSPHRASE=${passphrase}`,
+    `WALLET_ADDRESS=${deriveAddressFromPrivateKey(privateKey)}`,
+  ];
+  const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
+  writeFileSync(ENV_PATH, upsertEnvLines(existing, updates) + "\n", {
+    mode: 0o600,
+  });
+  console.log(`🔐 Keystore saved to ${KEYSTORE_PATH} and updated .env`);
+}
+
+/** Helper: browse popular markets by name, resolve picks to token ids. */
+async function promptMarketBrowser(): Promise<string[]> {
+  console.log("\n📊 Fetching popular Polymarket markets...");
+  let markets;
+  try {
+    markets = await fetchActiveMarkets(20);
+  } catch (err) {
+    console.log(`⚠️  ${(err as Error).message}`);
+    console.log("   Falling back to manual paste.");
+    return [];
+  }
+  if (markets.length === 0) {
+    console.log("⚠️  No markets returned — keeping the old list.");
+    return [];
+  }
+  console.log("");
+  for (let i = 0; i < markets.length; i++) {
+    const m = markets[i] as { question: string; volume24h: number };
+    const vol = m.volume24h > 0 ? ` (24h vol $${Math.round(m.volume24h)})` : "";
+    console.log(`  ${i + 1}. ${m.question}${vol}`);
+  }
+  console.log("");
+  const pickRaw = await askText(
+    'Pick numbers, comma-separated (e.g. "1,3"), "all", or Enter = cancel',
+    { defaultValue: "" },
+  );
+  if (!pickRaw.trim()) {
+    console.log("   Cancelled — keeping the old list.");
+    return [];
+  }
+  try {
+    const picked = parseMarketPick(pickRaw, markets);
+    const ids = picked.flatMap((m) => [m.yesTokenId, m.noTokenId]);
+    const validated = readMarketUniverse({
+      POLYROOT_MARKET_IDS: ids.join(","),
+    });
+    console.log(`\n✅ Picked ${picked.length} market(s):`);
+    for (const m of picked) console.log(`   • ${m.question}`);
+    return validated;
+  } catch (err) {
+    console.log(`⚠️  ${(err as Error).message} — keeping the old one.`);
+    return [];
+  }
+}
+
+/** One raw console line (blank allowed — blank just re-shows the prompt). */
+async function askConsoleLine(): Promise<string> {
+  return askOnShared("polyroot> ", { muted: false });
+}
+
+/** Live snapshot for the console: DB, guard latch, reservations, universe. */
+async function printConsoleSnapshot(): Promise<void> {
+  loadDotEnv();
+  const env = process.env;
+  const mode = env["RUNTIME_MODE"] ?? "PAPER";
+  console.log(`Mode: ${mode}`);
+  const dbUrl = env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.log("Database: ❌ not configured (run: setup)");
+    return;
+  }
+  try {
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: dbUrl });
+    try {
+      await pool.query("SELECT 1");
+      console.log("Database: ✅ connected");
+      try {
+        const g = await pool.query(
+          "SELECT halted, realized_loss_pusd FROM live_guard_state LIMIT 1",
+        );
+        const row = g.rows[0] as
+          { halted: boolean; realized_loss_pusd: string } | undefined;
+        console.log(
+          row
+            ? `Loss latch: ${row.halted ? "🛑 HALTED" : "✅ armed"} (loss ${row.realized_loss_pusd ?? 0} pUSD)`
+            : "Loss latch: (no state yet)",
+        );
+      } catch {
+        console.log("Loss latch: (not initialized)");
+      }
+      try {
+        const r = await pool.query(
+          "SELECT count(*)::text AS c FROM reservations WHERE status='ACTIVE'",
+        );
+        console.log(`Active reservations: ${(r.rows[0] as { c: string }).c}`);
+      } catch {
+        console.log("Active reservations: (unknown)");
+      }
+    } finally {
+      await pool.end().catch(() => undefined);
+    }
+  } catch {
+    console.log("Database: ❌ unreachable (run: doctor)");
+  }
+  const universe = (env["POLYROOT_MARKET_IDS"] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const isAuto =
+    (env["POLYROOT_MARKET_DISCOVERY"] ?? "manual").toLowerCase() === "auto";
+  if (isAuto) {
+    const b = parseDiscoveryBounds(env);
+    console.log(
+      `Markets tracked: AUTO — top ${b.maxMarkets} by 24h volume ≥ $${b.minVolume24h}, spread ≤ ${b.maxSpread}`,
+    );
+  } else {
+    console.log(
+      universe.length > 0
+        ? `Markets tracked: ${universe.length} token id(s)`
+        : "Markets tracked: none (run: setup → Auto/Browse)",
+    );
+  }
+  console.log(`Wallet: ${env["WALLET_ADDRESS"] ?? "not set"}`);
+}
+
+function printConsoleHelp(): void {
+  console.log(
+    "\nCommands:\n" +
+      "  run [flags]    Start the agent (mode from settings). Ctrl+C stops.\n" +
+      "  status         Show configuration\n" +
+      "  logs [N]       Show recent agent activity (default 15 lines)\n" +
+      "  logs --follow  Watch activity live (Ctrl+C back to prompt)\n" +
+      "  shadow-fund    Credit SHADOW play bankroll: shadow-fund --amount 1000\n" +
+      "  markets        Show popular markets (add --search <text>)\n" +
+      "  doctor         Basic health check (add --live for the strict gate)\n" +
+      "  setup          Guided configuration (mode, caps, markets, wallet, API)\n" +
+      "  update           Pull latest version + rebuild + refresh launcher\n" +
+      "  snapshot       Refresh the live snapshot above\n" +
+      "  help           Show this list\n" +
+      "  exit           Leave the console (back to terminal)\n",
+  );
+}
+
+/** Known agent log files (newest first). */
+function findAgentLogs(): string[] {
+  const home = process.env["HOME"] ?? "/tmp";
+  return ["shadow-48h.log", "agent.log"]
+    .map((f) => `${home}/.polyroot/${f}`)
+    .filter((p) => existsSync(p));
+}
+
+/** Print the tail of the agent log. Follows live until Ctrl+C when asked. */
+async function runConsoleLogs(args: string[]): Promise<void> {
+  const logs = findAgentLogs();
+  if (logs.length === 0) {
+    console.log(
+      "No agent log yet. Start the agent first: type `run` here, or in a terminal: polyroot run",
+    );
+    return;
+  }
+  const path = logs[0] as string;
+  const follow = args.includes("--follow") || args.includes("-f");
+  const nRaw = Number(args.find((a) => /^\d+$/.test(a)));
+  const n =
+    Number.isFinite(nRaw) && nRaw > 0 ? Math.min(Math.floor(nRaw), 200) : 15;
+  if (!follow) {
+    const lines = readFileSync(path, "utf8").split("\n").filter(Boolean);
+    console.log(`\n── ${path} (last ${Math.min(n, lines.length)}) ──`);
+    for (const line of lines.slice(-n)) console.log(line);
+    console.log(
+      `\nTip: \`logs --follow\` watches live. \`exit\` leaves to terminal.\n`,
+    );
+    return;
+  }
+  console.log(`\n── following ${path} (Ctrl+C back to prompt) ──`);
+  let shown = readFileSync(path, "utf8").split("\n").filter(Boolean).length;
+  const timer = setInterval(() => {
+    try {
+      const lines = readFileSync(path, "utf8").split("\n").filter(Boolean);
+      for (const line of lines.slice(shown)) console.log(line);
+      shown = lines.length;
+    } catch {
+      // log rotated mid-follow — keep watching
+    }
+  }, 1000);
+  try {
+    await askOnShared("", { muted: true });
+  } catch (err) {
+    if (!(err instanceof OnboardingCancelled)) throw err;
+  } finally {
+    clearInterval(timer);
+    console.log("\n— back to prompt —");
+  }
+}
+
+/** Friendly fallback for anything the console doesn't understand. */
+function printUnknownHint(raw: string): void {
+  if (/^(hi|hello|hai|halo|hallo|hey|hy|p|test|tes)\b/i.test(raw)) {
+    console.log(
+      'Halo! Ketik "logs" buat lihat agen lagi ngapain, "status" buat konfigurasi, "help" buat daftar perintah.',
+    );
+    return;
+  }
+  console.log(
+    `Unknown command "${raw}". Try: logs | status | run | help | exit.`,
+  );
+  if (
+    raw.includes("/") ||
+    /^(tail|head|cat|curl|wget|cd|ls|ps|kill|sudo|docker|npm|node|git|nano|vim|echo|export|psql|grep|chmod|mkdir)\b/.test(
+      raw,
+    )
+  ) {
+    console.log(
+      "That looks like a terminal command — those run OUTSIDE this console. Type `exit` first, then run it in the terminal.",
+    );
+  }
+}
+
+/**
+ * `polyroot` with no arguments — interactive console, Hermes-style.
+ * Opens a live snapshot + prompt. Ctrl+C never kills the console, it just
+ * re-shows the prompt; `exit` leaves. `run` starts the trading loop
+ * (blocking; Ctrl+C there stops the process, same as before).
+ */
+async function runConsole(): Promise<void> {
+  console.log("\n═══════════════════════════════════════════════");
+  console.log("  PolyRoot Agent — Console");
+  console.log("═══════════════════════════════════════════════\n");
+  await printConsoleSnapshot();
+  console.log(
+    '\nType "help" for commands, "run" to start the agent, "exit" to leave.\n',
+  );
+  for (;;) {
+    let line: string;
+    try {
+      line = await askConsoleLine();
+    } catch (err) {
+      if (err instanceof OnboardingCancelled) {
+        console.log("");
+        continue;
+      }
+      if ((err as { code?: string }).code === "ERR_USE_AFTER_CLOSE") {
+        // stdin EOF (piped input ended) — leave quietly, not a crash.
+        closeSharedSession();
+        return;
+      }
+      throw err;
+    }
+    const parts = line.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) continue;
+    const cmd = (parts[0] as string).toLowerCase();
+    const args = parts.slice(1);
+    try {
+      if (cmd === "exit" || cmd === "quit") {
+        closeSharedSession();
+        return;
+      } else if (cmd === "help") {
+        printConsoleHelp();
+      } else if (cmd === "snapshot") {
+        await printConsoleSnapshot();
+      } else if (cmd === "status") {
+        await runStatus();
+      } else if (cmd === "setup") {
+        await runSetupFlow();
+      } else if (cmd === "shadow-fund") {
+        const aIdx = args.indexOf("--amount");
+        const amountRaw =
+          aIdx >= 0 && args[aIdx + 1] && !args[aIdx + 1]?.startsWith("--")
+            ? (args[aIdx + 1] as string)
+            : "";
+        if (!amountRaw) {
+          console.log("Usage: shadow-fund --amount <usd>");
+        } else {
+          await runShadowFund(amountRaw);
+        }
+      } else if (cmd === "doctor") {
+        if (args.includes("--live")) await runLiveDoctor();
+        else await runDoctor();
+      } else if (cmd === "markets") {
+        const qIdx = args.indexOf("--search");
+        const query =
+          qIdx >= 0 && args[qIdx + 1] && !args[qIdx + 1]?.startsWith("--")
+            ? (args[qIdx + 1] as string).toLowerCase()
+            : "";
+        const all = await fetchActiveMarkets(50);
+        const list = query
+          ? all.filter((m) => m.question.toLowerCase().includes(query))
+          : all;
+        for (const m of list.slice(0, 10)) {
+          console.log(`• ${m.question}`);
+        }
+        if (list.length === 0) console.log("No markets found.");
+        console.log(
+          `\nShowing ${Math.min(list.length, 10)} of ${list.length}. Pick in: setup\n`,
+        );
+      } else if (cmd === "logs" || cmd === "log") {
+        await runConsoleLogs(args);
+      } else if (cmd === "update") {
+        await runUpdate();
+      } else if (cmd === "run" || cmd === "start") {
+        // The loop owns stdin via readline (raw mode) which would swallow
+        // Ctrl+C meant for the agent — hand the terminal back first.
+        closeSharedSession();
+        const config = parseArgs(args);
+        assertRuntimeEnv(config.mode);
+        if (config.mode === "MICRO_LIVE") {
+          await assertMicroLiveReady(config.databaseUrl);
+        }
+        await startAgent(config);
+        return;
+      } else {
+        printUnknownHint(parts.join(" "));
+      }
+    } catch (err) {
+      if (err instanceof OnboardingCancelled) {
+        console.log("\nCancelled.");
+        continue;
+      }
+      console.error(`❌ ${(err as Error).message}`);
+    }
+  }
+}
+
+/** `polyroot shadow-fund --amount <usd>` — credit SHADOW play bankroll.
+ *  Play money only: hard-refused on MICRO_LIVE/LIVE so sim funds can never
+ *  touch real money. Idempotent (sets, not adds) for a clean baseline. */
+async function runShadowFund(amountRaw: string): Promise<void> {
+  loadDotEnv();
+  const mode = (process.env["RUNTIME_MODE"] ?? "PAPER").toUpperCase();
+  if (mode === "MICRO_LIVE" || mode === "LIVE") {
+    console.error(
+      "❌ REFUSED: shadow-fund is play money — never on MICRO_LIVE/LIVE.",
+    );
+    process.exit(1);
+  }
+  const amount = Number(amountRaw);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000) {
+    console.error(
+      "Usage: polyroot shadow-fund --amount <usd>  (0 < amount ≤ 1000000)",
+    );
+    process.exit(1);
+  }
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL not set");
+    process.exit(1);
+  }
+  const wallet = buildWalletIdentity(mode === "SHADOW" ? "SHADOW" : "PAPER");
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    await pool.query(
+      `INSERT INTO balance_entries (account, asset, available_base, committed_base, updated_at)
+       VALUES ($1, 'pUSD', $2, 0, now())
+       ON CONFLICT (account, asset)
+       DO UPDATE SET available_base = EXCLUDED.available_base, committed_base = 0, updated_at = now()`,
+      [wallet.funder, decimalToBase(amount).toString()],
+    );
+    console.log(
+      `✅ Shadow bankroll: $${amount} play money → ${wallet.funder} (pUSD).`,
+    );
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
+/** Helper: Polymarket API setup flow */
+async function promptVenueCredentials(): Promise<void> {
+  console.log("\n🏪 Setting up Polymarket API credentials...");
+  const apiKey = await askText("Polymarket API Key");
+  const apiSecret = await askRequiredSecret("Polymarket API Secret");
+  const apiPassphrase = await askRequiredSecret("Polymarket API Passphrase");
+
+  const updates = [
+    `POLYMARKET_API_KEY=${apiKey}`,
+    `POLYMARKET_API_SECRET=${apiSecret}`,
+    `POLYMARKET_API_PASSPHRASE=${apiPassphrase}`,
+  ];
+  const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
+  writeFileSync(ENV_PATH, upsertEnvLines(existing, updates) + "\n", {
+    mode: 0o600,
+  });
+  console.log(`✅ Polymarket credentials updated in .env`);
+}
+
 /**
  * `polyroot setup` — re-runnable guided configuration for lay operators.
- * Changes mode, capital cap, loss latch and market universe. NEVER touches
- * the wallet or keys (use `polyroot onboard` for a full reset).
+ * Changes mode, capital cap, loss latch, market universe, and wallet/keys.
+ * All-in-one: mode, bounds, markets, wallet, and API credentials.
  */
 async function runSetupFlow(): Promise<void> {
   try {
     loadDotEnv();
     console.log("\n═══════════════════════════════════════════════");
-    console.log("  PolyRoot Setup — Change Settings (safe)");
-    console.log("  Wallet & keys are NEVER touched here.");
+    console.log("  PolyRoot Setup — Full Configuration");
     console.log("═══════════════════════════════════════════════\n");
 
+    // 1. MODE SELECTION
     const currentMode = process.env["RUNTIME_MODE"] ?? "PAPER";
     console.log("Current mode: " + currentMode);
-    console.log("PAPER = practice with play money. LIVE = real money.\n");
+    console.log(
+      "PAPER = practice with play money. SHADOW = live data, sim fills. LIVE = real money. MICRO_LIVE = small cap real money.\n",
+    );
     const modeChoice = await askChoice(
       "Choose mode (Enter = keep current):",
       [
         "PAPER — Safe simulation, mock data, no real money",
+        "SHADOW — Live Polymarket data, simulated fills, $0 risk",
+        "MICRO_LIVE — Real trading with small cap (requires capital, API keys)",
         "LIVE — Real trading on Polymarket (requires capital, API keys)",
       ],
-      currentMode === "LIVE" ? 1 : 0,
+      currentMode === "LIVE"
+        ? 3
+        : currentMode === "MICRO_LIVE"
+          ? 2
+          : currentMode === "SHADOW"
+            ? 1
+            : 0,
     );
-    const mode = (modeChoice.startsWith("LIVE") ? "LIVE" : "PAPER") as
-      "PAPER" | "LIVE";
+    const mode = (() => {
+      if (modeChoice.startsWith("LIVE")) return "LIVE";
+      if (modeChoice.startsWith("MICRO")) return "MICRO_LIVE";
+      if (modeChoice.startsWith("SHADOW")) return "SHADOW";
+      return "PAPER";
+    })() as "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
 
+    // 2. CAPITAL & LOSS CAP
     const bounds = parseBoundsEnv(process.env);
     const capitalRaw = await askText(
       `Capital cap in USD (current ${bounds.capUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD}, Enter = keep)`,
@@ -627,30 +1118,161 @@ async function runSetupFlow(): Promise<void> {
         ? Math.floor(bpsParsed)
         : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
 
-    const currentUniverse = process.env["POLYROOT_MARKET_IDS"] ?? "";
-    console.log("\nMarket list = Polymarket token IDs, separated by commas.");
-    console.log("Leave empty to keep unchanged.");
-    const universeRaw = await askText(
-      `Market list${currentUniverse ? " (current: " + currentUniverse + ")" : ""}`,
-      { defaultValue: currentUniverse },
-    );
+    // 3. MARKET UNIVERSE — fresh users get Auto by default (one Enter and
+    // the agent finds liquid markets itself); existing config is kept
+    // unless the owner explicitly changes it.
     let universe: string[] = [];
-    const trimmed = universeRaw.trim();
-    if (trimmed) {
-      try {
-        universe = readMarketUniverse({ POLYROOT_MARKET_IDS: trimmed });
-      } catch (err) {
-        console.log(
-          `⚠️  Invalid market list (${(err as Error).message}) — keeping the old one.`,
-        );
+    let discovery:
+      | {
+          mode: "auto" | "manual";
+          minVolume24h?: number;
+          maxMarkets?: number;
+          maxSpread?: number;
+        }
+      | undefined;
+    const currentUniverse = process.env["POLYROOT_MARKET_IDS"] ?? "";
+    const alreadyAuto =
+      (process.env["POLYROOT_MARKET_DISCOVERY"] ?? "manual").toLowerCase() ===
+      "auto";
+    const hasMarketConfig = Boolean(currentUniverse) || alreadyAuto;
+    if (currentUniverse) {
+      console.log(`\nCurrent markets: ${currentUniverse}`);
+    }
+    console.log(`Discovery: ${alreadyAuto ? "Auto" : "Manual"}`);
+    const marketOptions = hasMarketConfig
+      ? [
+          "Keep current",
+          "Auto — agent finds the most liquid markets itself",
+          "Browse popular markets — pick by name",
+          "Paste token IDs manually (advanced)",
+        ]
+      : [
+          "Auto — agent finds the most liquid markets itself (recommended)",
+          "Browse popular markets — pick by name",
+          "Paste token IDs manually (advanced)",
+          "No markets (PAPER only)",
+        ];
+    const marketHow = await askChoice(
+      hasMarketConfig
+        ? "Choose markets (Enter = keep current):"
+        : "Choose markets (Enter = auto):",
+      marketOptions,
+      0,
+    );
+    if (marketHow.startsWith("Auto")) {
+      const bounds = parseDiscoveryBounds(process.env);
+      console.log(
+        "\nAuto-discovery guardrails: liquid markets only — above your",
+      );
+      console.log("minimum 24h volume, touch spread within your max.");
+      const minRaw = await askText(
+        "Minimum 24h volume in USD (Enter = 10000)",
+        {
+          defaultValue: String(bounds.minVolume24h),
+        },
+      );
+      const maxRaw = await askText("Max markets, 1-20 (Enter = 5)", {
+        defaultValue: String(bounds.maxMarkets),
+      });
+      const spreadRaw = await askText("Max spread 0.01-0.50 (Enter = 0.10)", {
+        defaultValue: String(bounds.maxSpread),
+      });
+      const minParsed = Number(minRaw);
+      const maxParsed = Number(maxRaw);
+      const spreadParsed = Number(spreadRaw);
+      discovery = {
+        mode: "auto",
+        minVolume24h:
+          Number.isFinite(minParsed) && minParsed > 0
+            ? Math.floor(minParsed)
+            : bounds.minVolume24h,
+        maxMarkets:
+          Number.isFinite(maxParsed) && maxParsed > 0
+            ? Math.min(Math.floor(maxParsed), 20)
+            : bounds.maxMarkets,
+        maxSpread:
+          Number.isFinite(spreadParsed) && spreadParsed > 0
+            ? Math.min(Math.max(spreadParsed, 0.01), 0.5)
+            : bounds.maxSpread,
+      };
+      console.log(
+        `\n✅ Auto-discovery on: top ${discovery.maxMarkets} markets by 24h volume ≥ $${discovery.minVolume24h}, spread ≤ ${discovery.maxSpread}.`,
+      );
+    } else if (marketHow.startsWith("Browse")) {
+      universe = await promptMarketBrowser();
+      if (universe.length > 0) discovery = { mode: "manual" };
+    } else if (marketHow.startsWith("Paste")) {
+      console.log("\nMarket list = Polymarket token IDs, separated by commas.");
+      const universeRaw = await askText("Market list", { defaultValue: "" });
+      const trimmed = universeRaw.trim();
+      if (trimmed) {
+        try {
+          universe = readMarketUniverse({ POLYROOT_MARKET_IDS: trimmed });
+          discovery = { mode: "manual" };
+        } catch (err) {
+          console.log(
+            `⚠️  Invalid market list (${(err as Error).message}) — keeping the old one.`,
+          );
+        }
+      }
+    } else {
+      console.log("   Keeping current market list.");
+    }
+
+    // 4. WALLET SETUP (skippable — Enter keeps going, never blocks)
+    console.log("\n═══ Wallet & Credentials ═══");
+    const hasKeystore = Boolean(process.env["POLYROOT_KEYSTORE_JSON"]);
+    const hasPassphrase = Boolean(process.env["POLYROOT_KEYSTORE_PASSPHRASE"]);
+    if (hasKeystore && hasPassphrase) {
+      console.log("✅ Keystore already configured. Keep it? (Enter = keep)");
+      const keep = await askText("", { defaultValue: "y" });
+      if (!keep.trim().toLowerCase().startsWith("n")) {
+        console.log("   Keeping existing keystore.");
+      } else {
+        await promptWalletSetup();
+      }
+    } else {
+      const walletSkip = await askChoice(
+        "Wallet (Enter = skip for now):",
+        [
+          "Skip for now — PAPER mode needs no wallet",
+          "Create new wallet (generates keystore)",
+          "Import existing private key",
+        ],
+        0,
+      );
+      if (!walletSkip.startsWith("Skip")) {
+        if (walletSkip.startsWith("Create")) {
+          await promptWalletSetup("create");
+        } else {
+          await promptWalletSetup("import");
+        }
+      } else {
+        console.log("   Skipped — run 'polyroot setup' again to add a wallet.");
       }
     }
 
+    // 5. VENUE API CREDENTIALS (for non-PAPER modes, skippable)
+    if (mode !== "PAPER") {
+      const venueSkip = await askChoice(
+        "Polymarket API credentials (Enter = skip for now):",
+        ["Skip for now", "Enter API credentials now"],
+        0,
+      );
+      if (!venueSkip.startsWith("Skip")) {
+        await promptVenueCredentials();
+      } else {
+        console.log("   Skipped — add later via 'polyroot setup'.");
+      }
+    }
+
+    // 6. SAVE ALL TO .env
     const updates = buildSetupEnvUpdate({
       capitalUsd,
       lossBps,
       mode,
       universe,
+      ...(discovery ? { discovery } : {}),
     });
     ensurePolyrootHome();
     const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
@@ -665,7 +1287,7 @@ async function runSetupFlow(): Promise<void> {
     if (universe.length > 0) {
       console.log(`   Markets: ${universe.join(", ")}`);
     }
-    console.log(formatNextSteps(mode));
+    console.log(formatNextSteps(mode as "PAPER" | "LIVE"));
     process.loadEnvFile(ENV_PATH as string);
     closeSharedSession();
   } catch (err) {
@@ -685,7 +1307,11 @@ import { createSignerFromEnv } from "@polyroot/signer";
 import {
   buildLiveVenueAdapter,
   buildPublicVenueAdapter,
+  fetchActiveMarkets,
+  parseDiscoveryBounds,
+  parseMarketPick,
   readMarketUniverse,
+  resolveMarketUniverse,
   runVenueCheck,
 } from "@polyroot/venue";
 import { parseBoundsEnv } from "./autonomy-bounds.js";
@@ -932,16 +1558,15 @@ async function runStatus(): Promise<void> {
   console.log("\n═══════════════════════════════════════════════\n");
 }
 
-/** Update command - git pull and rebuild. */
+/** Update command - git pull, rebuild, refresh launcher, remind migrations. */
 async function runUpdate(): Promise<void> {
   console.log("\n🔄 Updating PolyRoot Agent...\n");
   const { execSync } = await import("node:child_process");
-  const installDir = process.env["HOME"]
-    ? `${process.env["HOME"]}/.polyroot`
-    : "/tmp/.polyroot";
+  const home = process.env["HOME"] ?? "/tmp";
+  const installDir = process.env["POLYROOT_AGENT_DIR"] || `${home}/.polyroot`;
 
   try {
-    console.log("📥 Pulling latest changes...");
+    console.log(`📥 Pulling latest changes in ${installDir}...`);
     execSync("git pull", { cwd: installDir, stdio: "inherit" });
 
     console.log("\n📦 Installing dependencies...");
@@ -950,7 +1575,27 @@ async function runUpdate(): Promise<void> {
     console.log("\n🔨 Building...");
     execSync("npx turbo run build", { cwd: installDir, stdio: "inherit" });
 
-    console.log("\n✅ Update complete!");
+    // Refresh the launcher so already-installed users pick up launcher
+    // fixes (e.g. tsx → compiled node). Best-effort: never fail update.
+    try {
+      const {
+        copyFileSync,
+        chmodSync: chmod,
+        existsSync: exists,
+      } = await import("node:fs");
+      const src = `${installDir}/scripts/launcher.sh`;
+      const dest = `${home}/.local/bin/polyroot`;
+      if (exists(src)) {
+        copyFileSync(src, dest);
+        chmod(dest, 0o755);
+        console.log("\n✅ Launcher refreshed: ~/.local/bin/polyroot");
+      }
+    } catch (err) {
+      console.log(`\n⚠️  Launcher refresh skipped: ${(err as Error).message}`);
+    }
+
+    console.log("\n✅ Update complete! If migrations changed, run:");
+    console.log("     npm run migrate:latest   (safe, idempotent)");
   } catch (err) {
     console.error("❌ Update failed:", (err as Error).message);
     process.exit(1);
@@ -1084,7 +1729,7 @@ async function runLiveDoctor(): Promise<void> {
       queryDb: (text: string, params?: unknown[]) =>
         pool.query(text, params as never[]) as never,
       readBounds: async () => parseBoundsEnv(process.env),
-      readUniverse: async () => readMarketUniverse(process.env),
+      readUniverse: async () => resolveMarketUniverse(process.env),
       verifyWallet: async () => {
         const w = runWalletVerify();
         return {
@@ -1297,6 +1942,36 @@ export async function main(
     if (!result.ok) process.exit(1);
     return;
   }
+  if (argv[0] === "markets") {
+    const qIdx = argv.indexOf("--search");
+    const query =
+      qIdx >= 0 && argv[qIdx + 1] && !argv[qIdx + 1]?.startsWith("--")
+        ? (argv[qIdx + 1] as string).toLowerCase()
+        : "";
+    const lIdx = argv.indexOf("--limit");
+    const limRaw = lIdx >= 0 ? Number(argv[lIdx + 1]) : 20;
+    const limit =
+      Number.isFinite(limRaw) && limRaw > 0
+        ? Math.min(Math.floor(limRaw), 50)
+        : 20;
+    try {
+      const all = await fetchActiveMarkets(50);
+      const list = query
+        ? all.filter((m) => m.question.toLowerCase().includes(query))
+        : all;
+      for (const m of list.slice(0, limit)) {
+        const vol =
+          m.volume24h > 0 ? ` (24h vol $${Math.round(m.volume24h)})` : "";
+        console.log(`• ${m.question}${vol}`);
+        console.log(`  YES ${m.yesTokenId} / NO ${m.noTokenId}`);
+      }
+      if (list.length === 0) console.log("No markets found.");
+    } catch (err) {
+      console.error(`❌ ${(err as Error).message}`);
+      process.exit(1);
+    }
+    return;
+  }
   if (argv[0] === "guard" && argv[1] === "reset") {
     const lossRaw = argv[argv.indexOf("--loss") + 1] ?? "";
     const loss = Number(lossRaw);
@@ -1344,18 +2019,52 @@ export async function main(
     await runSetupFlow();
     return;
   }
+  if (argv[0] === "shadow-fund") {
+    const aIdx = argv.indexOf("--amount");
+    const amountRaw =
+      aIdx >= 0 && argv[aIdx + 1] && !argv[aIdx + 1]?.startsWith("--")
+        ? (argv[aIdx + 1] as string)
+        : "";
+    if (!amountRaw) {
+      console.error("Usage: polyroot shadow-fund --amount <usd>");
+      process.exit(1);
+    }
+    await runShadowFund(amountRaw);
+    return;
+  }
+
+  // Bare `polyroot` opens the interactive console (Hermes-style).
+  if (argv.length === 0) {
+    await runFirstTimeSetup();
+    await runConsole();
+    return;
+  }
+
+  // Explicit `polyroot run` starts the trading loop (old bare behavior).
+  if (argv[0] === "run" || argv[0] === "start") {
+    await runFirstTimeSetup();
+    const runConfig = parseArgs(argv.slice(1));
+    assertRuntimeEnv(runConfig.mode);
+    if (runConfig.mode === "MICRO_LIVE") {
+      await assertMicroLiveReady(runConfig.databaseUrl);
+    }
+    await startAgent(runConfig);
+    return;
+  }
 
   // First-run onboarding (skip for subcommands)
   if (
     argv[0] !== "wallet" &&
     argv[0] !== "venue" &&
+    argv[0] !== "markets" &&
     argv[0] !== "guard" &&
     argv[0] !== "status" &&
     argv[0] !== "update" &&
     argv[0] !== "doctor" &&
     argv[0] !== "docker-fix" &&
     argv[0] !== "onboard" &&
-    argv[0] !== "setup"
+    argv[0] !== "setup" &&
+    argv[0] !== "shadow-fund"
   ) {
     await runFirstTimeSetup();
   }

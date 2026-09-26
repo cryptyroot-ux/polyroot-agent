@@ -100,6 +100,8 @@ export interface MoneyAuthority {
       allowed_order_style: string[];
       venue_mode: string;
     },
+    /** Parent trade_intents row (inserted idempotently, same tx). */
+    intentRef?: ReserveRequest["intentRef"],
   ): Promise<MoneyAuthorityResult>;
 }
 
@@ -160,6 +162,21 @@ export interface ReserveRequest {
     ledger_version: string;
     allowed_order_style: string[];
     venue_mode: string;
+  };
+  /**
+   * Parent trade_intents row for the same atomic transaction. risk_decisions
+   * has a FK to trade_intents, and nothing else creates the parent — without
+   * this every funded decision dies on FK violation. Outcome side uses the
+   * pipeline semantics (BUY = YES outcome, SELL = NO outcome).
+   */
+  intentRef?: {
+    marketId: string;
+    outcomeSide: "YES" | "NO";
+    priceBase: bigint;
+    sizeBase: bigint;
+    orderType: "LIMIT" | "POST_ONLY" | "FOK" | "IOC";
+    expirationSec: number;
+    strategy: string;
   };
 }
 
@@ -399,6 +416,7 @@ export class MoneyKernel {
         req.policyHash,
         authoritativeQuoteId,
         req.riskDecision,
+        req.intentRef,
       );
       if (res.ok || res.code !== "SERIALIZATION_CONFLICT") break;
       // Back off briefly before re-reading authoritative state.

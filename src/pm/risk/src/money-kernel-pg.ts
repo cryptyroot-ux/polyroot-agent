@@ -220,6 +220,16 @@ export class PgMoneyAuthority implements MoneyAuthority {
       allowed_order_style: string[];
       venue_mode: string;
     },
+    /** Parent trade_intents row (inserted idempotently, same tx). */
+    intentRef?: {
+      marketId: string;
+      outcomeSide: "YES" | "NO";
+      priceBase: bigint;
+      sizeBase: bigint;
+      orderType: "LIMIT" | "POST_ONLY" | "FOK" | "IOC";
+      expirationSec: number;
+      strategy: string;
+    },
   ): Promise<import("./money-kernel.js").MoneyAuthorityResult> {
     const reservationId = randomUUID();
     const permitId = randomUUID();
@@ -321,6 +331,29 @@ export class PgMoneyAuthority implements MoneyAuthority {
          WHERE account = $1 AND asset = $2 AND available_base >= $3`,
         [account, asset, cashNeededBase.toString()],
       );
+
+      // 3b. Parent trade_intents row (FK target of risk_decisions). Nothing
+      // else creates it, so create it here atomically — idempotent on retry
+      // (same intent id → DO NOTHING) and on duplicate-intent replays.
+      if (intentRef) {
+        const price = Number(intentRef.priceBase) / 1_000_000;
+        const size = Number(intentRef.sizeBase) / 1_000_000;
+        await client.query(
+          `INSERT INTO trade_intents (id, market_id, side, price, size, order_type, expiration_sec, strategy, status)
+           VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, 'PROPOSED')
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            intentId,
+            intentRef.marketId,
+            intentRef.outcomeSide,
+            price.toFixed(4),
+            size,
+            intentRef.orderType,
+            Math.max(1, Math.floor(intentRef.expirationSec)),
+            intentRef.strategy,
+          ],
+        );
+      }
 
       // 4. Insert risk_decisions row atomically (P0: RISK DECISION IDENTITY)
       //    Must exist before reservation and execution_permits reference it.
