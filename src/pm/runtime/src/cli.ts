@@ -866,7 +866,7 @@ async function runConsoleLogs(args: string[]): Promise<void> {
 function printUnknownHint(raw: string): void {
   if (/^(hi|hello|hai|halo|hallo|hey|hy|p|test|tes)\b/i.test(raw)) {
     console.log(
-      'Halo! Ketik "logs" buat lihat agen lagi ngapain, "status" buat konfigurasi, "help" buat daftar perintah.',
+      'Hi! Type "logs" to see what the agent is doing, "status" for configuration, "help" for all commands.',
     );
     return;
   }
