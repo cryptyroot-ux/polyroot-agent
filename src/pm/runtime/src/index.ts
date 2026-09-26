@@ -35,6 +35,12 @@ export * from "./live-preflight.js";
 export * from "./setup-guide.js";
 export * from "./platform-safety.js";
 export {
+  ModeWatcher,
+  type ModeWatcherOptions,
+  type RuntimeMode,
+  type QueryablePool,
+} from "./mode-watcher.js";
+export {
   bootstrapAgent,
   buildWalletIdentity,
   deterministicWalletId,

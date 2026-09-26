@@ -18,6 +18,7 @@ import {
   checkShadowBaselineRow,
   decideGuardReset,
 } from "./live-guard-store.js";
+import { type RuntimeMode } from "./mode-watcher.js";
 import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 import { bootstrapAgent, buildWalletIdentity } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
@@ -164,6 +165,8 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
           "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
           "  polyroot wallet verify   Check wallet with no network\n" +
           "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
+          "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
+          "  polyroot mode            Show current runtime mode\n" +
           "  polyroot run --once      Run once then stop (test)",
       );
       process.exit(0);
@@ -1466,6 +1469,60 @@ export interface GuardResetResult {
 }
 
 /**
+ * Mode command - displays or dynamically updates the runtime mode in database.
+ */
+async function runModeCommand(targetMode?: string): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"];
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL required to query or update mode.");
+    process.exit(1);
+  }
+
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    const { ModeWatcher } = await import("./mode-watcher.js");
+    const watcher = new ModeWatcher({ pool, initialMode: "PAPER" });
+    await watcher.pollOnce();
+
+    if (!targetMode) {
+      console.log(`\n🎯 Current Runtime Mode (DB): ${watcher.getMode()}`);
+      console.log(
+        `   Degraded Status: ${watcher.isDegraded() ? "⚠️ DEGRADED (READ_ONLY)" : "✅ HEALTHY"}\n`,
+      );
+      return;
+    }
+
+    const upper = targetMode.toUpperCase();
+    const MODES: readonly RuntimeMode[] = [
+      "PAPER",
+      "SHADOW",
+      "MICRO_LIVE",
+      "LIVE",
+    ];
+    if (!(MODES as readonly string[]).includes(upper)) {
+      console.error(
+        `❌ Invalid mode ${targetMode}. Valid modes: ${MODES.join(", ")}`,
+      );
+      process.exit(1);
+    }
+
+    console.log(`🔄 Requesting mode transition -> ${upper}...`);
+    const res = await watcher.requestModeChange(
+      upper as RuntimeMode,
+      "cli_operator",
+    );
+    if (!res.ok) {
+      console.error(`❌ Mode transition rejected: [${res.code}] ${res.reason}`);
+      process.exit(1);
+    }
+    console.log(`✅ Runtime mode successfully updated to: ${res.mode}\n`);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
+/**
  * Explicit owner latch reset: clears a halted breach ONLY when the
  * owner-measured realized loss is back under the configured loss cap.
  */
@@ -2017,6 +2074,10 @@ export async function main(
   }
   if (argv[0] === "setup") {
     await runSetupFlow();
+    return;
+  }
+  if (argv[0] === "mode") {
+    await runModeCommand(argv[1]);
     return;
   }
   if (argv[0] === "shadow-fund") {
