@@ -1,8 +1,8 @@
 # Super-Easy Onboarding for Open-Source Users Design
 
-> **PolyRoot is self-hosted open-source software: every user brings their own AI provider key, wallet, RPC, and infrastructure — the repo must never ship a maintainer-owned gateway URL, key, or endpoint as a default. This design rebuilds `polyroot onboard` into a 3-step wizard an awam investor/community member can finish in under 5 minutes: mandatory AI key (Hermes-style generic provider, no owner defaults) + mandatory wallet (plain language, same sealed keystore) + PAPER-by-default mode, ending with automatic migrate + doctor and a live PAPER demo.**
+> **PolyRoot is self-hosted open-source software: every user brings their own AI provider key, wallet, RPC, and infrastructure — the repo must never ship a maintainer-owned gateway URL, key, or endpoint as a default. This design rebuilds `polyroot onboard` into a 3-step wizard an awam investor/community member can finish in under 5 minutes: mandatory AI key (Hermes-style generic provider, no owner defaults) + mandatory wallet (plain language, same sealed keystore) + PAPER-by-default mode, ending with automatic migrate + doctor and an offered one-step PAPER demo.**
 
-**Goal:** Any non-technical user can go from `curl ... install.sh | bash` to a running PAPER demo by answering 3 friendly prompts, supplying only their own AI key and wallet. Zero jargon on screen, zero owner-owned defaults in code, zero changes to live-trading guards.
+**Goal:** Any non-technical user can go from `curl ... install.sh | bash` to a working PAPER setup by answering 3 friendly prompts, supplying only their own AI key and wallet — with a one-step demo trade offered when infra is up. Zero jargon on screen, zero owner-owned defaults in code, zero changes to live-trading guards.
 
 **Approach:** Narrowly refactor `runOnboarding` + `writeEnv` in `src/pm/runtime/src/cli.ts`: provider step becomes Hermes-style generic (named choice, user-typed base URL, no baked-in gateway); wallet step keeps the existing `sealPrivateKey` mechanism with rewritten awam copy; mode step keeps PAPER default with explicit LIVE confirmation; append auto-migrate + auto-doctor. `runSetupFlow`, `assertRuntimeEnv`, and all live guards stay untouched.
 
@@ -30,7 +30,7 @@ Choices (default = OpenAI, the only choice with a public base URL):
 
 Validation is live per prompt: bad URL or empty key/model re-asks with one example line, never a stack trace. Optional `GET {baseUrl}/models` ping with the pasted key when network is available; failure is a warning ("could not reach it — continue anyway? y/n"), never a hard block, because corporate gateways may block the models endpoint while allowing completions.
 
-Stored: `POLYROOT_FORECAST_PROVIDER` (`openai` for choice 1, `custom` otherwise), `POLYROOT_FORECAST_MODEL`, `OPENAI_API_KEY`, `OPENAI_BASE_URL` (only when non-default).
+Stored: `POLYROOT_FORECAST_PROVIDER=openai` for all three choices (the forecaster speaks OpenAI protocol to any compatible gateway — see `.env.example` "Any OpenAI-compatible endpoint"), `POLYROOT_FORECAST_MODEL`, `OPENAI_API_KEY`, `OPENAI_BASE_URL` (choice's base URL in every case).
 
 ---
 
@@ -62,7 +62,7 @@ After `writeEnv` writes `~/.polyroot/.env` (0600):
 
 1. Run `migrate:latest` programmatically (same `scripts/migrate.ts` path) — fresh installs have no schema otherwise, and awam users must never run a second command to fix `missing tables`.
 2. Run `runDoctor()` (non-live) and print its PASS/FAIL lines verbatim.
-3. Print `formatNextSteps(PAPER)` and drop into the existing console with the PAPER demo running, so the user's first sight is the agent working, not a prompt.
+3. If migrate + doctor both succeeded, offer `Watch a 1-step demo trade now? (y/n)` (default y): on yes run one mock-market pass (`startAgent` PAPER `once:true`, non-blocking, exit 0) so the user's first sight is the agent working. On no, or when infra is missing, print `formatNextSteps(PAPER)` cheat-sheet and exit 0 — never auto-start a blocking loop inside onboarding.
 
 Any failure in migrate/doctor prints the existing actionable message plus exactly one next command (`polyroot docker-fix` for DB, `polyroot setup` for config) — never a stack trace.
 
@@ -87,7 +87,7 @@ Any failure in migrate/doctor prints the existing actionable message plus exactl
 
 ## Acceptance Criteria
 
-1. Fresh `~/.polyroot` + `polyroot onboard` finishes in 3 steps (AI key, wallet, mode Enter) and lands in a running PAPER demo.
+1. Fresh `~/.polyroot` + `polyroot onboard` finishes in 3 steps (AI key, wallet, mode Enter); with infra up the user is offered (default y) a one-step PAPER demo trade, otherwise lands at shell with the next-steps cheat-sheet — exit 0 either way.
 2. No maintainer-owned URL/key/endpoint appears as a default or example anywhere in the onboarding screens, `writeEnv` output, or `.env.example` provider/discovery comments.
 3. Skipped wallet is impossible: onboarding without a sealed keystore cannot complete (wallet + API key mandatory per owner decision).
 4. All pre-existing live-guard, keystore, and preflight tests pass unmodified.
