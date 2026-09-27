@@ -15,6 +15,14 @@ describe("onboarding contains zero maintainer-owned provider defaults", () => {
       "onboarding must not default to a maintainer-owned gateway",
     );
   });
+
+  it("ships no maintainer-owned gateway in .env.example provider comments", () => {
+    const envExample = readFileSync(join(process.cwd(), ".env.example"), "utf8");
+    assert.ok(
+      !envExample.includes("files.pango.fun"),
+      ".env.example must not point users at a maintainer-owned gateway",
+    );
+  });
 });
 
 const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
