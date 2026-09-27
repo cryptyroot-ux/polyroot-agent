@@ -98,3 +98,24 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
     assert.ok(!out.includes("files.pango.fun"));
   });
 });
+
+describe("onboarding finish is resilient without a database", () => {
+  it("still exits 0 and tells the user the one next command", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
+    const { code, out } = await runOnboardLikeHuman(home, [
+      "",               // provider: OpenAI (default)
+      "",               // model: gpt-4o-mini (default)
+      "sk-test-key-2",  // API key
+      "y",              // reachability check: continue anyway (fake key never passes the ping)
+      "",               // wallet: create new (default)
+      "test-pass-123",  // vault password
+      "test-pass-123",  // repeat vault password
+      "",               // mode: PAPER (default)
+    ]);
+    assert.equal(code, 0);
+    assert.ok(
+      out.includes("migrate:latest"),
+      "must point the user at the one next command when infra is missing",
+    );
+  });
+});

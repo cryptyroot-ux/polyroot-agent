@@ -529,12 +529,12 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   // 3. Mode selection — PAPER = practice with play money (100% safe).
   console.log("\n🚀 Step 3/3: Choose Mode");
   console.log(
-    "   PAPER = practice, play money (100% safe). LIVE = real money.",
+    "   PAPER = practice with play money (100% safe). LIVE = real money.",
   );
   const modeChoice = await askChoice(
     "Choose mode (Enter = PAPER):",
     [
-      "PAPER — Safe simulation, mock data, no real money",
+      "PAPER — Safe practice with play money (recommended, no real money)",
       "LIVE — Real trading on Polymarket (requires capital, API keys)",
     ],
     0,
@@ -604,7 +604,7 @@ function writeEnv(config: OnboardingConfig): void {
     `WALLET_ADDRESS=${deriveAddressFromPrivateKey(config.privateKey!)}`,
     `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
     `RPC_URL=https://polygon-rpc.com`,
-    `POLYROOT_FORECAST_PROVIDER=${config.provider === "OpenAI (GPT-4o, GPT-4o-mini)" ? "openai" : "custom"}`,
+    `POLYROOT_FORECAST_PROVIDER=${config.provider.startsWith("OpenAI") ? "openai" : "custom"}`,
     `POLYROOT_FORECAST_MODEL=${config.model}`,
     `OPENAI_API_KEY=${config.apiKey}`,
     ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
@@ -636,6 +636,27 @@ async function runOnboardingFlow(): Promise<void> {
   try {
     const config = await runOnboarding();
     writeEnv(config);
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("node --import tsx scripts/migrate.ts latest", {
+        cwd: process.cwd(),
+        stdio: "inherit",
+      });
+    } catch {
+      console.log(
+        "⚠️  Database not reachable yet — run `npm run migrate:latest` then `polyroot doctor` when PostgreSQL is up (try `polyroot docker-fix`).",
+      );
+    }
+    try {
+      process.env["POLYROOT_ONBOARDING"] = "1";
+      await runDoctor();
+    } catch {
+      console.log(
+        "⚠️  Doctor reported issues — fix them with the hints above, or re-run `polyroot setup` any time.",
+      );
+    } finally {
+      delete process.env["POLYROOT_ONBOARDING"];
+    }
     console.log("\n═══════════════════════════════════════════════");
     console.log("  Setup complete! PolyRoot Agent is ready.");
     console.log("═══════════════════════════════════════════════");
@@ -1795,7 +1816,7 @@ async function runDoctor(): Promise<void> {
   console.log(
     "\n" + (allOk ? "✅ All checks passed" : "❌ Some checks failed"),
   );
-  if (!allOk) process.exit(1);
+  if (!allOk && process.env["POLYROOT_ONBOARDING"] !== "1") process.exit(1);
 }
 
 /**
