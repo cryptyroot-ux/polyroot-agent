@@ -1676,6 +1676,20 @@ async function runModeCommand(targetMode?: string): Promise<void> {
       process.exit(1);
     }
     console.log(`✅ Runtime mode successfully updated to: ${res.mode}\n`);
+
+    // Also update .env file to persist the mode for CLI args parsing
+    try {
+      const home = process.env["HOME"] ?? "/tmp";
+      const envPath = `${home}/.polyroot/.env`;
+      if (existsSync(envPath)) {
+        const existing = readFileSync(envPath, "utf8");
+        const updated = upsertEnvLines(existing, [`RUNTIME_MODE=${res.mode}`]);
+        writeFileSync(envPath, updated, "utf8");
+        console.log(`💾 Persisted mode to .env: RUNTIME_MODE=${res.mode}`);
+      }
+    } catch (envErr) {
+      console.warn(`⚠️  Failed to update .env file: ${envErr}`);
+    }
   } finally {
     await pool.end().catch(() => undefined);
   }
