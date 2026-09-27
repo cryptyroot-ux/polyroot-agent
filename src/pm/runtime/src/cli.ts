@@ -364,6 +364,25 @@ async function askRequiredSecret(message: string): Promise<string> {
   }
 }
 
+/** Best-effort reachability ping for a user's own gateway. Warning-only: never blocks setup. */
+async function pingModelsEndpoint(baseUrl: string, apiKey: string): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/models`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: ctrl.signal,
+      });
+      return res.ok;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return false;
+  }
+}
+
 /** Numbered menu with a marked default (blank = default), Hermes `_ask_index`-style. */
 async function askChoice(
   message: string,
@@ -395,52 +414,68 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   console.log("═══════════════════════════════════════════════\n");
 
   // 1. AI Provider & Model — the brain that reads markets.
+  // Hermes-style: generic OpenAI-compatible provider. The user always
+  // supplies their own base URL + key; this repo ships no gateway default.
   console.log("📡 Step 1/3: AI brain (reads the markets)");
   const provider = await askChoice(
     "Choose AI provider (Enter = default):",
     [
       "OpenAI (GPT-4o, GPT-4o-mini)",
-      "9Router / OpenAI-compatible",
-      "Ollama (local)",
-      "Custom OpenAI-compatible endpoint",
+      "My own OpenAI-compatible gateway (my 9Router/NewAPI/OpenRouter account, company gateway, ...)",
+      "Ollama (runs on this machine)",
     ],
-    1,
+    0,
   );
 
   let model = "";
   let baseUrl = "";
   let apiKey = "";
 
-  if (provider === "OpenAI (GPT-4o, GPT-4o-mini)") {
+  if (provider.startsWith("OpenAI")) {
     model = await askChoice(
       "Select model:",
       ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
       0,
     );
-    apiKey = await askRequiredSecret("OpenAI API key");
-  } else if (provider === "9Router / OpenAI-compatible") {
-    model = await askText("Model name", { defaultValue: "gpt-4o-mini" });
-    baseUrl = await askText("Base URL", {
-      defaultValue: "https://files.pango.fun/v1",
-    });
-    apiKey = await askRequiredSecret("9Router API key");
-  } else if (provider === "Ollama (local)") {
+    apiKey = await askRequiredSecret("Paste your OpenAI API key");
+    baseUrl = "https://api.openai.com/v1";
+  } else if (provider.startsWith("Ollama")) {
     model = await askText("Model name", { defaultValue: "llama3.1" });
     baseUrl = await askText("Base URL", {
       defaultValue: "http://localhost:11434/v1",
     });
     apiKey = "ollama"; // dummy
   } else {
-    model = await askText("Model name");
-    baseUrl = await askText("Base URL");
-    apiKey = await askRequiredSecret("API key");
+    baseUrl = await askText("Your gateway base URL (example: https://your-gateway.example/v1)");
+    if (!/^https?:\/\/.+/.test(baseUrl)) {
+      console.log("That does not look like a web address — it starts with http:// or https://.");
+      baseUrl = await askText("Your gateway base URL (example: https://your-gateway.example/v1)");
+      if (!/^https?:\/\/.+/.test(baseUrl)) {
+        throw new Error("A valid gateway base URL is required");
+      }
+    }
+    model = await askText("Model name (example: gpt-4o-mini)");
+    apiKey = await askRequiredSecret("Paste your gateway API key");
   }
 
   if (!model.trim()) {
     throw new Error("Model name is required");
   }
   if (!apiKey.trim()) {
-    throw new Error("API key is required (Ollama local uses any placeholder)");
+    throw new Error("API key is required (Ollama on this machine uses any placeholder)");
+  }
+
+  if (!provider.startsWith("Ollama")) {
+    const reachable = await pingModelsEndpoint(baseUrl, apiKey);
+    if (!reachable) {
+      console.log(
+        "⚠️  Could not reach that address with your key — corporate gateways sometimes block the check while chat still works.",
+      );
+      const goOn = await askText("Continue anyway? (y/n)", { defaultValue: "y" });
+      if (!goOn.trim().toLowerCase().startsWith("y")) {
+        throw new Error("Setup stopped — double-check the base URL and key, then run `polyroot onboard` again");
+      }
+    }
   }
 
   // 2. Wallet — keys are sealed in a locked vault on this machine and
