@@ -27,11 +27,11 @@ describe("onboarding contains zero maintainer-owned provider defaults", () => {
 
 const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
 
-function runOnboardLikeHuman(home: string, lines: string[], markers?: string[]): Promise<{ code: number; out: string }> {
+function runOnboardLikeHuman(home: string, lines: string[], markers?: string[], extraEnv: Record<string, string> = {}): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ["--import", "tsx", CLI, "onboard"], {
       cwd: process.cwd(),
-      env: { ...process.env, HOME: home },
+      env: { ...process.env, HOME: home, ...extraEnv },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "";
@@ -151,6 +151,8 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
 describe("onboarding finish is resilient without a database", () => {
   it("still exits 0 and tells the user the one next command", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
+    // Hermetic: force an unroutable DB so migrate/doctor fail on EVERY host,
+    // even where localhost:5432 is up. writeEnv respects ambient DATABASE_URL.
     const { code, out } = await runOnboardLikeHuman(home, [
       "",               // provider: OpenAI (default)
       "",               // model: gpt-4o-mini (default)
@@ -161,7 +163,7 @@ describe("onboarding finish is resilient without a database", () => {
       "test-pass-123",  // repeat vault password
       "",               // mode: PAPER (default)
       "n",              // demo trade offer (no DB here, so never asked; keeps runs fast)
-    ]);
+    ], undefined, { DATABASE_URL: "postgresql://onboard_test:none@127.0.0.1:1/nodb" });
     assert.equal(code, 0);
     assert.ok(
       out.includes("migrate:latest"),
@@ -170,6 +172,11 @@ describe("onboarding finish is resilient without a database", () => {
     assert.ok(
       !out.includes("Watch a 1-step demo trade now?"),
       "demo offer appears only after migrate+doctor succeed; must not hang here",
+    );
+    const envPath = join(home, ".polyroot", ".env");
+    assert.ok(
+      readFileSync(envPath, "utf8").includes("127.0.0.1:1/nodb"),
+      "writeEnv must respect a pre-configured DATABASE_URL instead of clobbering it",
     );
   });
 });
