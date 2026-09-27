@@ -10,6 +10,7 @@ if [[ ! -d "${AGENT_DIR}" ]]; then
   exit 1
 fi
 
-export NODE_ENV=production
 export POLYROOT_AGENT_DIR="${AGENT_DIR}"
+# NODE_ENV=production is set by the CLI at runtime, not here,
+# so that npm ci during polyroot update installs devDependencies.
 cd "${AGENT_DIR}" && exec node "${AGENT_DIR}/src/pm/runtime/dist/cli.js" "$@"
