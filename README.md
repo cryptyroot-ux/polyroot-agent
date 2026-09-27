@@ -7,7 +7,7 @@ deterministic **Executor** signs and submits orders. The AI never holds private
 keys.
 
 > **Status: v1.1-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
-> Production-ready with G4 autonomous pipeline, G5 infrastructure, and 597 passing tests (585 contract + 12 property).
+> Production-ready with G4 autonomous pipeline, G5 infrastructure, and 687 passing tests (675 contract + 12 property).
 > Default mode is `PAPER`. Live trading requires explicit Autonomy Charter commissioning.
 
 ---
@@ -51,6 +51,24 @@ Key invariants:
 
 ---
 
+## Install in One Line (recommended for operators)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cryptyroot-ux/polyroot-agent/main/scripts/install.sh | bash
+```
+
+Then open a NEW terminal and type:
+
+```bash
+polyroot          # opens the interactive console
+```
+
+Inside the console you only need four commands: `setup` (guided
+configuration — just press Enter for safe defaults), `logs` (watch what the
+agent is doing), `run` (start the agent), `exit` (back to terminal). Update
+any time with `polyroot update`. See `docs/STAGING_DEPLOY.md` for the full
+staging → SHADOW → MICRO_LIVE path.
+
 ## Quick Start (Development)
 
 ### Prerequisites
@@ -87,7 +105,7 @@ cp .env.example .env
 ### 4. Verify Wallet Setup (no agent started, no network)
 
 ```bash
-npm start -- wallet verify
+polyroot wallet verify
 # PASS on every line = ready. FAIL tells you exactly which variable is wrong.
 ```
 
@@ -101,13 +119,13 @@ npm run migrate:latest
 
 ```bash
 npm run build
-npm start            # Starts the agent CLI in PAPER mode (see RUNTIME_MODE)
+polyroot run         # Starts the agent in PAPER mode (see RUNTIME_MODE)
 ```
 
 ### 7. Verify Installation
 
 ```bash
-npm run test:unit        # 585 contract + 12 property = 597 tests
+npm run test:unit        # 675 contract + 12 property = 687 tests
 npm run traceability     # 96/96 structural traceability
 npm run build            # 13/13 packages pass
 npm run lint && npm run typecheck
