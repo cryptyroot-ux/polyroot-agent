@@ -486,7 +486,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   );
   const walletChoice = await askChoice(
     "Wallet (Enter = create new):",
-    ["Create new wallet (generates keystore)", "Import existing private key"],
+    ["Create new wallet for me (recommended)", "I already have a wallet (import secret key)"],
     0,
   );
 
@@ -495,23 +495,23 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   if (walletChoice.startsWith("Create")) {
     for (;;) {
-      passphrase = await askRequiredSecret("Create a vault passphrase");
-      const confirm = await askRequiredSecret("Repeat the passphrase");
+      passphrase = await askRequiredSecret("Create a vault password");
+      const confirm = await askRequiredSecret("Repeat the vault password");
       if (passphrase === confirm) break;
-      console.log("Passphrases do not match — try again.");
+      console.log("Passwords do not match — try again.");
     }
     // Generate random key
     privateKey = "0x" + randomBytes(32).toString("hex");
     console.log(`\n✅ New wallet created!`);
     console.log(`   Address: ${deriveAddressFromPrivateKey(privateKey)}`);
-    console.log(`   (Write this down — it is shown only once)`);
+    console.log(`   (Write this address down — it is shown only once)`);
   } else {
     for (;;) {
-      privateKey = await askRequiredSecret("Private key (0x...)");
+      privateKey = await askRequiredSecret("Paste your wallet secret key (starts with 0x)");
       if (/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) break;
-      console.log("Wrong format — expected 64 hex characters.");
+      console.log("That does not look like a wallet secret key — it is 64 letters/numbers, starting with 0x.");
     }
-    passphrase = await askRequiredSecret("Create a vault passphrase");
+    passphrase = await askRequiredSecret("Create a vault password");
     console.log(
       `\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`,
     );

@@ -1,6 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, existsSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const CLI_SRC = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
@@ -12,5 +14,87 @@ describe("onboarding contains zero maintainer-owned provider defaults", () => {
       !src.includes("files.pango.fun"),
       "onboarding must not default to a maintainer-owned gateway",
     );
+  });
+});
+
+const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
+
+function runOnboardLikeHuman(home: string, lines: string[]): Promise<{ code: number; out: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, ["--import", "tsx", CLI, "onboard"], {
+      cwd: process.cwd(),
+      env: { ...process.env, HOME: home },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let out = "";
+    child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+    child.stderr.on("data", (d: Buffer) => { out += d.toString(); });
+    child.stdout.resume();
+    child.stderr.resume();
+    // Prompt-gated keystrokes: fixed-interval writes race tsx startup and
+    // the no-question ping window — readline drops lines written while no
+    // question is pending (its echo still pollutes the output), so scripted
+    // answers land on the wrong prompts. Instead, send each line only after
+    // the flow has printed the prompt that consumes it and output settles.
+    const waitFor: string[] = [
+      "Choose AI provider",
+      "Select model:",
+      "Paste your OpenAI API key",
+      "Continue anyway?",
+      "Wallet (Enter = create new):",
+      "Create a vault password",
+      "Repeat the vault password",
+      "Choose mode (Enter = PAPER):",
+    ];
+    let i = 0;
+    let lastLen = 0;
+    let lastChange = Date.now();
+    const timer = setInterval(() => {
+      if (child.exitCode !== null || child.killed) { clearInterval(timer); return; }
+      if (i >= lines.length) { clearInterval(timer); return; }
+      if (out.length !== lastLen) { lastLen = out.length; lastChange = Date.now(); return; }
+      if (Date.now() - lastChange < 300) return;
+      const marker = waitFor[i] as string;
+      if (!out.includes(marker)) return;
+      try { child.stdin.write((lines[i++] as string) + "\n"); } catch { clearInterval(timer); }
+    }, 100);
+    const killer = setTimeout(() => {
+      clearInterval(timer);
+      child.kill("SIGKILL");
+      resolve({ code: 99, out });
+    }, 55_000);
+    child.on("close", (code) => {
+      clearTimeout(killer);
+      clearInterval(timer);
+      resolve({ code: code ?? 1, out });
+    });
+  });
+}
+
+describe("super-easy onboarding E2E (create wallet path)", () => {
+  it("completes with OpenAI key + new wallet + PAPER default", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
+    const { code, out } = await runOnboardLikeHuman(home, [
+      "",               // provider: OpenAI (default)
+      "",               // model: gpt-4o-mini (default)
+      "sk-test-key-1",  // API key
+      "y",              // reachability check: continue anyway (fake key never passes the ping)
+      "",               // wallet: create new (default)
+      "test-pass-123",  // vault password
+      "test-pass-123",  // repeat vault password
+      "",               // mode: PAPER (default)
+    ]);
+    assert.equal(code, 0);
+    assert.ok(out.includes("Create new wallet for me (recommended)"));
+    const envPath = join(home, ".polyroot", ".env");
+    assert.equal(existsSync(envPath), true);
+    const env = readFileSync(envPath, "utf8");
+    assert.ok(env.includes("RUNTIME_MODE=PAPER"));
+    assert.ok(env.includes("OPENAI_API_KEY=sk-test-key-1"));
+    assert.ok(/WALLET_ADDRESS=0x[0-9a-fA-F]{40}/.test(env));
+    const ksPath = join(home, ".polyroot", "keystore.json");
+    assert.equal(existsSync(ksPath), true);
+    assert.equal((statSync(ksPath).mode & 0o777), 0o600);
+    assert.ok(!out.includes("files.pango.fun"));
   });
 });
