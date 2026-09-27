@@ -17,6 +17,8 @@ vendor/
 # Ignore environment files
 .env
 .env.*
+# Ignore wallet keystore (user's private keys)
+keystore.json
 # Ignore OS-generated files
 .DS_Store
 Thumbs.db

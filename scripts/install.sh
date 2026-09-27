@@ -127,7 +127,7 @@ print_next_steps() {
   echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
   echo
   echo -e "${BLUE}Next:${NC} Open a NEW terminal (or run: source ~/.bashrc)"
-  echo -e "Then type: ${YELLOW}polyroot start${NC}"
+  echo -e "Then type: ${YELLOW}polyroot${NC}"
   echo
   echo -e "${BLUE}First run will launch interactive onboarding:${NC}"
   echo "  1. Choose AI provider & model (OpenAI, 9Router, Ollama, etc.)"
