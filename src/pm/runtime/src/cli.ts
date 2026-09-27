@@ -167,7 +167,8 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
           "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
           "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
           "  polyroot mode            Show current runtime mode\n" +
-          "  polyroot run --once      Run once then stop (test)",
+          "  polyroot run --once      Run once then stop (test)\n" +
+          "  polyroot restart         Stop the background agent, print how to start it",
       );
       process.exit(0);
     } else if (a === "--mode") {
@@ -887,6 +888,7 @@ function printConsoleHelp(): void {
   console.log(
     "\nCommands:\n" +
       "  run [flags]    Start the agent (mode from settings). Ctrl+C stops.\n" +
+      "  restart        Stop the background agent, print how to start it\n" +
       "  status         Show configuration\n" +
       "  logs [N]       Show recent agent activity (default 15 lines)\n" +
       "  logs --follow  Watch activity live (Ctrl+C back to prompt)\n" +
@@ -1057,6 +1059,8 @@ async function runConsole(): Promise<void> {
         await runConsoleLogs(args);
       } else if (cmd === "update") {
         await runUpdate();
+      } else if (cmd === "restart") {
+        await runRestart(args);
       } else if (cmd === "run" || cmd === "start") {
         // The loop owns stdin via readline (raw mode) which would swallow
         // Ctrl+C meant for the agent — hand the terminal back first.
@@ -1121,6 +1125,50 @@ async function runShadowFund(amountRaw: string): Promise<void> {
   } finally {
     await pool.end().catch(() => undefined);
   }
+}
+
+/**
+ * Stop any background agent, then print the exact command to start it.
+ * Print-only by design: actually starting a daemon belongs to systemd /
+ * tmux / nohup at the operator's terminal, not inside this process.
+ * Never touches wallets, keys, or the database, so it is safe anywhere.
+ */
+async function restartBackgroundAgent(): Promise<void> {
+  loadDotEnv();
+  const polyrootHome =
+    process.env["HOME"] !== undefined
+      ? `${process.env["HOME"]}/.polyroot`
+      : "/tmp/.polyroot";
+
+  console.log("🔄 Restarting PolyRoot agent...");
+
+  const { execSync } = await import("node:child_process");
+  try {
+    execSync("pkill -f 'node.*cli\\.js' 2>/dev/null || true", {
+      stdio: "ignore",
+    });
+    await new Promise((r) => setTimeout(r, 1500));
+    console.log("✅ Stopped previous agent");
+  } catch {
+    // pkill returns non-zero when nothing matched — that is fine
+  }
+
+  const logFile = `${polyrootHome}/paper.log`;
+  console.log("\n📋 To start the agent in background, run:");
+  console.log(`   cd "${polyrootHome}" && setsid nohup polyroot run >> "${logFile}" 2>&1 &`);
+  console.log(`\n📝 Logs: tail -f ${logFile}`);
+  console.log(`🏥 Health: curl http://127.0.0.1:9090/healthz`);
+  console.log("\n💡 Tip: For production, use systemd or tmux/screen instead of nohup.");
+}
+
+/** `restart` inside the interactive console. */
+async function runRestart(_args: string[]): Promise<void> {
+  await restartBackgroundAgent();
+}
+
+/** Top-level `polyroot restart`. */
+async function runRestartCLI(): Promise<void> {
+  await restartBackgroundAgent();
 }
 
 /** Helper: Polymarket API setup flow */
@@ -2157,6 +2205,10 @@ export async function main(
     await runDockerFix();
     return;
   }
+  if (argv[0] === "restart") {
+    await runRestartCLI();
+    return;
+  }
   if (argv[0] === "onboard") {
     await runOnboardingFlow();
     return;
@@ -2212,6 +2264,7 @@ export async function main(
     argv[0] !== "update" &&
     argv[0] !== "doctor" &&
     argv[0] !== "docker-fix" &&
+    argv[0] !== "restart" &&
     argv[0] !== "onboard" &&
     argv[0] !== "setup" &&
     argv[0] !== "shadow-fund"
