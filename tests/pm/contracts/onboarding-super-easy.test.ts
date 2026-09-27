@@ -27,7 +27,7 @@ describe("onboarding contains zero maintainer-owned provider defaults", () => {
 
 const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
 
-function runOnboardLikeHuman(home: string, lines: string[]): Promise<{ code: number; out: string }> {
+function runOnboardLikeHuman(home: string, lines: string[], markers?: string[]): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ["--import", "tsx", CLI, "onboard"], {
       cwd: process.cwd(),
@@ -44,7 +44,7 @@ function runOnboardLikeHuman(home: string, lines: string[]): Promise<{ code: num
     // question is pending (its echo still pollutes the output), so scripted
     // answers land on the wrong prompts. Instead, send each line only after
     // the flow has printed the prompt that consumes it and output settles.
-    const waitFor: string[] = [
+    const waitFor: string[] = markers ?? [
       "Choose AI provider",
       "Select model:",
       "Paste your OpenAI API key",
@@ -53,6 +53,7 @@ function runOnboardLikeHuman(home: string, lines: string[]): Promise<{ code: num
       "Create a vault password",
       "Repeat the vault password",
       "Choose mode (Enter = PAPER):",
+      "Watch a 1-step demo trade now?",
     ];
     let i = 0;
     let lastLen = 0;
@@ -91,6 +92,7 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
       "test-pass-123",  // vault password
       "test-pass-123",  // repeat vault password
       "",               // mode: PAPER (default)
+      "n",              // demo trade offer (no DB here, so never asked; keeps runs fast)
     ]);
     assert.equal(code, 0);
     assert.ok(out.includes("Create new wallet for me (recommended)"));
@@ -98,11 +100,50 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
     assert.equal(existsSync(envPath), true);
     const env = readFileSync(envPath, "utf8");
     assert.ok(env.includes("RUNTIME_MODE=PAPER"));
+    assert.ok(env.includes("POLYROOT_FORECAST_PROVIDER=openai"));
     assert.ok(env.includes("OPENAI_API_KEY=sk-test-key-1"));
     assert.ok(/WALLET_ADDRESS=0x[0-9a-fA-F]{40}/.test(env));
     const ksPath = join(home, ".polyroot", "keystore.json");
     assert.equal(existsSync(ksPath), true);
     assert.equal((statSync(ksPath).mode & 0o777), 0o600);
+    assert.ok(!out.includes("files.pango.fun"));
+  });
+});
+
+describe("super-easy onboarding E2E (custom gateway path)", () => {
+  it("writes openai provider + custom base URL so the brain stays live", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
+    const { code, out } = await runOnboardLikeHuman(home, [
+      "2",                        // provider: own OpenAI-compatible gateway
+      "https://gateway.example/v1", // gateway base URL (valid first try, no retry)
+      "gpt-4o-mini",              // model name
+      "sk-custom-1",              // gateway API key
+      "y",                        // reachability check: continue anyway (example host never pings)
+      "",                         // wallet: create new (default)
+      "test-pass-123",            // vault password
+      "test-pass-123",            // repeat vault password
+      "",                         // mode: PAPER (default)
+      "n",                        // demo trade offer (no DB here, so never asked; keeps runs fast)
+    ], [
+      "Choose AI provider",
+      "Your gateway base URL",
+      "Model name",
+      "Paste your gateway API key",
+      "Continue anyway?",
+      "Wallet (Enter = create new):",
+      "Create a vault password",
+      "Repeat the vault password",
+      "Choose mode (Enter = PAPER):",
+      "Watch a 1-step demo trade now?",
+    ]);
+    assert.equal(code, 0);
+    const envPath = join(home, ".polyroot", ".env");
+    assert.equal(existsSync(envPath), true);
+    const env = readFileSync(envPath, "utf8");
+    assert.ok(env.includes("POLYROOT_FORECAST_PROVIDER=openai"));
+    assert.ok(env.includes("OPENAI_BASE_URL=https://gateway.example/v1"));
+    assert.ok(env.includes("POLYROOT_FORECAST_MODEL=gpt-4o-mini"));
+    assert.ok(env.includes("OPENAI_API_KEY=sk-custom-1"));
     assert.ok(!out.includes("files.pango.fun"));
   });
 });
@@ -119,11 +160,16 @@ describe("onboarding finish is resilient without a database", () => {
       "test-pass-123",  // vault password
       "test-pass-123",  // repeat vault password
       "",               // mode: PAPER (default)
+      "n",              // demo trade offer (no DB here, so never asked; keeps runs fast)
     ]);
     assert.equal(code, 0);
     assert.ok(
       out.includes("migrate:latest"),
       "must point the user at the one next command when infra is missing",
+    );
+    assert.ok(
+      !out.includes("Watch a 1-step demo trade now?"),
+      "demo offer appears only after migrate+doctor succeed; must not hang here",
     );
   });
 });

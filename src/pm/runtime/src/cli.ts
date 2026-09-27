@@ -604,7 +604,10 @@ function writeEnv(config: OnboardingConfig): void {
     `WALLET_ADDRESS=${deriveAddressFromPrivateKey(config.privateKey!)}`,
     `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
     `RPC_URL=https://polygon-rpc.com`,
-    `POLYROOT_FORECAST_PROVIDER=${config.provider.startsWith("OpenAI") ? "openai" : "custom"}`,
+    // Every provider choice speaks the OpenAI-compatible protocol
+    // (OpenAI, any custom gateway, Ollama on this machine), so the brain
+    // always runs with POLYROOT_FORECAST_PROVIDER=openai + OPENAI_BASE_URL.
+    `POLYROOT_FORECAST_PROVIDER=openai`,
     `POLYROOT_FORECAST_MODEL=${config.model}`,
     `OPENAI_API_KEY=${config.apiKey}`,
     ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
@@ -636,6 +639,7 @@ async function runOnboardingFlow(): Promise<void> {
   try {
     const config = await runOnboarding();
     writeEnv(config);
+    let migrateOk = true;
     try {
       const { execSync } = await import("node:child_process");
       execSync("node --import tsx scripts/migrate.ts latest", {
@@ -643,27 +647,55 @@ async function runOnboardingFlow(): Promise<void> {
         stdio: "inherit",
       });
     } catch {
+      migrateOk = false;
       console.log(
         "⚠️  Database not reachable yet — run `npm run migrate:latest` then `polyroot doctor` when PostgreSQL is up (try `polyroot docker-fix`).",
       );
     }
+    let doctorOk = true;
     try {
       process.env["POLYROOT_ONBOARDING"] = "1";
-      await runDoctor();
+      doctorOk = await runDoctor();
     } catch {
+      doctorOk = false;
       console.log(
         "⚠️  Doctor reported issues — fix them with the hints above, or re-run `polyroot setup` any time.",
       );
     } finally {
       delete process.env["POLYROOT_ONBOARDING"];
     }
+
+    // Reload env for current process
+    process.loadEnvFile(ENV_PATH as string);
+
+    // Land in a running PAPER demo: one safe practice trade, then stop.
+    // Offered only when the database and health check both passed.
+    if (migrateOk && doctorOk) {
+      const demo = await askText("Watch a 1-step demo trade now? (y/n)", {
+        defaultValue: "y",
+      });
+      if (demo.trim().toLowerCase().startsWith("y")) {
+        try {
+          await startAgent({
+            mode: "PAPER",
+            databaseUrl: process.env["DATABASE_URL"] ?? "",
+            kmsKeyId: "",
+            kmsEndpoint: "",
+            kmsRegion: "",
+            once: true,
+          });
+        } catch {
+          console.log(
+            "⚠️  Demo trade did not run — try `polyroot run --once` later, or re-run `polyroot setup` any time.",
+          );
+        }
+      }
+    }
     console.log("\n═══════════════════════════════════════════════");
     console.log("  Setup complete! PolyRoot Agent is ready.");
     console.log("═══════════════════════════════════════════════");
     console.log(formatNextSteps(config.mode));
 
-    // Reload env for current process
-    process.loadEnvFile(ENV_PATH as string);
     closeSharedSession();
   } catch (err) {
     closeSharedSession();
@@ -1716,7 +1748,7 @@ async function runUpdate(): Promise<void> {
 }
 
 /** Doctor command - health checks. */
-async function runDoctor(): Promise<void> {
+async function runDoctor(): Promise<boolean> {
   console.log("\n🏥 PolyRoot Agent — Doctor\n");
   let allOk = true;
 
@@ -1817,6 +1849,7 @@ async function runDoctor(): Promise<void> {
     "\n" + (allOk ? "✅ All checks passed" : "❌ Some checks failed"),
   );
   if (!allOk && process.env["POLYROOT_ONBOARDING"] !== "1") process.exit(1);
+  return allOk;
 }
 
 /**
