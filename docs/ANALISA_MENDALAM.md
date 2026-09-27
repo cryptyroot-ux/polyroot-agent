@@ -1,70 +1,70 @@
-# Analisa Mendalam — Polymarket AI Trader (PolyRoot)
+# Deep Analysis — Polymarket AI Trader (PolyRoot)
 
-> Status: **MODE PLAN / DISKUSI** — belum ada kode yang ditulis
-> Dokumen sumber: PRD v1.0 + Blueprint v1.0 (9 September 2026)
-> Basis: fork CloddsBot commit `715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8` (MIT)
-
----
-
-## 1. INTISARI PRODUK
-
-**PolyRoot** = bot pribadi yang:
-
-- **Riset** pasar Polymarket dengan AI (berbasis bukti, probabilitas terstruktur)
-- **Eksekusi** order secara otonom di dalam mandat pemilik
-- Mulai dari **PAPER**, satu wallet, satu strategi (`evidence_directional_v1`)
-- Ledger keuangan di **PostgreSQL**; AI hanya bisa _mengusulkan intent_, tidak bisa sign/submit
+> Status: **PLAN / DISCUSSION MODE** — no code written yet
+> Source documents: PRD v1.0 + Blueprint v1.0 (9 September 2026)
+> Basis: CloddsBot fork at commit `715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8` (MIT)
 
 ---
 
-## 2. ARSITEKTUR (7 Komponen Utama)
+## 1. PRODUCT SUMMARY
 
-| Komponen              | Fungsi                                                    | Otoritas                                    |
-| --------------------- | --------------------------------------------------------- | ------------------------------------------- |
-| **Control + Gateway** | Session pemilik → command, mandat, read model             | TIDAK pegang key trading                    |
-| **Data Service**      | Metadata/book/evidence → MarketSnapshot, EvidenceItem     | Tulis ke research schema saja               |
-| **Intelligence**      | Pertanyaan pasar + bukti → Forecast tervalidasi           | Tool jaringan read-only, tanpa shell/signer |
-| **Strategy**          | Forecast + quote → TradeIntent atau NO_TRADE              | Tidak asumsikan sinyal = fill               |
-| **Risk + Executor**   | Intent + mandat → reservation, signed order, venue events | **Financial writer tunggal**                |
-| **Reconciler**        | Venue orders/trades/balance → discrepancy, readiness      | Berjalan walau AI berhenti                  |
-| **Ledger + Outbox**   | Event append-only → projections, jobs, audit              | DB privat; role dipisah                     |
+**PolyRoot** = a personal bot that:
 
-**Key insight**: Hanya **executor** yang berhubungan dengan kredensial trading. Kompromi prompt/gateway tidak bisa sign order.
+- **Researches** Polymarket markets with AI (evidence-based, structured probabilities)
+- **Executes** orders autonomously inside the owner's mandate
+- Starts at **PAPER**, one wallet, one strategy (`evidence_directional_v1`)
+- Financial ledger in **PostgreSQL**; the AI can only _propose intents_, never sign/submit
 
 ---
 
-## 3. STATISTIK REQUIREMENT
+## 2. ARCHITECTURE (7 Core Components)
 
-| Kategori                    | P0     | P1    | Total  |
+| Component               | Function                                                | Authority                                 |
+| ----------------------- | ------------------------------------------------------- | ----------------------------------------- |
+| **Control + Gateway**   | Owner session → commands, mandates, read model          | Holds NO trading keys                     |
+| **Data Service**        | Metadata/book/evidence → MarketSnapshot, EvidenceItem   | Writes to research schema only            |
+| **Intelligence**        | Market questions + evidence → validated Forecast        | Read-only network tools, no shell/signer  |
+| **Strategy**            | Forecast + quote → TradeIntent or NO_TRADE              | Never assumes signal = fill               |
+| **Risk + Executor**     | Intent + mandate → reservation, signed order, venue events | **Sole financial writer**              |
+| **Reconciler**          | Venue orders/trades/balance → discrepancy, readiness    | Runs even when AI stops                   |
+| **Ledger + Outbox**     | Append-only events → projections, jobs, audit           | Private DB; separated roles               |
+
+**Key insight**: Only the **executor** touches trading credentials. A prompt/gateway compromise cannot sign orders.
+
+---
+
+## 3. REQUIREMENT STATISTICS
+
+| Category                    | P0     | P1    | Total  |
 | --------------------------- | ------ | ----- | ------ |
-| GOV (Kendali produk)        | 5      | 0     | 5      |
-| DATA (Identitas pasar)      | 6      | 0     | 6      |
-| AI (Riset & probabilitas)   | 5      | 1     | 6      |
-| STR (Strategi & seleksi)    | 3      | 1     | 4      |
-| RISK (Modal & risiko)       | 4      | 0     | 4      |
-| EXEC (Eksekusi)             | 8      | 0     | 8      |
-| LED (Ledger & rekonsiliasi) | 6      | 0     | 6      |
-| OPS (Keamanan & operasi)    | 8      | 0     | 8      |
+| GOV (Product control)       | 5      | 0     | 5      |
+| DATA (Market identity)      | 6      | 0     | 6      |
+| AI (Research & probability) | 5      | 1     | 6      |
+| STR (Strategy & selection)  | 3      | 1     | 4      |
+| RISK (Capital & risk)       | 4      | 0     | 4      |
+| EXEC (Execution)            | 8      | 0     | 8      |
+| LED (Ledger & reconcile)    | 6      | 0     | 6      |
+| OPS (Security & ops)        | 8      | 0     | 8      |
 | DASH (Dashboard)            | 3      | 1     | 4      |
-| VAL (Verifikasi)            | 1      | 1     | 2      |
+| VAL (Verification)          | 1      | 1     | 2      |
 | **TOTAL**                   | **49** | **4** | **53** |
 
 ---
 
-## 4. MODE OPERASI
+## 4. OPERATING MODES
 
-| Mode         | I/O Finansial                          | Fungsi                                 |
+| Mode         | Financial I/O                          | Purpose                                |
 | ------------ | -------------------------------------- | -------------------------------------- |
-| **RESEARCH** | Tidak ada order                        | Kumpulkan bukti & forecast             |
-| **PAPER**    | Simulasi eksekusi terpisah             | Uji biaya, sizing, perilaku gagal      |
-| **SHADOW**   | Tidak kirim order, catat prospektif    | Ukur drift forecast & peluang tersedia |
-| **LIVE**     | Order riil via executor + mandat aktif | Otonomi rutin, micro-LIVE              |
+| **RESEARCH** | No orders                              | Gather evidence & forecasts            |
+| **PAPER**    | Isolated execution simulation          | Test costs, sizing, failure behavior   |
+| **SHADOW**   | No orders sent, prospective recording  | Measure forecast drift & edge availability |
+| **LIVE**     | Real orders via executor + live mandate | Routine autonomy, micro-LIVE          |
 
-Instalasi baru **selalu PAPER**. Restart tidak menaikkan mode.
+Fresh installs are **always PAPER**. Restarts never escalate mode.
 
 ---
 
-## 5. OBJECT KEUANGAN KUNCI
+## 5. KEY FINANCIAL OBJECTS
 
 ### 5.1 Expected Value (EV)
 
@@ -73,17 +73,17 @@ EV = q_net × E[payout per share] − cash_debit − allocated_costs
 edge_per_net_share = EV / q_net
 ```
 
-### 5.2 Risk Limits (Policy Default)
+### 5.2 Risk Limits (Policy Defaults)
 
-- Order: 0.5% dari cap
-- Market: 2% dari cap
-- Event (korelasi): 5% dari cap
-- Portfolio: 10% dari cap
-- Stop harian: 2%
+- Order: 0.5% of cap
+- Market: 2% of cap
+- Event (correlated): 5% of cap
+- Portfolio: 10% of cap
+- Daily stop: 2%
 - Drawdown: 5%
-- Maks 10 order (termasuk unknown)
+- Max 10 orders (including unknown)
 - Min edge: 0.03/share
-- Slippage absolut: 0.01
+- Absolute slippage: 0.01
 
 ### 5.3 Lifecycle State Machine
 
@@ -98,114 +98,114 @@ Position: pending → settled → redeemable → redeemed
 
 ---
 
-## 6. STRATEGI v1: `evidence_directional_v1`
+## 6. STRATEGY v1: `evidence_directional_v1`
 
-**Universe**: pasar biner biasa dengan payout termodelkan, aturan jelas
+**Universe**: ordinary binary markets with modeled payout, clear rules
 
 **Pipeline**:
 
-1. Discovery market → validasi rules & identitas
-2. Book snapshot/stream → ambil bukti → deduplikasi
+1. Market discovery → rules & identity validation
+2. Book snapshot/stream → gather evidence → deduplicate
 3. Forecast → quote → intent
-4. Scan setiap **120 detik** (parameter usulan, bukan HFT)
+4. Scan every **120 seconds** (proposal parameter, not HFT)
 
-**Evidence Gate**: minimal 2 sumber independen yang relevan (1 sumber resolusi primer otoritatif bisa jadi pengecualian)
+**Evidence Gate**: minimum 2 relevant independent sources (1 authoritative primary resolution source may qualify as an exception)
 
-**Reason Code NO_TRADE**:
+**NO_TRADE Reason Codes**:
 `RULES_CHANGED`, `DATA_STALE`, `FEE_UNKNOWN`, `NO_EDGE`, `MIN_SIZE_EXCEEDS_CAP`, `BUDGET_EXHAUSTED`, `POLICY_EXPIRED`, `MODEL_UNCALIBRATED`, `ACCESS_BLOCKED`, `RECONCILIATION_REQUIRED`
 
 ---
 
-## 7. CHECKLIST RISK ENGINE (6 Lapisan)
+## 7. RISK ENGINE CHECKLIST (6 Layers)
 
-1. **Mode + Authority** — LIVE + mandat aktif + strategi/market eligible
-2. **Data + Price** — rules_hash cocok, quote valid, fee known, clock sehat
-3. **Economics + Sizing** — EV memenuhi buffer, all-in cost di bawah cap
-4. **Portfolio + Loss** — posisi + open + reservation tanpa celah; loss latch lulus
-5. **DB Transaction** — kunci baris, validasi ulang, tulis reservation atomik
-6. **Pre-Submit** — Risk permit TTL 1s, intent TTL 30s, dicek ulang
+1. **Mode + Authority** — LIVE + active mandate + eligible strategy/market
+2. **Data + Price** — rules_hash match, valid quote, known fee, healthy clock
+3. **Economics + Sizing** — EV clears buffer, all-in cost under cap
+4. **Portfolio + Loss** — positions + open + reservations gapless; loss latch passes
+5. **DB Transaction** — row lock, re-validate, atomic reservation write
+6. **Pre-Submit** — risk permit TTL 1s, intent TTL 30s, re-checked
 
 ---
 
-## 8. KEAMANAN & BATASAN
+## 8. SECURITY & BOUNDARIES
 
 ### Actor/Capability Matrix
 
-| Actor        | Bisa                                    | Tidak Bisa                                   |
-| ------------ | --------------------------------------- | -------------------------------------------- |
-| Pemilik      | Buat mandat, pause/cancel, ekspor audit | Ubah event historis, bypass validasi         |
-| Gateway      | Tulis command inbox                     | Key trading, sign, tulis ledger              |
-| LLM/Strategy | Baca evidence, propose forecast/intent  | Shell, secret, sign, withdraw, aktifkan LIVE |
-| Executor     | Validasi, reserve, sign, submit, cancel | Transfer arbitrary, tool browsing            |
+| Actor        | Can                                        | Cannot                                         |
+| ------------ | ------------------------------------------ | ---------------------------------------------- |
+| Owner        | Create mandates, pause/cancel, export audit | Alter historical events, bypass validation    |
+| Gateway      | Write command inbox                        | Trading keys, sign, write ledger               |
+| LLM/Strategy | Read evidence, propose forecast/intent     | Shell, secrets, sign, withdraw, enable LIVE    |
+| Executor     | Validate, reserve, sign, submit, cancel    | Arbitrary transfers, browsing tools            |
 
 ### Prompt Injection Defense
 
-- Konten web = data, bukan instruksi
-- Signer tidak punya browser/shell tool
-- Secret canary diuji di prompt/log/export
-- Validasi output & allowlist capability = kontrol utama
+- Web content = data, not instructions
+- Signer has no browser/shell tools
+- Secret canary tested in prompt/log/export
+- Output validation & capability allowlist = primary controls
 
 ---
 
 ## 9. DEPLOYMENT & INFRA
 
-| Komponen    | Spesifikasi                                          |
-| ----------- | ---------------------------------------------------- |
-| Target awal | 1 VPS Linux: 4 vCPU, 8 GiB RAM, 40 GiB SSD           |
-| Runtime     | Node 24 LTS + PostgreSQL 17                          |
-| Backup      | RPO 15 menit, RTO 60 menit, encrypted off-host       |
-| TLS         | Gateway di balik TLS, DB/executor privat             |
-| Image       | Immutable, SBOM, secret scan, schema migration check |
+| Component     | Specification                                        |
+| ------------- | ---------------------------------------------------- |
+| Initial target | 1 Linux VPS: 4 vCPU, 8 GiB RAM, 40 GiB SSD          |
+| Runtime       | Node 24 LTS + PostgreSQL 17                          |
+| Backup        | RPO 15 min, RTO 60 min, encrypted off-host           |
+| TLS           | Gateway behind TLS, DB/executor private              |
+| Image         | Immutable, SBOM, secret scan, schema migration check |
 
 ---
 
-## 10. RENCANA PENELITIAN
+## 10. RESEARCH PLAN
 
-### Gate Observasi Awal
+### Early Observation Gate
 
-- ≥30 hari + ≥100 event resolved independen
-- Lower bound CI 95% net edge > 0 setelah biaya
-- Tidak melakukan repeated peeking (stop pada hasil pertama yang menguntungkan)
+- ≥30 days + ≥100 independent resolved events
+- 95% CI lower bound of net edge > 0 after costs
+- No repeated peeking (stop at the first favorable result)
 
-### Metrik Forecast
+### Forecast Metrics
 
 - Brier score, log loss, calibration diagram, sharpness, abstention/coverage
-- Benchmark = probabilitas pasar saat forecast dibuat
+- Benchmark = market probability at forecast time
 
-### Metrik Trading
+### Trading Metrics
 
 - Net PnL, drawdown, turnover, fill/cancel ratio, capacity/depth
-- Biaya LLM/infra, event count, concentration
-- Sensitivity biaya/latensi
+- LLM/infra cost, event count, concentration
+- Cost/latency sensitivity
 
 ---
 
-## 11. RISIKO & PERHATIAN
+## 11. RISKS & CAVEATS
 
-| Risiko                                       | Level  | Mitigasi                                            |
-| -------------------------------------------- | ------ | --------------------------------------------------- |
-| Upstream CloddsBot belum terbukti profitable | Tinggi | PAPER/SHADOW dulu, gate ketat sebelum LIVE          |
-| AI hallucination → forecast salah            | Tinggi | Conservative probability, calibrator, evidence gate |
-| Race condition order                         | Sedang | Dedupe key, fencing epoch, reservation atomik       |
-| Prompt injection dari berita                 | Sedang | Content = data, signer terpisah, allowlist tool     |
-| Fee/rule berubah mendadak                    | Sedang | rules_hash tracking, invalidasi forecast lama       |
-| LLM cost overrun                             | Rendah | Budget token/biaya/durasi, abstain saat habis       |
+| Risk                                       | Level  | Mitigation                                          |
+| ------------------------------------------ | ------ | --------------------------------------------------- |
+| Upstream CloddsBot unproven profitability  | High   | PAPER/SHADOW first, strict gates before LIVE        |
+| AI hallucination → wrong forecast          | High   | Conservative probability, calibrator, evidence gate |
+| Order race conditions                      | Medium | Dedupe key, fencing epoch, atomic reservation       |
+| Prompt injection via news                  | Medium | Content = data, isolated signer, tool allowlist     |
+| Sudden fee/rule changes                    | Medium | rules_hash tracking, invalidate old forecasts       |
+| LLM cost overrun                           | Low    | Token/cost/duration budget, abstain when exhausted  |
 
 ---
 
-## 12. REKOMENDASI IMPLEMENTASI (URUTAN)
+## 12. IMPLEMENTATION ORDER
 
 1. **G0: Foundation** — fork CloddsBot, setup PostgreSQL, release manifest, schema migration
-2. **G1: Data Layer** — market-data adapter, identitas kontrak, fee metadata, order book
+2. **G1: Data Layer** — market-data adapter, contract identity, fee metadata, order book
 3. **G1: Intelligence** — provider adapter, forecast schema, evidence pipeline
-4. **G2: Risk + Executor** — risk engine 6-lapisan, signer terisolasi, order lifecycle
-5. **G2: Ledger** — append-only event, posting, reconciliation
+4. **G2: Risk + Executor** — 6-layer risk engine, isolated signer, order lifecycle
+5. **G2: Ledger** — append-only events, posting, reconciliation
 6. **G3: Strategy + PAPER** — evidence_directional_v1, paper engine, scoring
 7. **G3: Dashboard** — overview, markets, orders, experiments, settings
 8. **G4: SHADOW** — prospective decision recording, drift measurement
-9. **G5: LIVE** — mandat, micro-LIVE gate, owner resume protocol
+9. **G5: LIVE** — mandate, micro-LIVE gate, owner resume protocol
 10. **Ops** — monitoring, backup, runbook, observability
 
 ---
 
-_Dokumen ini adalah hasil studi dan diskusi. Belum ada implementasi kode._
+_This document is a study and discussion record. No implementation code yet._

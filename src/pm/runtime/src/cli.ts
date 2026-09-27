@@ -364,6 +364,25 @@ async function askRequiredSecret(message: string): Promise<string> {
   }
 }
 
+/** Best-effort reachability ping for a user's own gateway. Warning-only: never blocks setup. */
+async function pingModelsEndpoint(baseUrl: string, apiKey: string): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/models`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: ctrl.signal,
+      });
+      return res.ok;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return false;
+  }
+}
+
 /** Numbered menu with a marked default (blank = default), Hermes `_ask_index`-style. */
 async function askChoice(
   message: string,
@@ -395,52 +414,68 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   console.log("═══════════════════════════════════════════════\n");
 
   // 1. AI Provider & Model — the brain that reads markets.
+  // Hermes-style: generic OpenAI-compatible provider. The user always
+  // supplies their own base URL + key; this repo ships no gateway default.
   console.log("📡 Step 1/3: AI brain (reads the markets)");
   const provider = await askChoice(
     "Choose AI provider (Enter = default):",
     [
       "OpenAI (GPT-4o, GPT-4o-mini)",
-      "9Router / OpenAI-compatible",
-      "Ollama (local)",
-      "Custom OpenAI-compatible endpoint",
+      "My own OpenAI-compatible gateway (my 9Router/NewAPI/OpenRouter account, company gateway, ...)",
+      "Ollama (runs on this machine)",
     ],
-    1,
+    0,
   );
 
   let model = "";
   let baseUrl = "";
   let apiKey = "";
 
-  if (provider === "OpenAI (GPT-4o, GPT-4o-mini)") {
+  if (provider.startsWith("OpenAI")) {
     model = await askChoice(
       "Select model:",
       ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
       0,
     );
-    apiKey = await askRequiredSecret("OpenAI API key");
-  } else if (provider === "9Router / OpenAI-compatible") {
-    model = await askText("Model name", { defaultValue: "gpt-4o-mini" });
-    baseUrl = await askText("Base URL", {
-      defaultValue: "https://files.pango.fun/v1",
-    });
-    apiKey = await askRequiredSecret("9Router API key");
-  } else if (provider === "Ollama (local)") {
+    apiKey = await askRequiredSecret("Paste your OpenAI API key");
+    baseUrl = "https://api.openai.com/v1";
+  } else if (provider.startsWith("Ollama")) {
     model = await askText("Model name", { defaultValue: "llama3.1" });
     baseUrl = await askText("Base URL", {
       defaultValue: "http://localhost:11434/v1",
     });
     apiKey = "ollama"; // dummy
   } else {
-    model = await askText("Model name");
-    baseUrl = await askText("Base URL");
-    apiKey = await askRequiredSecret("API key");
+    baseUrl = await askText("Your gateway base URL (example: https://your-gateway.example/v1)");
+    if (!/^https?:\/\/.+/.test(baseUrl)) {
+      console.log("That does not look like a web address — it starts with http:// or https://.");
+      baseUrl = await askText("Your gateway base URL (example: https://your-gateway.example/v1)");
+      if (!/^https?:\/\/.+/.test(baseUrl)) {
+        throw new Error("A valid gateway base URL is required");
+      }
+    }
+    model = await askText("Model name (example: gpt-4o-mini)");
+    apiKey = await askRequiredSecret("Paste your gateway API key");
   }
 
   if (!model.trim()) {
     throw new Error("Model name is required");
   }
   if (!apiKey.trim()) {
-    throw new Error("API key is required (Ollama local uses any placeholder)");
+    throw new Error("API key is required (Ollama on this machine uses any placeholder)");
+  }
+
+  if (!provider.startsWith("Ollama")) {
+    const reachable = await pingModelsEndpoint(baseUrl, apiKey);
+    if (!reachable) {
+      console.log(
+        "⚠️  Could not reach that address with your key — corporate gateways sometimes block the check while chat still works.",
+      );
+      const goOn = await askText("Continue anyway? (y/n)", { defaultValue: "y" });
+      if (!goOn.trim().toLowerCase().startsWith("y")) {
+        throw new Error("Setup stopped — double-check the base URL and key, then run `polyroot onboard` again");
+      }
+    }
   }
 
   // 2. Wallet — keys are sealed in a locked vault on this machine and
@@ -451,7 +486,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   );
   const walletChoice = await askChoice(
     "Wallet (Enter = create new):",
-    ["Create new wallet (generates keystore)", "Import existing private key"],
+    ["Create new wallet for me (recommended)", "I already have a wallet (import secret key)"],
     0,
   );
 
@@ -460,23 +495,23 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   if (walletChoice.startsWith("Create")) {
     for (;;) {
-      passphrase = await askRequiredSecret("Create a vault passphrase");
-      const confirm = await askRequiredSecret("Repeat the passphrase");
+      passphrase = await askRequiredSecret("Create a vault password");
+      const confirm = await askRequiredSecret("Repeat the vault password");
       if (passphrase === confirm) break;
-      console.log("Passphrases do not match — try again.");
+      console.log("Passwords do not match — try again.");
     }
     // Generate random key
     privateKey = "0x" + randomBytes(32).toString("hex");
     console.log(`\n✅ New wallet created!`);
     console.log(`   Address: ${deriveAddressFromPrivateKey(privateKey)}`);
-    console.log(`   (Write this down — it is shown only once)`);
+    console.log(`   (Write this address down — it is shown only once)`);
   } else {
     for (;;) {
-      privateKey = await askRequiredSecret("Private key (0x...)");
+      privateKey = await askRequiredSecret("Paste your wallet secret key (starts with 0x)");
       if (/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) break;
-      console.log("Wrong format — expected 64 hex characters.");
+      console.log("That does not look like a wallet secret key — it is 64 letters/numbers, starting with 0x.");
     }
-    passphrase = await askRequiredSecret("Create a vault passphrase");
+    passphrase = await askRequiredSecret("Create a vault password");
     console.log(
       `\n✅ Wallet imported. Address: ${deriveAddressFromPrivateKey(privateKey)}`,
     );
@@ -494,12 +529,12 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   // 3. Mode selection — PAPER = practice with play money (100% safe).
   console.log("\n🚀 Step 3/3: Choose Mode");
   console.log(
-    "   PAPER = practice, play money (100% safe). LIVE = real money.",
+    "   PAPER = practice with play money (100% safe). LIVE = real money.",
   );
   const modeChoice = await askChoice(
     "Choose mode (Enter = PAPER):",
     [
-      "PAPER — Safe simulation, mock data, no real money",
+      "PAPER — Safe practice with play money (recommended, no real money)",
       "LIVE — Real trading on Polymarket (requires capital, API keys)",
     ],
     0,
@@ -569,7 +604,10 @@ function writeEnv(config: OnboardingConfig): void {
     `WALLET_ADDRESS=${deriveAddressFromPrivateKey(config.privateKey!)}`,
     `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
     `RPC_URL=https://polygon-rpc.com`,
-    `POLYROOT_FORECAST_PROVIDER=${config.provider === "OpenAI (GPT-4o, GPT-4o-mini)" ? "openai" : "custom"}`,
+    // Every provider choice speaks the OpenAI-compatible protocol
+    // (OpenAI, any custom gateway, Ollama on this machine), so the brain
+    // always runs with POLYROOT_FORECAST_PROVIDER=openai + OPENAI_BASE_URL.
+    `POLYROOT_FORECAST_PROVIDER=openai`,
     `POLYROOT_FORECAST_MODEL=${config.model}`,
     `OPENAI_API_KEY=${config.apiKey}`,
     ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
@@ -601,13 +639,63 @@ async function runOnboardingFlow(): Promise<void> {
   try {
     const config = await runOnboarding();
     writeEnv(config);
+    let migrateOk = true;
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("node --import tsx scripts/migrate.ts latest", {
+        cwd: process.cwd(),
+        stdio: "inherit",
+      });
+    } catch {
+      migrateOk = false;
+      console.log(
+        "⚠️  Database not reachable yet — run `npm run migrate:latest` then `polyroot doctor` when PostgreSQL is up (try `polyroot docker-fix`).",
+      );
+    }
+    let doctorOk = true;
+    try {
+      process.env["POLYROOT_ONBOARDING"] = "1";
+      doctorOk = await runDoctor();
+    } catch {
+      doctorOk = false;
+      console.log(
+        "⚠️  Doctor reported issues — fix them with the hints above, or re-run `polyroot setup` any time.",
+      );
+    } finally {
+      delete process.env["POLYROOT_ONBOARDING"];
+    }
+
+    // Reload env for current process
+    process.loadEnvFile(ENV_PATH as string);
+
+    // Land in a running PAPER demo: one safe practice trade, then stop.
+    // Offered only when the database and health check both passed.
+    if (migrateOk && doctorOk) {
+      const demo = await askText("Watch a 1-step demo trade now? (y/n)", {
+        defaultValue: "y",
+      });
+      if (demo.trim().toLowerCase().startsWith("y")) {
+        try {
+          await startAgent({
+            mode: "PAPER",
+            databaseUrl: process.env["DATABASE_URL"] ?? "",
+            kmsKeyId: "",
+            kmsEndpoint: "",
+            kmsRegion: "",
+            once: true,
+          });
+        } catch {
+          console.log(
+            "⚠️  Demo trade did not run — try `polyroot run --once` later, or re-run `polyroot setup` any time.",
+          );
+        }
+      }
+    }
     console.log("\n═══════════════════════════════════════════════");
     console.log("  Setup complete! PolyRoot Agent is ready.");
     console.log("═══════════════════════════════════════════════");
     console.log(formatNextSteps(config.mode));
 
-    // Reload env for current process
-    process.loadEnvFile(ENV_PATH as string);
     closeSharedSession();
   } catch (err) {
     closeSharedSession();
@@ -869,7 +957,7 @@ async function runConsoleLogs(args: string[]): Promise<void> {
 function printUnknownHint(raw: string): void {
   if (/^(hi|hello|hai|halo|hallo|hey|hy|p|test|tes)\b/i.test(raw)) {
     console.log(
-      'Halo! Ketik "logs" buat lihat agen lagi ngapain, "status" buat konfigurasi, "help" buat daftar perintah.',
+      'Hi! Type "logs" to see what the agent is doing, "status" for configuration, "help" for all commands.',
     );
     return;
   }
@@ -1660,7 +1748,7 @@ async function runUpdate(): Promise<void> {
 }
 
 /** Doctor command - health checks. */
-async function runDoctor(): Promise<void> {
+async function runDoctor(): Promise<boolean> {
   console.log("\n🏥 PolyRoot Agent — Doctor\n");
   let allOk = true;
 
@@ -1760,7 +1848,8 @@ async function runDoctor(): Promise<void> {
   console.log(
     "\n" + (allOk ? "✅ All checks passed" : "❌ Some checks failed"),
   );
-  if (!allOk) process.exit(1);
+  if (!allOk && process.env["POLYROOT_ONBOARDING"] !== "1") process.exit(1);
+  return allOk;
 }
 
 /**

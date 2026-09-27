@@ -1,34 +1,34 @@
 # Polyroot v1.1 Specification Pack
 
-Dokumen pendamping PRD dan Technical Blueprint v1.1, baseline riset 9 September 2026.
+Companion document to PRD and Technical Blueprint v1.1, research baseline 9 September 2026.
 
-## Mulai dari sini
+## Start here
 
-- `Audit_Correction_Matrix.csv`: 30 koreksi → requirement → acceptance ID → bagian desain.
-- `Requirements_v1.1.csv` / `.json`: 124 requirements, 116 P0 dan 8 P1; 53 baseline IDs dipertahankan (43 retained, 10 revised) dan 71 baru.
-- `Fork_Disposition_Matrix.csv` / `.json`: seluruh 827 blob commit upstream, hashes, target, rationale, coverage dan gates. CSV memiliki list/dict sebagai JSON dalam cell.
-- `Subsystem_Coverage.csv`: agregasi seluruh subsystem, termasuk yang dihapus/quarantine.
-- `Dependency_Disposition.csv`: 80 direct runtime + 9 dev dependencies; production closure belum disetujui.
-- `SDK_Candidate_Matrix.csv`, `SDK_Candidate_Manifest.json`, `SDK_Contract_Tests.csv`: kandidat exact dan 32 tes kontrak NOT_RUN.
-- `Fault_Matrix.csv`: 46 skenario gangguan, requirement dan invariant; semua NOT_RUN.
-- `schemas/`: 18 draft JSON Schemas, bukan implementasi validator domain atau release-ready API.
-- `Policy_Defaults.json`, `Open_Decisions.csv`, `Baseline_Traceability.csv`: policy kandidat, blocker dan preservation trace.
-- `Research_Findings.md`, `Sources.json`, `Source_Snapshot_Manifest.json`: findings, bibliografi dan source hashes.
-- `Validation_Report.json`: validasi artefak spesifikasi yang benar-benar dilakukan; tidak mengklaim tes bot sudah berjalan.
-- `MANIFEST_SHA256.json`: integrity untuk file paket ini.
+- `Audit_Correction_Matrix.csv`: 30 corrections → requirement → acceptance ID → design section.
+- `Requirements_v1.1.csv` / `.json`: 124 requirements, 116 P0 and 8 P1; 53 baseline IDs preserved (43 retained, 10 revised) and 71 new.
+- `Fork_Disposition_Matrix.csv` / `.json`: all 827 upstream blobs, hashes, targets, rationale, coverage and gates. CSV holds lists/dicts as JSON-in-cell.
+- `Subsystem_Coverage.csv`: whole-subsystem aggregation, including removed/quarantined.
+- `Dependency_Disposition.csv`: 80 direct runtime + 9 dev dependencies; production closure not yet approved.
+- `SDK_Candidate_Matrix.csv`, `SDK_Candidate_Manifest.json`, `SDK_Contract_Tests.csv`: exact candidates and 32 NOT_RUN contract tests.
+- `Fault_Matrix.csv`: 46 failure scenarios, requirements and invariants; all NOT_RUN.
+- `schemas/`: 18 draft JSON Schemas, not domain-validator implementations or release-ready APIs.
+- `Policy_Defaults.json`, `Open_Decisions.csv`, `Baseline_Traceability.csv`: candidate policies, blockers and preservation trace.
+- `Research_Findings.md`, `Sources.json`, `Source_Snapshot_Manifest.json`: findings, bibliography and source hashes.
+- `Validation_Report.json`: specification-artifact validation actually performed; does not claim bot tests have run.
+- `MANIFEST_SHA256.json`: integrity for this package.
 
-## Arti status
+## Status meanings
 
-Semua 827 file byte-verified dan static-inventoried. Targeted semantic review ada pada 42 file. `evidence_locator` menunjukkan rentang/lokasi sumber, bukan janji setiap baris dalam rentang telah diaudit. `STATIC_INVENTORY` memerlukan review semantik sebelum code admission. `production_admitted=false` berlaku pada seluruh source kandidat sampai implementasi/gates selesai.
+All 827 files byte-verified and statically inventoried. Targeted semantic review covers 42 files. `evidence_locator` points at source ranges/locations, not a promise that every line in range was audited. `STATIC_INVENTORY` requires semantic review before code admission. `production_admitted=false` applies to all candidate sources until implementation/gates complete.
 
-KEEP / KEEP+HARDEN / ADAPT bukan security certification. REWRITE adalah rencana mengganti boundary/semantics; bukan klaim semua helper lama buruk. REMOVE berarti tidak ada di production dependency graph. QUARANTINE dan RESEARCH-ONLY tidak dapat dimuat oleh executor/vault. Daftar yang lengkap tidak menyamarkan batas audit.
+KEEP / KEEP+HARDEN / ADAPT are not security certification. REWRITE is a plan to replace boundaries/semantics; not a claim that all old helpers are bad. REMOVE means absent from the production dependency graph. QUARANTINE and RESEARCH-ONLY cannot be loaded by the executor/vault. A complete list does not hide audit limits.
 
-## Reproduksi dan atribusi
+## Reproduction and attribution
 
-Source code upstream tidak dieksekusi atau dipasang. Retrieve commit `715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8` dari repository `alsk1992/CloddsBot`, cocokkan Git blob hash serta SHA256 dalam matrix. Perubahan nama menjadi Polyroot tidak menghapus MIT/copyright upstream. `LICENSE_CloddsBot.txt` disertakan untuk provenance source yang akan diadopsi.
+Upstream source is neither executed nor installed. Retrieve commit `715fd4a6c06b4cd5bb38eee225dd09b3bc95c5e8` from repository `alsk1992/CloddsBot`, match Git blob hashes and the SHA256 in the matrix. Renaming to Polyroot does not remove MIT/copyright upstream. `LICENSE_CloddsBot.txt` is included for adoptable-source provenance.
 
-File schema memakai URL `polyroot.invalid` sebagai identifier lokal. Rules lintas objek—probability normalization, balanced journal, graph proof, permit authentication, authority dan risk bounds—memerlukan validator domain terpisah. Jangan mengeksekusi order hanya karena JSON lolos schema.
+Schema files use the `polyroot.invalid` URL as a local identifier. Cross-object rules — probability normalization, balanced journal, graph proof, permit authentication, authority and risk bounds — need separate domain validators. Do not execute orders just because JSON passes schema.
 
-## Konflik spesifikasi
+## Specification conflicts
 
-PRD mengatur hasil produk; Blueprint mengatur kontrak dan invariant; paket ini adalah rincian normatif. Konflik harus ditutup dengan revisi versioned dan release ditahan. Candidate specification tidak sama dengan implementation freeze atau LIVE readiness.
+The PRD governs product outcomes; the Blueprint governs contracts and invariants; this package is normative detail. Conflicts must be closed with versioned revisions and releases held. Candidate specification is not implementation freeze or LIVE readiness.
