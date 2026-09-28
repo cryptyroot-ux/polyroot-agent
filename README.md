@@ -6,8 +6,8 @@ autonomy** architecture: the AI proposes intents only, while a separate
 deterministic **Executor** signs and submits orders. The AI never holds private
 keys.
 
-> **Status: v1.1-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
-> Production-ready with G4 autonomous pipeline, G5 infrastructure, and 687 passing tests (675 contract + 12 property).
+> **Status: v1.2-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
+> Production-ready with G4 autonomous pipeline, G5 infrastructure, and 719 passing tests (707 contract + 12 property).
 > Default mode is `PAPER`. Live trading requires explicit Autonomy Charter commissioning.
 
 ---
@@ -125,7 +125,7 @@ polyroot run         # Starts the agent in PAPER mode (see RUNTIME_MODE)
 ### 7. Verify Installation
 
 ```bash
-npm run test:unit        # 675 contract + 12 property = 687 tests
+npm run test:unit        # 707 contract + 12 property = 719 tests
 npm run traceability     # 96/96 structural traceability
 npm run build            # 13/13 packages pass
 npm run lint && npm run typecheck

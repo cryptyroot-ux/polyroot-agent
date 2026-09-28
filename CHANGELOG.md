@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-09-28
+
+### ✨ Added — Beginner-friendly operator commands
+- **`polyroot explain [--last N]`** — replays the latest AI decision chain (forecast → risk verdict → edge → action) from durable history
+- **`polyroot halt [--cancel-orders]`** — emergency kill switch: engages the loss latch, cancels open orders, stops agents, exits(1) for supervisors
+- **`polyroot health [--watch]`** — real-time probes: database, pipeline, RPC, venue, resources, with `--json` for monitoring
+- **`polyroot insight [--market] [--heatmap]`** — transparent opportunity scoring (edge × confidence × liquidity), deep dives, risk heatmap
+- **`polyroot backup/restore`** — AES-256-GCM encrypted state export with sha256 manifest; restore verifies checksums before `--apply`
+
+### 🔧 Fixed — Pipeline persistence gap
+- **Every G4 step now persists** (market snapshots, forecasts, paper/shadow decision logs) via a passive `emitStepComplete` observer — trading logic untouched
+- **Exactly-once emission** moved to pipeline/loop choke points (early abstain returns previously never emitted)
+- **Flush on `--once`/shutdown** so the last steps survive pool close
+- **`polyroot mode` persists to `.env`** (previously DB-only, `run` kept reading stale mode)
+- **Launcher no longer exports `NODE_ENV=production`** (it made `npm ci` prune devDependencies and break `update`)
+
+### ✅ Verification
+- 707 contract + 12 property tests passing, zero regressions; tsc/ESLint/Prettier clean
+- Live-verified on reference VPS: SHADOW run → rows → `explain` shows the real chain
+
 ## [1.1.0] - 2026-09-27
 
 ### 🎉 Major Release — Production-Ready Core
