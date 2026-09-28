@@ -62,3 +62,9 @@ export {
 } from "./cli.js";
 export type { CLIConfig } from "./cli.js";
 export { explainLastDecision } from "./observability/index.js";
+export {
+  requestHalt,
+  type HaltRequest,
+  type HaltDeps,
+  type HaltResult,
+} from "./observability/index.js";

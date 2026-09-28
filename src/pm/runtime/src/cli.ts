@@ -23,7 +23,10 @@ import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 import { bootstrapAgent, buildWalletIdentity } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
-import { explainLastDecision } from "./observability/index.js";
+import {
+  explainLastDecision,
+  requestHalt,
+} from "./observability/index.js";
 
 /**
  * Load .env via Node's native loader when present (never overrides real env).
@@ -163,6 +166,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
           "  polyroot markets         Browse popular markets by name\n" +
           "  polyroot status          Show current configuration\n" +
       "  polyroot explain [--last N] Explain the latest AI decision chain\n" +
+      "  polyroot halt [--cancel-orders] Emergency stop + exit\n" +
           "  polyroot doctor          Basic health check\n" +
           "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
           "  polyroot wallet verify   Check wallet with no network\n" +
@@ -916,6 +920,7 @@ function printConsoleHelp(): void {
       "  restart        Stop the background agent, print how to start it\n" +
       "  status         Show configuration\n" +
       "  explain        Explain the latest AI decision chain\n" +
+      "  halt           Emergency stop (latch + exit)\n" +
       "  logs [N]       Show recent agent activity (default 15 lines)\n" +
       "  logs --follow  Watch activity live (Ctrl+C back to prompt)\n" +
       "  shadow-fund    Credit SHADOW play bankroll: shadow-fund --amount 1000\n" +
@@ -1050,6 +1055,8 @@ async function runConsole(): Promise<void> {
         await runStatus();
       } else if (cmd === "explain") {
         await runExplainCLI(args);
+      } else if (cmd === "halt") {
+        await runHaltCLI(args);
       } else if (cmd === "setup") {
         await runSetupFlow();
       } else if (cmd === "shadow-fund") {
@@ -1761,6 +1768,88 @@ async function runExplainCLI(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * Halt command - emergency kill switch. Engages the loss latch, optionally
+ * cancels open venue orders, stops local agents, then exits(1).
+ * Usage: polyroot halt [--cancel-orders] [--reason "text"] [--force] [--json]
+ */
+async function runHaltCLI(args: string[]): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL required (set in ~/.polyroot/.env).");
+    process.exit(1);
+  }
+  const cancelOrders = args.includes("--cancel-orders");
+  const force = args.includes("--force");
+  const asJson = args.includes("--json");
+  const rIdx = args.indexOf("--reason");
+  const reason =
+    rIdx >= 0 && args[rIdx + 1] && !args[rIdx + 1]?.startsWith("--")
+      ? (args[rIdx + 1] as string)
+      : "operator halt";
+  if (!force) {
+    const choice = await askChoice(
+      "⚠️  HALT will engage the loss latch, stop local agents and exit. Continue?",
+      ["Abort", "HALT NOW"],
+    );
+    if (choice !== "HALT NOW") {
+      console.log("Aborted — nothing was changed.");
+      return;
+    }
+  }
+  let cancelVenueOrder: ((id: string) => Promise<boolean>) | undefined;
+  if (cancelOrders) {
+    try {
+      const adapter = await buildLiveVenueAdapter();
+      cancelVenueOrder = async (id: string): Promise<boolean> => {
+        const res = await adapter.cancelOrder(id);
+        return res.ok;
+      };
+    } catch {
+      console.warn(
+        "⚠️  Live venue credentials missing — skipping remote cancels (latch still engages).",
+      );
+    }
+  }
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    await requestHalt(
+      {
+        pool,
+        cancelVenueOrder,
+        killLocalAgents: async () => {
+          const { execSync } = await import("node:child_process");
+          try {
+            execSync("pkill -f 'node.*cli\\.js' 2>/dev/null || true", {
+              stdio: "ignore",
+            });
+          } catch {
+            // pkill non-zero when nothing matched — fine
+          }
+        },
+        report: (r) => {
+          if (asJson) {
+            console.log(JSON.stringify({ ok: true, ...r }));
+          } else {
+            console.log("\n🛑 HALT engaged");
+            console.log(`  Reason: ${r.reason}`);
+            console.log(`  Open orders found: ${r.openOrders}`);
+            console.log(`  Remote cancels confirmed: ${r.canceledOrders}`);
+            console.log("  Exiting (supervisors should restart manually).");
+          }
+        },
+      },
+      { reason, cancelOrders },
+    );
+  } catch (err) {
+    console.error(`❌ halt failed: ${(err as Error).message}`);
+    process.exit(1);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
 /** Status command - shows current configuration and health. */
 async function runStatus(): Promise<void> {
   loadDotEnv();
@@ -2270,6 +2359,10 @@ export async function main(
     await runExplainCLI(argv.slice(1));
     return;
   }
+  if (argv[0] === "halt") {
+    await runHaltCLI(argv.slice(1));
+    return;
+  }
   if (argv[0] === "update") {
     await runUpdate();
     return;
@@ -2343,6 +2436,7 @@ export async function main(
     argv[0] !== "guard" &&
     argv[0] !== "status" &&
     argv[0] !== "explain" &&
+    argv[0] !== "halt" &&
     argv[0] !== "update" &&
     argv[0] !== "doctor" &&
     argv[0] !== "docker-fix" &&

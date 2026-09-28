@@ -7,3 +7,9 @@
  */
 
 export { explainLastDecision } from "./explain-engine.js";
+export {
+  requestHalt,
+  type HaltRequest,
+  type HaltDeps,
+  type HaltResult,
+} from "./halt-manager.js";
