@@ -90,6 +90,10 @@ export interface G4CoreDeps {
   now: () => Date;
   /** Wallet for simulator fills. */
   paperWallet?: WalletIdentity;
+  /** Optional funds snapshot for operator display (best-effort, may omit). */
+  getFunds?: () => Promise<StepFunds | undefined>;
+  /** Latest stated AI reasoning per market (display + persistence, best-effort). */
+  getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
   /** Observability hooks for metrics and logging */
   observability?: G4CoreObservability;
   /**
@@ -155,6 +159,107 @@ export interface G4CoreResult {
   edge?: number | undefined;
   bookBid?: number | undefined;
   bookAsk?: number | undefined;
+}
+
+/** Funds snapshot for the operator display block. */
+export interface StepFunds {
+  bankrollUsd: number | null;
+  sessionPnlUsd: number;
+}
+
+/** Stated AI reasoning attached to a market step (display + DB lineage). */
+export interface StepReasoning {
+  rationale: string | null;
+  factors: string[];
+  model: string;
+}
+
+export interface StepBlockInput {
+  mode: string;
+  marketId: string;
+  bid: number;
+  ask: number;
+  p: number | null | undefined;
+  rationale?: string | null | undefined;
+  decision: "NO_TRADE" | "BUY" | "SELL";
+  reason: string | undefined;
+  edge?: number | undefined;
+  fillPrice?: number | undefined;
+  fillStatus?: string | undefined;
+  size?: number | undefined;
+  /** Minimum edge floor as percent, e.g. 3.0 for +3.0%. */
+  floorPct?: number | undefined;
+  funds?: StepFunds | undefined;
+}
+
+function pct1(x: number): string {
+  return `${(x * 100).toFixed(1)}%`;
+}
+
+function signedPct(x: number): string {
+  return `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}%`;
+}
+
+function money(n: number): string {
+  const sign = n < 0 ? "-" : n > 0 ? "+" : "";
+  const abs = Math.abs(n).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${sign}$${abs}`;
+}
+
+function shortId(id: string): string {
+  return id.length > 12 ? `${id.slice(0, 5)}…${id.slice(-5)}` : id;
+}
+
+/**
+ * Multi-line operator display block for one market step. Answers: which
+ * market, what the book says, what the AI thinks (percent + rationale),
+ * the action taken with edge math, and the money state. Pure formatter.
+ */
+export function formatStepBlock(input: StepBlockInput): string {
+  const trim = (n: number): string => String(Math.round(n * 1000) / 1000);
+  const lines = [
+    `[${input.mode}] ${shortId(input.marketId)} · YES ${pct1(input.bid)} / NO ${pct1(input.ask)} · spread ${(Math.abs(input.ask - input.bid) * 100).toFixed(1)}¢`,
+  ];
+  const p =
+    typeof input.p === "number" && Number.isFinite(input.p) ? input.p : null;
+  if (p === null) {
+    lines.push(
+      `  AI abstained — no probability${input.rationale ? ` · "${input.rationale.slice(0, 140)}"` : ""}`,
+    );
+  } else {
+    lines.push(
+      `  AI p(YES)=${pct1(p)}${input.rationale ? ` · "${input.rationale.slice(0, 140)}"` : ""}`,
+    );
+  }
+  if (input.decision === "NO_TRADE") {
+    const edge =
+      typeof input.edge === "number" && Number.isFinite(input.edge)
+        ? ` (${signedPct(input.edge)}${input.floorPct !== undefined ? ` vs +${input.floorPct.toFixed(1)}% floor` : ""})`
+        : "";
+    lines.push(`  → ⏭ NO_TRADE — ${input.reason ?? "no reason given"}${edge}`);
+  } else {
+    const price =
+      input.fillPrice ?? (input.decision === "BUY" ? input.ask : input.bid);
+    const edge =
+      typeof input.edge === "number" && Number.isFinite(input.edge)
+        ? ` · edge ${signedPct(input.edge)}`
+        : "";
+    const fill = input.fillStatus ? ` · ${input.fillStatus}` : "";
+    lines.push(
+      `  → ✓ ${input.decision} ${input.size ?? "?"} @ ${trim(price)}${fill}${edge}`,
+    );
+  }
+  if (input.funds) {
+    const bank =
+      input.funds.bankrollUsd === null
+        ? ""
+        : `bankroll ${money(input.funds.bankrollUsd)} · `;
+    lines.push(`  $ ${bank}session ${money(input.funds.sessionPnlUsd)}`);
+  }
+  return lines.join("\n");
 }
 
 /** One-line rendering of the AI's thinking for operator logs. */
@@ -240,6 +345,8 @@ export interface CreateG4CoreOptions {
   observability?: G4CoreObservability;
   liveGuard?: LiveGuardDeps;
   marketSource?: MarketSource;
+  getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
+  getFunds?: () => Promise<StepFunds | undefined>;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -258,6 +365,8 @@ export function createG4Core(options: CreateG4CoreOptions) {
     ...(options.observability ? { observability: options.observability } : {}),
     ...(options.liveGuard ? { liveGuard: options.liveGuard } : {}),
     ...(options.marketSource ? { marketSource: options.marketSource } : {}),
+    ...(options.getReasoning ? { getReasoning: options.getReasoning } : {}),
+    ...(options.getFunds ? { getFunds: options.getFunds } : {}),
   };
   return {
     config: options.config,
@@ -407,9 +516,6 @@ export async function executeG4Step(
     p = await deps.forecast({ market_id, bid, ask });
   }
   if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02) {
-    console.debug(
-      `[AI Forecaster] Abstain: p=${p}, bookBid=${bid}, bookAsk=${ask}`,
-    );
     return {
       market_id,
       decision: "NO_TRADE",
@@ -419,10 +525,6 @@ export async function executeG4Step(
       bookAsk: ask,
     };
   }
-  console.info(
-    `[AI Forecaster] Trade Candidate: p=${p}, bookBid=${bid}, bookAsk=${ask}`,
-  );
-
   // 3. Edge evaluation
   const edge = evaluateEdge(
     {

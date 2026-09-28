@@ -327,6 +327,34 @@ export async function bootstrapAgent(
   // 9. Shared metrics + G4 Pipeline (observability wired to Metrics).
   const metrics = new Metrics();
 
+  // Operator display funds: sim bankroll from the ledger (static per
+  // session — fills never move real money) + live session PnL from the
+  // shared metrics. Best-effort: null bankroll simply hides that line.
+  const getFunds = async (): Promise<{
+    bankrollUsd: number | null;
+    sessionPnlUsd: number;
+  }> => {
+    let bankrollUsd: number | null = null;
+    try {
+      const r = await pool.query(
+        `SELECT available_base FROM balance_entries
+          WHERE account = $1 AND asset = 'pUSD' LIMIT 1`,
+        [wallet.funder],
+      );
+      const raw: unknown = r.rows[0]?.["available_base"];
+      const n =
+        typeof raw === "string"
+          ? Number(raw)
+          : typeof raw === "number"
+            ? raw
+            : NaN;
+      if (Number.isFinite(n)) bankrollUsd = Math.round((n / 1e6) * 100) / 100;
+    } catch {
+      // display-only: stay null
+    }
+    return { bankrollUsd, sessionPnlUsd: metrics.getCounter("totalPnl") };
+  };
+
   // Live enforcement inputs (fail-closed): an explicit owner loss cap is
   // REQUIRED in live modes; the exposure cap defaults to the approved
   // AUTONOMY_BOUNDS.CAPITAL_CAP_USD and can only be changed by the owner
@@ -392,6 +420,8 @@ export async function bootstrapAgent(
       realizedLossPusd: () =>
         Math.max(0, -(metrics.getCounter("totalPnl") ?? 0)),
     },
+    getReasoning: (marketId: string) => lastReasoning.get(marketId),
+    getFunds,
     forecast: async (market) => {
       if (!forecastProvider) {
         if (!warnedNoProvider) {
@@ -415,12 +445,8 @@ export async function bootstrapAgent(
             factors: detailed.factors,
             model,
           });
-          if (detailed.rationale) {
-            console.info(`[AI] ${market.market_id}: ${detailed.rationale}`);
-            for (const f of detailed.factors) {
-              console.info(`[AI]   · ${f}`);
-            }
-          }
+          // No console output here: the per-market display block (pipeline)
+          // renders the rationale right below with book + verdict context.
           return detailed.p;
         }
         return await forecastProvider.forecast(market);

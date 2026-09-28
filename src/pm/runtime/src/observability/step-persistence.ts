@@ -6,8 +6,8 @@
  * real history. Trading logic is untouched — this is a passive observer.
  *
  * Schema notes (verified against migrations/ + live DB):
- * - market_snapshots.market_id REFERENCES markets(id): inserts for unknown
- *   markets (e.g. PAPER mock ids) fail FK and are skipped with a warning.
+ * - market_snapshots.market_id REFERENCES markets(id): unregistered markets
+ *   are skipped silently (expected, not operator-actionable).
  * - forecasts.probability_yes is NOT NULL: abstains (p === null) record no
  *   forecast row; the NO_TRADE reason still lands in the decision log.
  * - forecasts.confidence is derived as certainty = 2*|p - 0.5| (0 at p=0.5,
@@ -23,13 +23,12 @@
  */
 
 import type { QueryablePool } from "../mode-watcher.js";
-import type { G4CoreInput, G4CoreResult, G4Mode } from "../g4-core.js";
-
-export interface MarketReasoning {
-  rationale: string | null;
-  factors: string[];
-  model: string;
-}
+import type {
+  G4CoreInput,
+  G4CoreResult,
+  G4Mode,
+  StepReasoning,
+} from "../g4-core.js";
 
 export interface StepPersistenceDeps {
   pool: QueryablePool;
@@ -37,8 +36,7 @@ export interface StepPersistenceDeps {
   /** Model label for forecast rows (env POLYROOT_FORECAST_MODEL or unknown). */
   model?: string | undefined;
   /** Latest stated AI reasoning per market (best-effort, may be absent). */
-  getReasoning?:
-    ((marketId: string) => MarketReasoning | undefined) | undefined;
+  getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
   /** Called on persistence failure (default: console.warn). Never throws. */
   onError?: ((table: string, err: Error) => void) | undefined;
 }

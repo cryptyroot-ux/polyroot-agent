@@ -28,7 +28,8 @@ import {
   executeG4Step,
   createG4Core,
   buildLoopInputs,
-  formatAiLine,
+  formatStepBlock,
+  type StepFunds,
 } from "./g4-core.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -194,23 +195,32 @@ export class G4Pipeline {
         for (const loopInput of inputs) {
           const result = await this.processMarket(loopInput);
 
-          if (
-            result.fill &&
-            (result.fill.status === "FILLED" ||
-              result.fill.status === "PARTIAL")
-          ) {
-            console.log(
-              `✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}${formatAiLine(result)}`,
-            );
-          } else if (result.decision !== "NO_TRADE") {
-            console.log(
-              `📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})${formatAiLine(result)}`,
-            );
-          } else {
-            console.log(
-              `⏭️  No trade: ${result.reason}${formatAiLine(result)}`,
-            );
+          let funds = undefined as StepFunds | undefined;
+          try {
+            const f = await this.deps.getFunds?.();
+            if (f) funds = f;
+          } catch {
+            // display-only: omit the funds line rather than break the loop
           }
+          console.log(
+            formatStepBlock({
+              mode: this.config.mode,
+              marketId: loopInput.market_id,
+              bid: loopInput.bid,
+              ask: loopInput.ask,
+              p: result.p,
+              rationale: this.deps.getReasoning?.(loopInput.market_id)
+                ?.rationale,
+              decision: result.decision,
+              reason: result.reason,
+              edge: result.edge,
+              fillPrice: result.fill?.fillPrice,
+              fillStatus: result.fill?.status,
+              size: result.size,
+              floorPct: (this.config.minEdgeAfterCost ?? 0.03) * 100,
+              funds,
+            }),
+          );
 
           // Wait for next interval
           await new Promise((resolve) => setTimeout(resolve, 5000));
