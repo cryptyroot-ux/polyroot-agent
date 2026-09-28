@@ -24,7 +24,9 @@ import { bootstrapAgent, buildWalletIdentity } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
 import {
+  collectHealth,
   explainLastDecision,
+  formatHealth,
   requestHalt,
 } from "./observability/index.js";
 
@@ -167,6 +169,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
           "  polyroot status          Show current configuration\n" +
       "  polyroot explain [--last N] Explain the latest AI decision chain\n" +
       "  polyroot halt [--cancel-orders] Emergency stop + exit\n" +
+      "  polyroot health [--watch]    Real-time system health\n" +
           "  polyroot doctor          Basic health check\n" +
           "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
           "  polyroot wallet verify   Check wallet with no network\n" +
@@ -921,6 +924,7 @@ function printConsoleHelp(): void {
       "  status         Show configuration\n" +
       "  explain        Explain the latest AI decision chain\n" +
       "  halt           Emergency stop (latch + exit)\n" +
+      "  health         Real-time system health\n" +
       "  logs [N]       Show recent agent activity (default 15 lines)\n" +
       "  logs --follow  Watch activity live (Ctrl+C back to prompt)\n" +
       "  shadow-fund    Credit SHADOW play bankroll: shadow-fund --amount 1000\n" +
@@ -1057,6 +1061,8 @@ async function runConsole(): Promise<void> {
         await runExplainCLI(args);
       } else if (cmd === "halt") {
         await runHaltCLI(args);
+      } else if (cmd === "health") {
+        await runHealthCLI(args);
       } else if (cmd === "setup") {
         await runSetupFlow();
       } else if (cmd === "shadow-fund") {
@@ -1850,6 +1856,40 @@ async function runHaltCLI(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * Health command - real-time system health across DB, pipeline, RPC, venue.
+ * Usage: polyroot health [--json] [--watch]
+ */
+async function runHealthCLI(args: string[]): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL required (set in ~/.polyroot/.env).");
+    process.exit(1);
+  }
+  const asJson = args.includes("--json");
+  const watch = args.includes("--watch");
+  const rpcUrl = process.env["RPC_URL"];
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    for (;;) {
+      const report = await collectHealth({ pool, rpcUrl });
+      if (watch) console.clear();
+      console.log(formatHealth(report, asJson));
+      if (!watch) {
+        if (report.overall === "DOWN") process.exit(1);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  } catch (err) {
+    console.error(`❌ health failed: ${(err as Error).message}`);
+    process.exit(1);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
 /** Status command - shows current configuration and health. */
 async function runStatus(): Promise<void> {
   loadDotEnv();
@@ -2363,6 +2403,10 @@ export async function main(
     await runHaltCLI(argv.slice(1));
     return;
   }
+  if (argv[0] === "health") {
+    await runHealthCLI(argv.slice(1));
+    return;
+  }
   if (argv[0] === "update") {
     await runUpdate();
     return;
@@ -2437,6 +2481,7 @@ export async function main(
     argv[0] !== "status" &&
     argv[0] !== "explain" &&
     argv[0] !== "halt" &&
+    argv[0] !== "health" &&
     argv[0] !== "update" &&
     argv[0] !== "doctor" &&
     argv[0] !== "docker-fix" &&

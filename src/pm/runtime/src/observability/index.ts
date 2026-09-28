@@ -13,3 +13,11 @@ export {
   type HaltDeps,
   type HaltResult,
 } from "./halt-manager.js";
+export {
+  collectHealth,
+  formatHealth,
+  type HealthDeps,
+  type HealthProbe,
+  type HealthReport,
+  type ProbeStatus,
+} from "./health-monitor.js";

@@ -68,3 +68,11 @@ export {
   type HaltDeps,
   type HaltResult,
 } from "./observability/index.js";
+export {
+  collectHealth,
+  formatHealth,
+  type HealthDeps,
+  type HealthProbe,
+  type HealthReport,
+  type ProbeStatus,
+} from "./observability/index.js";
