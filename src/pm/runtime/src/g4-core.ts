@@ -243,8 +243,14 @@ export function formatStepBlock(input: StepBlockInput): string {
         : "";
     lines.push(`  → ⏭ NO_TRADE — ${input.reason ?? "no reason given"}${edge}`);
   } else {
+    const fillPrice =
+      typeof input.fillPrice === "number" &&
+      Number.isFinite(input.fillPrice) &&
+      input.fillPrice > 0
+        ? input.fillPrice
+        : null;
     const price =
-      input.fillPrice ?? (input.decision === "BUY" ? input.ask : input.bid);
+      fillPrice ?? (input.decision === "BUY" ? input.ask : input.bid);
     const edge =
       typeof input.edge === "number" && Number.isFinite(input.edge)
         ? ` · edge ${signedPct(input.edge)}`

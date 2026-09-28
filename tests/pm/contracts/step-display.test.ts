@@ -81,6 +81,27 @@ describe("operator step display block", () => {
     assert.ok(!out.includes("bankroll"));
   });
 
+  it("falls back to the book price when the fill price is zero", () => {
+    const out = formatStepBlock({
+      mode: "SHADOW",
+      marketId: "m",
+      bid: 0.034,
+      ask: 0.035,
+      p: 0.035,
+      rationale: null,
+      decision: "SELL",
+      reason: undefined,
+      edge: 0.91,
+      fillPrice: 0,
+      fillStatus: "CANCELLED",
+      size: 100,
+      floorPct: 3,
+      funds: undefined,
+    });
+    assert.ok(out.includes("✓ SELL 100 @ 0.034 · CANCELLED · edge +91.0%"));
+    assert.ok(!out.includes("@ 0 "));
+  });
+
   it("shows locked reservations separately so the bankroll always adds up", () => {
     const out = formatStepBlock({
       mode: "SHADOW",
