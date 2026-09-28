@@ -22,6 +22,8 @@ export interface ForecastInput {
 export interface ForecastProvider {
   readonly name: string;
   forecast(input: ForecastInput): Promise<number | null>;
+  /** Optional rich reply (probability + stated reasoning). Absent on legacy providers. */
+  forecastDetailed?(input: ForecastInput): Promise<DetailedForecast>;
 }
 
 /** Wiring for an OpenAI-compatible chat-completions provider. */
@@ -34,7 +36,52 @@ export interface OpenAICompatibleProviderConfig {
 }
 
 const FORECAST_SYSTEM_PROMPT =
-  'You estimate prediction-market probabilities. Reply with JSON only: {"p": <number between 0 and 1>} for the YES outcome. No other text.';
+  "You estimate prediction-market probabilities. Reply with JSON only, no other text: " +
+  '{"p": <number 0..1 for YES>, "rationale": "<1-2 plain-English sentences: what you weighed and why>", ' +
+  '"factors": ["<short factor 1>", "<short factor 2>"]}. ' +
+  'If you cannot judge, still reply {"p": 0.5} with your honest rationale.';
+
+/** Rich forecast: strict probability plus best-effort reasoning. */
+export interface DetailedForecast {
+  p: number | null;
+  rationale: string | null;
+  factors: string[];
+}
+
+/** Parse a detailed model reply. p follows the strict rules; reasoning degrades gracefully. */
+export function parseDetailedForecast(text: string): DetailedForecast {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return { p: null, rationale: null, factors: [] };
+  }
+  const obj =
+    typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
+  if (!obj) return { p: null, rationale: null, factors: [] };
+  const rawP = obj["p"];
+  const p =
+    typeof rawP === "number" && Number.isFinite(rawP) && rawP >= 0 && rawP <= 1
+      ? rawP
+      : null;
+  const rawR = obj["rationale"];
+  const rationale =
+    typeof rawR === "string" && rawR.trim().length > 0
+      ? rawR.trim().slice(0, 500)
+      : null;
+  const rawF = obj["factors"];
+  const factors = Array.isArray(rawF)
+    ? rawF
+        .filter(
+          (f): f is string => typeof f === "string" && f.trim().length > 0,
+        )
+        .slice(0, 3)
+        .map((f) => f.trim().slice(0, 160))
+    : [];
+  return { p, rationale, factors };
+}
 
 /** Parse model output into a probability, or null when unusable. */
 export function parseForecastProbability(text: string): number | null {
@@ -73,6 +120,11 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
   }
 
   async forecast(input: ForecastInput): Promise<number | null> {
+    return (await this.forecastDetailed(input)).p;
+  }
+
+  /** Full reply: probability plus the model's stated reasoning (nullable). */
+  async forecastDetailed(input: ForecastInput): Promise<DetailedForecast> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -99,15 +151,16 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
           signal: controller.signal,
         },
       );
-      if (!res.ok) return null;
+      if (!res.ok) return { p: null, rationale: null, factors: [] };
       const data = (await res.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };
       const content = data.choices?.[0]?.message?.content;
-      if (typeof content !== "string") return null;
-      return parseForecastProbability(content);
+      if (typeof content !== "string")
+        return { p: null, rationale: null, factors: [] };
+      return parseDetailedForecast(content);
     } catch {
-      return null;
+      return { p: null, rationale: null, factors: [] };
     } finally {
       clearTimeout(timer);
     }

@@ -115,6 +115,40 @@ describe("pipeline step persistence", () => {
     void statements;
   });
 
+  it("records stated AI reasoning into lineage + assumptions", async () => {
+    const { pool, statements } = capturePool();
+    await persistStep(
+      {
+        pool,
+        mode: "SHADOW",
+        getReasoning: () => ({
+          rationale: "Flow favors YES.",
+          factors: ["depth"],
+          model: "m-test",
+        }),
+      },
+      INPUT,
+      {
+        market_id: "mkt-1",
+        decision: "BUY",
+        reason: undefined,
+        p: 0.7,
+        size: 10,
+      },
+    );
+    const fc = statements.find((s) => s.table === "forecasts");
+    assert.ok(fc, "forecast row must exist");
+    const assumptions = fc?.params[5] as unknown[];
+    assert.deepEqual(assumptions, ["Flow favors YES."]);
+    const lineage = JSON.parse(fc?.params[6] as string) as Record<
+      string,
+      unknown
+    >;
+    assert.equal(lineage["rationale"], "Flow favors YES.");
+    assert.deepEqual(lineage["factors"], ["depth"]);
+    assert.equal(fc?.params[3], "m-test");
+  });
+
   it("flushStepPersistence waits for slow in-flight writes", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => {

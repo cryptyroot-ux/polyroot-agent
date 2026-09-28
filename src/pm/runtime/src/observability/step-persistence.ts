@@ -25,11 +25,20 @@
 import type { QueryablePool } from "../mode-watcher.js";
 import type { G4CoreInput, G4CoreResult, G4Mode } from "../g4-core.js";
 
+export interface MarketReasoning {
+  rationale: string | null;
+  factors: string[];
+  model: string;
+}
+
 export interface StepPersistenceDeps {
   pool: QueryablePool;
   mode: G4Mode;
   /** Model label for forecast rows (env POLYROOT_FORECAST_MODEL or unknown). */
   model?: string | undefined;
+  /** Latest stated AI reasoning per market (best-effort, may be absent). */
+  getReasoning?:
+    ((marketId: string) => MarketReasoning | undefined) | undefined;
   /** Called on persistence failure (default: console.warn). Never throws. */
   onError?: ((table: string, err: Error) => void) | undefined;
 }
@@ -108,20 +117,30 @@ export async function persistStep(
   if (p !== null) {
     const abstain =
       result.decision === "NO_TRADE" ? (result.reason ?? "abstained") : null;
+    const reasoning = deps.getReasoning?.(result.market_id);
+    const lineage: Record<string, unknown> = {
+      source: "g4-step",
+      mode: deps.mode,
+    };
+    if (reasoning?.rationale) lineage["rationale"] = reasoning.rationale;
+    if (reasoning && reasoning.factors.length > 0) {
+      lineage["factors"] = reasoning.factors;
+    }
     out.forecast = await tryInsert(
       deps,
       "forecasts",
       `INSERT INTO forecasts
          (market_id, horizon_sec, probability_yes, confidence, model,
-          p_raw, p_calibrated, abstain_reason, lineage)
-       VALUES ($1, 3600, $2, $3, $4, $2, $2, $5, $6)`,
+          p_raw, p_calibrated, abstain_reason, assumptions, lineage)
+       VALUES ($1, 3600, $2, $3, $4, $2, $2, $5, $6, $7)`,
       [
         result.market_id,
         p,
         certainty(p),
-        deps.model ?? "unknown",
+        reasoning?.model ?? deps.model ?? "unknown",
         abstain,
-        JSON.stringify({ source: "g4-step", mode: deps.mode }),
+        reasoning?.rationale ? [reasoning.rationale.slice(0, 280)] : [],
+        JSON.stringify(lineage),
       ],
     );
   }

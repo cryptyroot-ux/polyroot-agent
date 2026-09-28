@@ -105,12 +105,49 @@ async function latestForecast(
   marketId: string,
 ): Promise<Record<string, unknown> | null> {
   const res = await pool.query(
-    `SELECT market_id, probability_yes, confidence, model, abstain_reason, created_at
+    `SELECT market_id, probability_yes, confidence, model, abstain_reason,
+            assumptions, lineage, created_at
        FROM forecasts WHERE market_id = $1 ORDER BY created_at DESC LIMIT 1`,
     [marketId],
   );
   const row = res.rows[0];
   return row ?? null;
+}
+
+/**
+ * Extract the AI's stated reasoning from a forecast row: lineage JSON first
+ * (written by step-persistence), assumptions[] as fallback. Pure display —
+ * missing reasoning renders nothing instead of fabrications.
+ */
+function reasoningLines(f: Record<string, unknown>): string[] {
+  let rationale: string | null = null;
+  let factors: string[] = [];
+  const rawLineage = f["lineage"];
+  if (typeof rawLineage === "string" && rawLineage.length > 0) {
+    try {
+      const lin = JSON.parse(rawLineage) as Record<string, unknown>;
+      if (typeof lin["rationale"] === "string" && lin["rationale"].length > 0) {
+        rationale = lin["rationale"];
+      }
+      if (Array.isArray(lin["factors"])) {
+        factors = lin["factors"].filter(
+          (x): x is string => typeof x === "string" && x.length > 0,
+        );
+      }
+    } catch {
+      // corrupt lineage: fall through to assumptions
+    }
+  }
+  if (!rationale && Array.isArray(f["assumptions"])) {
+    const first = (f["assumptions"] as unknown[])[0];
+    if (typeof first === "string" && first.length > 0) rationale = first;
+  }
+  const lines: string[] = [];
+  if (rationale) lines.push(`  │ AI reasoning: ${rationale}`);
+  for (const factor of factors.slice(0, 3)) {
+    lines.push(`  │   · ${factor}`);
+  }
+  return lines;
 }
 
 async function latestRiskDecision(
@@ -174,6 +211,7 @@ export async function explainLastDecision(
         );
         const abstain = str(f["abstain_reason"]);
         if (abstain !== "—") lines.push(`  │ Abstain reason: ${abstain}`);
+        for (const line of reasoningLines(f)) lines.push(line);
       } else {
         lines.push("  │ No forecast row for this market (abstained upstream).");
       }

@@ -4,6 +4,7 @@ import {
   OpenAICompatibleForecastProvider,
   createForecastProviderFromEnv,
   parseForecastProbability,
+  parseDetailedForecast,
 } from "@polyroot/intelligence";
 
 function stubFetch(content: unknown): typeof fetch {
@@ -80,5 +81,49 @@ describe("forecast provider (fail-closed abstain)", () => {
       POLYROOT_FORECAST_MODEL: "m",
     });
     assert.ok(p !== null);
+  });
+});
+
+describe("forecast provider (stated reasoning)", () => {
+  it("parses p + rationale + factors, degrades gracefully", async () => {
+    const full = parseDetailedForecast(
+      '{"p":0.62,"rationale":"Order flow favors YES into the close.","factors":["bid depth","late volume"]}',
+    );
+    assert.equal(full.p, 0.62);
+    assert.equal(full.rationale, "Order flow favors YES into the close.");
+    assert.deepEqual(full.factors, ["bid depth", "late volume"]);
+
+    const pOnly = parseDetailedForecast('{"p":0.4}');
+    assert.equal(pOnly.p, 0.4);
+    assert.equal(pOnly.rationale, null);
+    assert.deepEqual(pOnly.factors, []);
+
+    const bad = parseDetailedForecast("hello");
+    assert.deepEqual(bad, { p: null, rationale: null, factors: [] });
+
+    const badP = parseDetailedForecast('{"p":9,"rationale":"x"}');
+    assert.equal(badP.p, null);
+    assert.equal(badP.rationale, "x");
+  });
+
+  it("forecast() keeps returning p-only; forecastDetailed carries reasoning", async () => {
+    const p = new OpenAICompatibleForecastProvider({
+      ...BASE,
+      fetchImpl: stubFetch(
+        '{"p":0.71,"rationale":"Why here.","factors":["a"]}',
+      ),
+    });
+    assert.equal(
+      await p.forecast({ market_id: "m", bid: 0.6, ask: 0.65 }),
+      0.71,
+    );
+    const detailed = await p.forecastDetailed({
+      market_id: "m",
+      bid: 0.6,
+      ask: 0.65,
+    });
+    assert.equal(detailed.p, 0.71);
+    assert.equal(detailed.rationale, "Why here.");
+    assert.deepEqual(detailed.factors, ["a"]);
   });
 });

@@ -285,6 +285,12 @@ export async function bootstrapAgent(
   // 7. Forecast provider from env (null = abstain, never a stub value).
   const forecastProvider: ForecastProvider | null =
     createForecastProviderFromEnv();
+  // Latest stated reasoning per market, for live display + DB lineage.
+  // Best-effort only: missing rationale never blocks or alters decisions.
+  const lastReasoning = new Map<
+    string,
+    { rationale: string | null; factors: string[]; model: string }
+  >();
   let warnedNoProvider = false;
   if (forecastProvider) {
     const model = process.env["POLYROOT_FORECAST_MODEL"] ?? "unknown";
@@ -361,6 +367,7 @@ export async function bootstrapAgent(
         pool,
         mode,
         model: process.env["POLYROOT_FORECAST_MODEL"],
+        getReasoning: (marketId: string) => lastReasoning.get(marketId),
       }),
     },
     kernel,
@@ -397,6 +404,25 @@ export async function bootstrapAgent(
         return null;
       }
       try {
+        // Prefer the rich reply so the operator sees the AI's stated
+        // reasoning live; fall back to p-only on legacy providers.
+        // Display-only: the returned p drives the identical decision path.
+        if (typeof forecastProvider.forecastDetailed === "function") {
+          const detailed = await forecastProvider.forecastDetailed(market);
+          const model = process.env["POLYROOT_FORECAST_MODEL"] ?? "unknown";
+          lastReasoning.set(market.market_id, {
+            rationale: detailed.rationale,
+            factors: detailed.factors,
+            model,
+          });
+          if (detailed.rationale) {
+            console.info(`[AI] ${market.market_id}: ${detailed.rationale}`);
+            for (const f of detailed.factors) {
+              console.info(`[AI]   · ${f}`);
+            }
+          }
+          return detailed.p;
+        }
         return await forecastProvider.forecast(market);
       } catch {
         return null;

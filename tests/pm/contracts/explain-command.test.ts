@@ -121,6 +121,31 @@ describe("polyroot explain", () => {
     assert.ok(out.includes("polyroot run --once"));
   });
 
+  it("shows the AI's stated reasoning when the forecast row carries it", async () => {
+    const pool = makePool([
+      (t) => (t.includes("FROM paper_log") ? PAPER_ROWS : null),
+      (t) => (t.includes("FROM shadow_log") ? [] : null),
+      (t) =>
+        t.includes("FROM forecasts")
+          ? [
+              {
+                ...FORECAST_ROWS[0],
+                assumptions: ["Order flow favors YES into the close."],
+                lineage: JSON.stringify({
+                  source: "g4-step",
+                  rationale: "Order flow favors YES into the close.",
+                  factors: ["bid depth"],
+                }),
+              },
+            ]
+          : null,
+      (t) => (t.includes("FROM risk_decisions") ? RISK_ROWS : null),
+    ]);
+    const out = await explainLastDecision(pool, 1);
+    assert.ok(out.includes("AI reasoning: Order flow favors YES"));
+    assert.ok(out.includes("· bid depth"));
+  });
+
   it("is listed in --help", async () => {
     const { code, out } = await runCli("--help");
     assert.equal(code, 0);
