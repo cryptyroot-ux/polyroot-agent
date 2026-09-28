@@ -25,11 +25,13 @@ import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
 import {
   collectHealth,
+  createBackup,
   explainLastDecision,
   formatHealth,
   formatInsight,
   marketDeepDive,
   requestHalt,
+  restoreBackup,
   topOpportunities,
 } from "./observability/index.js";
 
@@ -174,6 +176,8 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
       "  polyroot halt [--cancel-orders] Emergency stop + exit\n" +
       "  polyroot health [--watch]    Real-time system health\n" +
       "  polyroot insight [--market]  Market opportunities + heatmap\n" +
+      "  polyroot backup [--encrypt]  Export state (keystore, config, data)\n" +
+      "  polyroot restore --from DIR  Verify (and --apply) a backup\n" +
           "  polyroot doctor          Basic health check\n" +
           "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
           "  polyroot wallet verify   Check wallet with no network\n" +
@@ -930,6 +934,8 @@ function printConsoleHelp(): void {
       "  halt           Emergency stop (latch + exit)\n" +
       "  health         Real-time system health\n" +
       "  insight        Market opportunities + heatmap\n" +
+      "  backup         Export state (keystore, config, data)\n" +
+      "  restore        Verify (and --apply) a backup\n" +
       "  logs [N]       Show recent agent activity (default 15 lines)\n" +
       "  logs --follow  Watch activity live (Ctrl+C back to prompt)\n" +
       "  shadow-fund    Credit SHADOW play bankroll: shadow-fund --amount 1000\n" +
@@ -1070,6 +1076,10 @@ async function runConsole(): Promise<void> {
         await runHealthCLI(args);
       } else if (cmd === "insight") {
         await runInsightCLI(args);
+      } else if (cmd === "backup") {
+        await runBackupCLI(args);
+      } else if (cmd === "restore") {
+        await runRestoreCLI(args);
       } else if (cmd === "setup") {
         await runSetupFlow();
       } else if (cmd === "shadow-fund") {
@@ -1955,6 +1965,101 @@ async function runInsightCLI(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * Backup command - export operator state + reference data to a directory.
+ * Usage: polyroot backup [--output <dir>] [--encrypt] [--json]
+ */
+async function runBackupCLI(args: string[]): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL required (set in ~/.polyroot/.env).");
+    process.exit(1);
+  }
+  const oIdx = args.indexOf("--output");
+  const home = process.env["HOME"] ?? "/tmp";
+  const defaultDir = `${home}/.polyroot/backups/backup-${new Date().toISOString().slice(0, 10)}`;
+  const outDir =
+    oIdx >= 0 && args[oIdx + 1] && !args[oIdx + 1]?.startsWith("--")
+      ? (args[oIdx + 1] as string)
+      : defaultDir;
+  const encrypt = args.includes("--encrypt");
+  const asJson = args.includes("--json");
+  const passphrase = process.env["POLYROOT_BACKUP_PASSPHRASE"];
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    const { manifestPath, files } = await createBackup(
+      { pool, homeDir: `${home}/.polyroot` },
+      { outDir, encrypt, passphrase },
+    );
+    if (asJson) {
+      console.log(JSON.stringify({ ok: true, manifestPath, files }));
+    } else {
+      console.log(`\n✅ Backup complete: ${manifestPath}`);
+      console.log(`   Files: ${files.length} (${encrypt ? "encrypted" : "redacted"})`);
+      for (const f of files) console.log(`   • ${f}`);
+      if (!encrypt) {
+        console.log("\n💡 Tip: re-run with --encrypt + POLYROOT_BACKUP_PASSPHRASE");
+        console.log("   so a future restore can bring secrets back.");
+      }
+    }
+  } catch (err) {
+    console.error(`❌ backup failed: ${(err as Error).message}`);
+    process.exit(1);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
+/**
+ * Restore command - verify a backup, optionally apply it.
+ * Usage: polyroot restore --from <dir> [--apply] [--json]
+ */
+async function runRestoreCLI(args: string[]): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL required (set in ~/.polyroot/.env).");
+    process.exit(1);
+  }
+  const fIdx = args.indexOf("--from");
+  const fromDir =
+    fIdx >= 0 && args[fIdx + 1] && !args[fIdx + 1]?.startsWith("--")
+      ? (args[fIdx + 1] as string)
+      : "";
+  if (!fromDir) {
+    console.error("Usage: polyroot restore --from <backup-dir> [--apply]");
+    process.exit(1);
+  }
+  const apply = args.includes("--apply");
+  const asJson = args.includes("--json");
+  const passphrase = process.env["POLYROOT_BACKUP_PASSPHRASE"];
+  const home = process.env["HOME"] ?? "/tmp";
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    const result = await restoreBackup(
+      { pool, homeDir: `${home}/.polyroot` },
+      { fromDir, apply, passphrase },
+    );
+    if (asJson) {
+      console.log(JSON.stringify({ ok: true, ...result }));
+    } else {
+      console.log(`\n✅ Verified ${result.verified.length} file(s) — checksums OK`);
+      if (result.apply) {
+        console.log(`   Restored: ${result.restored.join(", ") || "(nothing)"}`);
+      } else {
+        console.log("   Dry-run only — pass --apply to write files.");
+      }
+      for (const n of result.notes) console.log(`   • ${n}`);
+    }
+  } catch (err) {
+    console.error(`❌ restore failed: ${(err as Error).message}`);
+    process.exit(1);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
 /** Status command - shows current configuration and health. */
 async function runStatus(): Promise<void> {
   loadDotEnv();
@@ -2476,6 +2581,14 @@ export async function main(
     await runInsightCLI(argv.slice(1));
     return;
   }
+  if (argv[0] === "backup") {
+    await runBackupCLI(argv.slice(1));
+    return;
+  }
+  if (argv[0] === "restore") {
+    await runRestoreCLI(argv.slice(1));
+    return;
+  }
   if (argv[0] === "update") {
     await runUpdate();
     return;
@@ -2552,6 +2665,8 @@ export async function main(
     argv[0] !== "halt" &&
     argv[0] !== "health" &&
     argv[0] !== "insight" &&
+    argv[0] !== "backup" &&
+    argv[0] !== "restore" &&
     argv[0] !== "update" &&
     argv[0] !== "doctor" &&
     argv[0] !== "docker-fix" &&

@@ -27,3 +27,14 @@ export {
   formatInsight,
   type ScoredMarket,
 } from "./insight-engine.js";
+export {
+  createBackup,
+  restoreBackup,
+  decryptText,
+  type BackupDeps,
+  type BackupRequest,
+  type BackupManifest,
+  type RestoreDeps,
+  type RestoreRequest,
+  type RestoreResult,
+} from "./backup-manager.js";

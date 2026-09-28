@@ -82,3 +82,14 @@ export {
   formatInsight,
   type ScoredMarket,
 } from "./observability/index.js";
+export {
+  createBackup,
+  restoreBackup,
+  decryptText,
+  type BackupDeps,
+  type BackupRequest,
+  type BackupManifest,
+  type RestoreDeps,
+  type RestoreRequest,
+  type RestoreResult,
+} from "./observability/index.js";
