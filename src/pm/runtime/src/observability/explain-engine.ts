@@ -11,7 +11,14 @@
 import type { QueryablePool } from "../mode-watcher.js";
 
 function str(value: unknown): string {
-  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "string" && value.length > 0) {
+    // pg returns NUMERIC as raw strings ("0.00000000") — trim for display.
+    if (/^-?\d+\.\d+$/.test(value)) {
+      const trimmed = value.replace(/\.?0+$/, "");
+      return trimmed === "" || trimmed === "-" ? "0" : trimmed;
+    }
+    return value;
+  }
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value === "boolean") return value ? "true" : "false";
   if (value instanceof Date) return value.toISOString();
