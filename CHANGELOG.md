@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-09-28
+
+### ✨ Added
+- **Rich `run --once` transcript** — `--once` now prints a human-readable book → forecast → verdict transcript (same format as the landing-page terminal) before the machine-readable JSON line. Pure formatter, no trading-logic change; confidence figures are never fabricated.
+
 ## [1.2.0] - 2026-09-28
 
 ### ✨ Added — Beginner-friendly operator commands
