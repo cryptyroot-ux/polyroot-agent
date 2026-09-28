@@ -212,7 +212,7 @@ function parseMode(raw: string | undefined, source: string): CLIConfig["mode"] {
 }
 
 export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
-  let mode: CLIConfig["mode"] = "PAPER";
+  let mode: CLIConfig["mode"] = "SHADOW";
   let databaseUrl = "";
   let kmsKeyId = "";
   let once = false;
@@ -292,7 +292,7 @@ interface OnboardingConfig {
   walletType: "create" | "import";
   privateKey?: string;
   passphrase: string;
-  mode: "PAPER" | "LIVE";
+  mode: "SHADOW" | "LIVE";
   /** Owner-set capital cap in USD (LIVE only; PAPER ignores it). */
   capitalUsd: number;
   /** Owner-set daily loss latch in basis points (500 = 5%). */
@@ -809,7 +809,7 @@ async function runOnboardingFlow(): Promise<void> {
       if (demo.trim().toLowerCase().startsWith("y")) {
         try {
           await startAgent({
-            mode: "PAPER",
+            mode: "SHADOW",
             databaseUrl: process.env["DATABASE_URL"] ?? "",
             kmsKeyId: "",
             kmsEndpoint: "",
@@ -953,7 +953,7 @@ async function askConsoleLine(): Promise<string> {
 async function printConsoleSnapshot(): Promise<void> {
   loadDotEnv();
   const env = process.env;
-  const mode = env["RUNTIME_MODE"] ?? "PAPER";
+  const mode = env["RUNTIME_MODE"] ?? "SHADOW";
   console.log(`Mode: ${mode}`);
   const dbUrl = env["DATABASE_URL"] ?? "";
   if (!dbUrl) {
@@ -1238,7 +1238,7 @@ async function runConsole(): Promise<void> {
  *  touch real money. Idempotent (sets, not adds) for a clean baseline. */
 async function runShadowFund(amountRaw: string): Promise<void> {
   loadDotEnv();
-  const mode = (process.env["RUNTIME_MODE"] ?? "PAPER").toUpperCase();
+  const mode = (process.env["RUNTIME_MODE"] ?? "SHADOW").toUpperCase();
   if (mode === "MICRO_LIVE" || mode === "LIVE") {
     console.error(
       "❌ REFUSED: shadow-fund is play money — never on MICRO_LIVE/LIVE.",
