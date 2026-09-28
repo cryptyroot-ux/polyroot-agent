@@ -327,32 +327,33 @@ export async function bootstrapAgent(
   // 9. Shared metrics + G4 Pipeline (observability wired to Metrics).
   const metrics = new Metrics();
 
-  // Operator display funds: sim bankroll from the ledger (static per
-  // session — fills never move real money) + live session PnL from the
-  // shared metrics. Best-effort: null bankroll simply hides that line.
+  // Operator display funds: sim bankroll from the ledger + locked
+  // reservations (in-flight intents, auto-released) + live session PnL
+  // from the shared metrics. Best-effort: null bankroll hides that line.
+  const toUsd = (raw: unknown): number | null => {
+    const n =
+      typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
+    return Number.isFinite(n) ? Math.round((n / 1e6) * 100) / 100 : null;
+  };
   const getFunds = async (): Promise<{
     bankrollUsd: number | null;
+    lockedUsd: number | undefined;
     sessionPnlUsd: number;
   }> => {
     let bankrollUsd: number | null = null;
+    let lockedUsd: number | undefined = undefined;
     try {
       const r = await pool.query(
-        `SELECT available_base FROM balance_entries
+        `SELECT available_base, committed_base FROM balance_entries
           WHERE account = $1 AND asset = 'pUSD' LIMIT 1`,
         [wallet.funder],
       );
-      const raw: unknown = r.rows[0]?.["available_base"];
-      const n =
-        typeof raw === "string"
-          ? Number(raw)
-          : typeof raw === "number"
-            ? raw
-            : NaN;
-      if (Number.isFinite(n)) bankrollUsd = Math.round((n / 1e6) * 100) / 100;
+      bankrollUsd = toUsd(r.rows[0]?.["available_base"]);
+      lockedUsd = toUsd(r.rows[0]?.["committed_base"]) ?? undefined;
     } catch {
       // display-only: stay null
     }
-    return { bankrollUsd, sessionPnlUsd: metrics.getCounter("totalPnl") };
+    return { bankrollUsd, lockedUsd, sessionPnlUsd: metrics.getCounter("totalPnl") };
   };
 
   // Live enforcement inputs (fail-closed): an explicit owner loss cap is

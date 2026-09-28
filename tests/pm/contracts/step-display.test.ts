@@ -80,4 +80,26 @@ describe("operator step display block", () => {
     assert.ok(out.includes("session $0.00"));
     assert.ok(!out.includes("bankroll"));
   });
+
+  it("shows locked reservations separately so the bankroll always adds up", () => {
+    const out = formatStepBlock({
+      mode: "SHADOW",
+      marketId: "m",
+      bid: 0.6,
+      ask: 0.61,
+      p: 0.6,
+      rationale: null,
+      decision: "NO_TRADE",
+      reason: "edge",
+      edge: -0.01,
+      fillPrice: undefined,
+      fillStatus: undefined,
+      size: undefined,
+      floorPct: 3,
+      funds: { bankrollUsd: 996.5, lockedUsd: 3.5, sessionPnlUsd: 0 },
+    });
+    assert.ok(
+      out.includes("bankroll +$996.50 · locked +$3.50 · session $0.00"),
+    );
+  });
 });

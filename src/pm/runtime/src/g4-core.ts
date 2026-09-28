@@ -164,6 +164,8 @@ export interface G4CoreResult {
 /** Funds snapshot for the operator display block. */
 export interface StepFunds {
   bankrollUsd: number | null;
+  /** Temporarily reserved by in-flight intents; auto-released, never lost. */
+  lockedUsd?: number | undefined;
   sessionPnlUsd: number;
 }
 
@@ -257,7 +259,13 @@ export function formatStepBlock(input: StepBlockInput): string {
       input.funds.bankrollUsd === null
         ? ""
         : `bankroll ${money(input.funds.bankrollUsd)} · `;
-    lines.push(`  $ ${bank}session ${money(input.funds.sessionPnlUsd)}`);
+    const locked =
+      input.funds.lockedUsd !== undefined &&
+      Number.isFinite(input.funds.lockedUsd) &&
+      input.funds.lockedUsd > 0
+        ? `locked ${money(input.funds.lockedUsd)} · `
+        : "";
+    lines.push(`  $ ${bank}${locked}session ${money(input.funds.sessionPnlUsd)}`);
   }
   return lines.join("\n");
 }
