@@ -263,14 +263,31 @@ export async function filterTightSpreadTokens(
 }
 
 /**
+ * Decide manual vs auto discovery (pure, fully unit-tested).
+ *
+ * - explicit "auto"/"manual" always wins.
+ * - unset + curated POLYROOT_MARKET_IDS present → manual (backward compat:
+ *   existing installs keep hunting exactly their list).
+ * - unset + no ids → auto (fresh installs hunt by themselves; nothing to configure).
+ */
+export function resolveDiscoveryMode(env: {
+  POLYROOT_MARKET_DISCOVERY?: string;
+  POLYROOT_MARKET_IDS?: string;
+}): "auto" | "manual" {
+  const raw = (env.POLYROOT_MARKET_DISCOVERY ?? "").trim().toLowerCase();
+  if (raw === "auto") return "auto";
+  if (raw === "manual") return "manual";
+  return (env.POLYROOT_MARKET_IDS ?? "").trim().length > 0 ? "manual" : "auto";
+}
+
+/**
  * Resolve the trading universe for SHADOW/MICRO_LIVE/LIVE.
  *
- * - manual (default): exact owner-curated POLYROOT_MARKET_IDS (unchanged).
- * - auto (POLYROOT_MARKET_DISCOVERY=auto): the agent fetches active markets
- *   itself, keeps the most liquid by volume, then verifies each token's real
- *   order-book touch and drops anything wider than the owner max spread.
- *   Every surviving id is still validated as a CLOB asset id; zero
- *   survivors = throw, fail-closed.
+ * - manual: exact owner-curated POLYROOT_MARKET_IDS (unchanged).
+ * - auto: the agent fetches active markets itself, keeps the most liquid
+ *   by volume, then verifies each token's real order-book touch and drops
+ *   anything wider than the owner max spread. Every surviving id is still
+ *   validated as a CLOB asset id; zero survivors = throw, fail-closed.
  */
 export async function resolveMarketUniverse(env: {
   POLYROOT_MARKET_DISCOVERY?: string;
@@ -280,9 +297,7 @@ export async function resolveMarketUniverse(env: {
   POLYROOT_DISCOVERY_MAX_SPREAD?: string;
 }): Promise<string[]> {
   const { readMarketUniverse } = await import("./market-universe.js");
-  if (
-    (env.POLYROOT_MARKET_DISCOVERY ?? "manual").trim().toLowerCase() !== "auto"
-  ) {
+  if (resolveDiscoveryMode(env) !== "auto") {
     return readMarketUniverse(env);
   }
   const bounds = parseDiscoveryBounds(env);

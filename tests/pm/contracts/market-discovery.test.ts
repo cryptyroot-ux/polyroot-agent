@@ -5,6 +5,7 @@ import {
   parseDiscoveryBounds,
   parseGammaEvents,
   parseMarketPick,
+  resolveDiscoveryMode,
   resolveMarketUniverse,
   selectLiquidMarkets,
   type DiscoveredMarket,
@@ -118,7 +119,33 @@ describe("market discovery (pick by name)", () => {
     assert.deepEqual(out, ["123", "456"]);
   });
 
-  it("manual mode still refuses empty universes", async () => {
-    await assert.rejects(() => resolveMarketUniverse({}), /MISSING/);
+  it("explicit manual still refuses empty universes", async () => {
+    await assert.rejects(
+      () => resolveMarketUniverse({ POLYROOT_MARKET_DISCOVERY: "manual" }),
+      /MISSING/,
+    );
+  });
+
+  it("resolveDiscoveryMode: explicit wins, else ids imply manual, else auto", () => {
+    assert.equal(
+      resolveDiscoveryMode({ POLYROOT_MARKET_DISCOVERY: "auto" }),
+      "auto",
+    );
+    assert.equal(
+      resolveDiscoveryMode({ POLYROOT_MARKET_DISCOVERY: "manual" }),
+      "manual",
+    );
+    assert.equal(
+      resolveDiscoveryMode({ POLYROOT_MARKET_IDS: "123,456" }),
+      "manual",
+    );
+    assert.equal(resolveDiscoveryMode({}), "auto");
+    assert.equal(
+      resolveDiscoveryMode({
+        POLYROOT_MARKET_DISCOVERY: "  ",
+        POLYROOT_MARKET_IDS: "123",
+      }),
+      "manual",
+    );
   });
 });

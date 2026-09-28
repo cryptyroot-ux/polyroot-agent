@@ -986,8 +986,7 @@ async function printConsoleSnapshot(): Promise<void> {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const isAuto =
-    (env["POLYROOT_MARKET_DISCOVERY"] ?? "manual").toLowerCase() === "auto";
+  const isAuto = resolveDiscoveryMode(env) === "auto";
   if (isAuto) {
     const b = parseDiscoveryBounds(env);
     console.log(
@@ -1411,10 +1410,12 @@ async function runSetupFlow(): Promise<void> {
         }
       | undefined;
     const currentUniverse = process.env["POLYROOT_MARKET_IDS"] ?? "";
-    const alreadyAuto =
-      (process.env["POLYROOT_MARKET_DISCOVERY"] ?? "manual").toLowerCase() ===
-      "auto";
-    const hasMarketConfig = Boolean(currentUniverse) || alreadyAuto;
+    const alreadyAuto = resolveDiscoveryMode(process.env) === "auto";
+    // Explicit config (ids or an explicit flag) keeps the "Keep current"
+    // menu first; fresh installs fall through to the Auto-recommended menu.
+    const hasMarketConfig =
+      Boolean(currentUniverse) ||
+      (process.env["POLYROOT_MARKET_DISCOVERY"] ?? "").trim().length > 0;
     if (currentUniverse) {
       console.log(`\nCurrent markets: ${currentUniverse}`);
     }
@@ -1591,6 +1592,7 @@ import {
   parseDiscoveryBounds,
   parseMarketPick,
   readMarketUniverse,
+  resolveDiscoveryMode,
   resolveMarketUniverse,
   runVenueCheck,
 } from "@polyroot/venue";

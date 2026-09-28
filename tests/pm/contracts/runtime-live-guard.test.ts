@@ -171,6 +171,7 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
     const prevAccount = process.env["WALLET_ACCOUNT"];
     const prevFunder = process.env["WALLET_FUNDER"];
     const prevUniverse = process.env["POLYROOT_MARKET_IDS"];
+    const prevDiscovery = process.env["POLYROOT_MARKET_DISCOVERY"];
     const prevLossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
     process.env["WALLET_PRIVATE_KEY"] =
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -179,6 +180,9 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
     process.env["WALLET_FUNDER"] = "0x2222222222222222222222222222222222222222";
     process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = "100";
     delete process.env["POLYROOT_MARKET_IDS"];
+    // Explicit manual + empty ids must still refuse (auto is the default
+    // only when nothing is configured at all).
+    process.env["POLYROOT_MARKET_DISCOVERY"] = "manual";
     try {
       await assert.rejects(
         bootstrapAgent(DUMMY_DB, "MICRO_LIVE", {
@@ -196,6 +200,9 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
       else process.env["WALLET_FUNDER"] = prevFunder;
       if (prevUniverse === undefined) delete process.env["POLYROOT_MARKET_IDS"];
       else process.env["POLYROOT_MARKET_IDS"] = prevUniverse;
+      if (prevDiscovery === undefined)
+        delete process.env["POLYROOT_MARKET_DISCOVERY"];
+      else process.env["POLYROOT_MARKET_DISCOVERY"] = prevDiscovery;
       if (prevLossCap === undefined)
         delete process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
       else process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = prevLossCap;
