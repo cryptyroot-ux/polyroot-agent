@@ -144,6 +144,62 @@ function getEnv(key: string): string | undefined {
   return process.env[key];
 }
 
+export interface OnceTranscriptInput {
+  market_id: string;
+  bid: number;
+  ask: number;
+}
+
+export interface OnceTranscriptResult {
+  market_id: string;
+  decision: "NO_TRADE" | "BUY" | "SELL";
+  reason: string | undefined;
+  p: number | null | undefined;
+  size: number | undefined;
+  edge: number | undefined;
+  fill: { fillPrice: number } | undefined;
+}
+
+/**
+ * Rich human-readable transcript for `polyroot run --once`, mirroring the
+ * simulated terminal on the landing page. Pure formatter (no I/O) — prints
+ * only values the engine actually produced, never fabrications: no
+ * confidence figure exists at this layer, so none is shown.
+ */
+export function formatOnceTranscript(
+  input: OnceTranscriptInput,
+  result: OnceTranscriptResult,
+): string {
+  const trim = (n: number): string => String(Math.round(n * 1000) / 1000);
+  const lines = [
+    `book  YES ${trim(input.bid)} / NO ${trim(input.ask)} · spread ${trim(Math.abs(input.ask - input.bid))}`,
+  ];
+  const p =
+    typeof result.p === "number" && Number.isFinite(result.p) ? result.p : null;
+  if (p === null) {
+    lines.push(
+      `AI forecast  abstained${result.reason ? ` — ${result.reason}` : ""}`,
+    );
+  } else {
+    lines.push(`AI forecast  p(YES) = ${trim(p)}`);
+  }
+  if (result.decision === "NO_TRADE") {
+    lines.push(`⏭ NO_TRADE — ${result.reason ?? "no reason given"}`);
+  } else {
+    const price =
+      result.fill?.fillPrice ??
+      (result.decision === "BUY" ? input.ask : input.bid);
+    const edge =
+      typeof result.edge === "number" && Number.isFinite(result.edge)
+        ? ` · edge ${(result.edge >= 0 ? "+" : "") + String(Math.round(result.edge * 1000) / 10) + "%"}`
+        : "";
+    lines.push(
+      `✓ ${result.decision} ${result.size ?? "?"} @ ${trim(price)}${edge}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 const MODES = ["PAPER", "SHADOW", "MICRO_LIVE", "LIVE"] as const;
 
 function parseMode(raw: string | undefined, source: string): CLIConfig["mode"] {
@@ -1569,7 +1625,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
       market_id: string;
       bid: number;
       ask: number;
-    }) => Promise<unknown>;
+    }) => Promise<OnceTranscriptResult>;
   };
 
   // Restart idempotency gate: load durable seen_orders BEFORE the pipeline
@@ -1596,11 +1652,9 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   }
 
   if (config.once) {
-    const result = await pipeline.processMarket({
-      market_id: "mock_market_1",
-      bid: 0.45,
-      ask: 0.55,
-    });
+    const onceInput = { market_id: "mock_market_1", bid: 0.45, ask: 0.55 };
+    const result = await pipeline.processMarket(onceInput);
+    console.log(formatOnceTranscript(onceInput, result));
     console.log("Once result: " + JSON.stringify(result));
     // Flush fire-and-forget step writes before closing the pool,
     // otherwise the single cycle's rows are lost on exit.

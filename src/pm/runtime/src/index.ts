@@ -61,6 +61,11 @@ export {
   type WalletVerifyResult,
 } from "./cli.js";
 export type { CLIConfig } from "./cli.js";
+export {
+  formatOnceTranscript,
+  type OnceTranscriptInput,
+  type OnceTranscriptResult,
+} from "./cli.js";
 export { explainLastDecision } from "./observability/index.js";
 export {
   requestHalt,
