@@ -23,6 +23,7 @@ import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 import { bootstrapAgent, buildWalletIdentity } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
+import { explainLastDecision } from "./observability/index.js";
 
 /**
  * Load .env via Node's native loader when present (never overrides real env).
@@ -161,6 +162,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
           "  polyroot shadow-fund --amount <usd>  Credit SHADOW play bankroll\n" +
           "  polyroot markets         Browse popular markets by name\n" +
           "  polyroot status          Show current configuration\n" +
+      "  polyroot explain [--last N] Explain the latest AI decision chain\n" +
           "  polyroot doctor          Basic health check\n" +
           "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
           "  polyroot wallet verify   Check wallet with no network\n" +
@@ -913,6 +915,7 @@ function printConsoleHelp(): void {
       "  run [flags]    Start the agent (mode from settings). Ctrl+C stops.\n" +
       "  restart        Stop the background agent, print how to start it\n" +
       "  status         Show configuration\n" +
+      "  explain        Explain the latest AI decision chain\n" +
       "  logs [N]       Show recent agent activity (default 15 lines)\n" +
       "  logs --follow  Watch activity live (Ctrl+C back to prompt)\n" +
       "  shadow-fund    Credit SHADOW play bankroll: shadow-fund --amount 1000\n" +
@@ -1045,6 +1048,8 @@ async function runConsole(): Promise<void> {
         await printConsoleSnapshot();
       } else if (cmd === "status") {
         await runStatus();
+      } else if (cmd === "explain") {
+        await runExplainCLI(args);
       } else if (cmd === "setup") {
         await runSetupFlow();
       } else if (cmd === "shadow-fund") {
@@ -1721,6 +1726,41 @@ export async function runGuardReset(
   }
 }
 
+/**
+ * Explain command - prints the human-readable reason chain for the latest
+ * simulated decision(s). Read-only: never writes to the database.
+ * Usage: polyroot explain [--last <N>] [--json]
+ */
+async function runExplainCLI(args: string[]): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL required (set in ~/.polyroot/.env).");
+    process.exit(1);
+  }
+  const lIdx = args.indexOf("--last");
+  const lastRaw = lIdx >= 0 ? Number(args[lIdx + 1]) : 1;
+  const last =
+    Number.isFinite(lastRaw) && lastRaw > 0
+      ? Math.min(Math.floor(lastRaw), 20)
+      : 1;
+  const asJson = args.includes("--json");
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    const text = await explainLastDecision(pool, last);
+    if (asJson) {
+      console.log(JSON.stringify({ ok: true, last, explanation: text }));
+    } else {
+      console.log(text);
+    }
+  } catch (err) {
+    console.error(`❌ explain failed: ${(err as Error).message}`);
+    process.exit(1);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
 /** Status command - shows current configuration and health. */
 async function runStatus(): Promise<void> {
   loadDotEnv();
@@ -2226,6 +2266,10 @@ export async function main(
     await runStatus();
     return;
   }
+  if (argv[0] === "explain") {
+    await runExplainCLI(argv.slice(1));
+    return;
+  }
   if (argv[0] === "update") {
     await runUpdate();
     return;
@@ -2298,6 +2342,7 @@ export async function main(
     argv[0] !== "markets" &&
     argv[0] !== "guard" &&
     argv[0] !== "status" &&
+    argv[0] !== "explain" &&
     argv[0] !== "update" &&
     argv[0] !== "doctor" &&
     argv[0] !== "docker-fix" &&
