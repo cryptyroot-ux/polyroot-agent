@@ -38,3 +38,9 @@ export {
   type RestoreRequest,
   type RestoreResult,
 } from "./backup-manager.js";
+export {
+  persistStep,
+  createStepPersistence,
+  type StepPersistenceDeps,
+  type PersistedStep,
+} from "./step-persistence.js";

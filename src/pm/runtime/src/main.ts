@@ -32,6 +32,7 @@ import { createG4Pipeline } from "./g4-pipeline.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
 import { PgLiveGuardStore } from "./live-guard-store.js";
+import { createStepPersistence } from "./observability/index.js";
 import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
 import { resolveMarketUniverse } from "@polyroot/venue";
 import {
@@ -354,6 +355,13 @@ export async function bootstrapAgent(
     },
     observability: {
       emitMetrics: (m) => recordG4Metrics(metrics, m),
+      // Durable per-step persistence (snapshots, forecasts, decision logs).
+      // Passive observer only: fire-and-forget, never blocks or breaks trading.
+      ...createStepPersistence({
+        pool,
+        mode,
+        model: process.env["POLYROOT_FORECAST_MODEL"],
+      }),
     },
     kernel,
     signer,

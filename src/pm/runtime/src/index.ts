@@ -93,3 +93,9 @@ export {
   type RestoreRequest,
   type RestoreResult,
 } from "./observability/index.js";
+export {
+  persistStep,
+  createStepPersistence,
+  type StepPersistenceDeps,
+  type PersistedStep,
+} from "./observability/index.js";
