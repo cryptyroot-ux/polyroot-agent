@@ -100,14 +100,28 @@ export async function persistStep(
   const bid = round4(input.bid);
   const ask = round4(input.ask);
 
-  // 1. Market snapshot (best-effort: FK to markets(id) may fail for mocks).
-  out.snapshot = await tryInsert(
-    deps,
-    "market_snapshots",
-    `INSERT INTO market_snapshots (market_id, yes_price, no_price, spread)
-     VALUES ($1, $2, $3, $4)`,
-    [input.market_id, bid, ask, round4(Math.abs(ask - bid))],
-  );
+  // 1. Market snapshot. Skipped SILENTLY when the market is not registered
+  // in markets(id): undiscovered/manual tokens have no parent row, and that
+  // is expected — not operator-actionable, so no warning (unlike real errors).
+  let registered = true;
+  try {
+    const check = await deps.pool.query(
+      `SELECT 1 FROM markets WHERE id = $1 LIMIT 1`,
+      [input.market_id],
+    );
+    registered = check.rows.length > 0;
+  } catch {
+    registered = true; // check itself failed: attempt insert, warn on failure
+  }
+  out.snapshot = registered
+    ? await tryInsert(
+        deps,
+        "market_snapshots",
+        `INSERT INTO market_snapshots (market_id, yes_price, no_price, spread)
+         VALUES ($1, $2, $3, $4)`,
+        [input.market_id, bid, ask, round4(Math.abs(ask - bid))],
+      )
+    : false;
 
   // 2. Forecast row — only when p is a finite probability.
   const p =

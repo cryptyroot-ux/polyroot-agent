@@ -12,6 +12,7 @@ function capturePool(opts: { failTables?: string[] } = []) {
   const pool = {
     statements,
     query: async (text: string, params?: unknown[]) => {
+      if (/FROM markets WHERE/.test(text)) return { rows: [{ found: 1 }] };
       const m = /INSERT INTO (\w+)/.exec(text);
       const table = m?.[1] ?? "unknown";
       statements.push({ table, params: params ?? [] });
@@ -149,6 +150,34 @@ describe("pipeline step persistence", () => {
     assert.equal(fc?.params[3], "m-test");
   });
 
+  it("skips snapshots silently for unregistered markets (no warning spam)", async () => {
+    const errs: Array<{ table: string; message: string }> = [];
+    const seen: string[] = [];
+    const pool = {
+      query: async (text: string) => {
+        if (/FROM markets WHERE/.test(text)) return { rows: [] };
+        const m = /INSERT INTO (\w+)/.exec(text);
+        if (m?.[1]) seen.push(m[1]);
+        return { rows: [] };
+      },
+    };
+    const out = await persistStep(
+      {
+        pool,
+        mode: "SHADOW",
+        onError: (table, err) => {
+          errs.push({ table, message: err.message });
+        },
+      },
+      INPUT,
+      { market_id: "ghost-token", decision: "NO_TRADE", reason: "x", p: 0.4 },
+    );
+    assert.equal(out.snapshot, false);
+    assert.equal(out.decisionLog, true);
+    assert.ok(!seen.includes("market_snapshots"));
+    assert.deepEqual(errs, [], "expected silence, not warnings");
+  });
+
   it("flushStepPersistence waits for slow in-flight writes", async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => {
@@ -157,6 +186,7 @@ describe("pipeline step persistence", () => {
     const seen: string[] = [];
     const slowPool = {
       query: async (text: string) => {
+        if (/FROM markets WHERE/.test(text)) return { rows: [{ found: 1 }] };
         const m = /INSERT INTO (\w+)/.exec(text);
         await gate;
         seen.push(m?.[1] ?? "?");
