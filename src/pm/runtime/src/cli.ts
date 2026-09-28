@@ -411,7 +411,7 @@ async function askOnShared(
 /** One normal line of input. Blank accepts `defaultValue`; without one, re-ask. */
 async function askText(
   message: string,
-  opts: { defaultValue?: string } = {},
+  opts: { defaultValue?: string | undefined } = {},
 ): Promise<string> {
   const hint = opts.defaultValue !== undefined ? ` [${opts.defaultValue}]` : "";
   for (;;) {
@@ -498,8 +498,38 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   const provider = await askChoice(
     "Choose AI provider (Enter = default):",
     [
-      "OpenAI (GPT-4o, GPT-4o-mini)",
-      "My own OpenAI-compatible gateway (my 9Router/NewAPI/OpenRouter account, company gateway, ...)",
+      "OpenAI (GPT-4o, GPT-4o-mini, GPT-4-turbo)",
+      "Qwen (Qwen Cloud / DashScope, Coding Plan, Token Plan & Qwen CLI OAuth)",
+      "xAI Grok (Direct API or SuperGrok / Premium+ OAuth)",
+      "Xiaomi MiMo (MiMo-V2.5 and V2 models: pro, omni, flash)",
+      "Tencent Hy (Hy4 / Hy3 via TokenHub & TokenPlan)",
+      "NVIDIA NIM (Nemotron models via build.nvidia.com or local NIM)",
+      "GitHub Copilot ACP (Spawns copilot --acp --stdio)",
+      "Hugging Face Inference Providers",
+      "Google AI Studio (Native Gemini API)",
+      "Google Vertex AI (Gemini via GCP; OAuth2 service account or ADC, GCP billing/quotas)",
+      "DeepSeek (V3, R1, coder, direct API)",
+      "Z.AI / GLM (Zhipu direct API)",
+      "Kimi / Moonshot (Coding Plan, Moonshot global & China endpoints)",
+      "StepFun Step Plan (Agent / coding models via Step Plan API)",
+      "MiniMax (Global, OAuth Coding Plan & China endpoints)",
+      "Ollama Cloud (Cloud-hosted open models, ollama.com)",
+      "Arcee AI (Trinity models, direct API)",
+      "GMI Cloud (Multi-model direct API)",
+      "Kilo Code (Kilo Gateway API)",
+      "OpenCode Go (Open models subscription)",
+      "AWS Bedrock (Claude, Nova, Llama, DeepSeek; IAM or API key)",
+      "Azure Foundry (OpenAI-style or Anthropic-style endpoint, your Azure AI deployment)",
+      "Vercel AI Gateway (Multi-model aggregator)",
+      "Actual Computer - hosted inference via api.actual.inc, or local offline inference",
+      "CommandCode — 20+ models via OpenAI-compatible API",
+      "CommandCode — Claude models via Anthropic Messages API",
+      "custom (direct API)",
+      "DeepInfra — 100+ open models, pay-per-use",
+      "Meta Muse Spark family (Meta Superintelligence Labs)",
+      "Nebius Token Factory — OpenAI-compatible inference",
+      "Ramp Router (router.com) — routes each request to the cheapest model that clears you",
+      "Upstage (Solar API)",
       "Ollama (runs on this machine)",
     ],
     0,
@@ -509,37 +539,284 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let baseUrl = "";
   let apiKey = "";
 
-  if (provider.startsWith("OpenAI")) {
-    model = await askChoice(
-      "Select model:",
-      ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"],
-      0,
+  // Provider configurations
+  const providerConfig: Record<string, {
+    baseUrl?: string;
+    defaultModel?: string;
+    models?: string[];
+    apiKeyRequired?: boolean;
+    specialHandling?: 'ollama' | 'vertex' | 'bedrock' | 'custom' | 'copilot' | 'azure';
+  }> = {
+    "OpenAI": {
+      baseUrl: "https://api.openai.com/v1",
+      models: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+      defaultModel: "gpt-4o-mini",
+    },
+    "Qwen": {
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      models: ["qwen-max", "qwen-plus", "qwen-turbo", "qwen-coder-plus"],
+      defaultModel: "qwen-max",
+    },
+    "xAI Grok": {
+      baseUrl: "https://api.x.ai/v1",
+      models: ["grok-1", "grok-2", "grok-2-mini"],
+      defaultModel: "grok-2",
+    },
+    "Xiaomi MiMo": {
+      baseUrl: "https://api.mimo.xiaomi.com/v1",
+      models: ["mimo-pro", "mimo-omni", "mimo-flash"],
+      defaultModel: "mimo-pro",
+    },
+    "Tencent Hy": {
+      baseUrl: "https://api.hunyuan.cloud.tencent.com/v1",
+      models: ["hy4", "hy3"],
+      defaultModel: "hy4",
+    },
+    "NVIDIA NIM": {
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      models: ["nemotron-3-ultra", "nemotron-3-ultra-550b", "nemotron-4-340b"],
+      defaultModel: "nemotron-3-ultra",
+    },
+    "GitHub Copilot ACP": {
+      specialHandling: "copilot",
+    },
+    "Hugging Face Inference Providers": {
+      baseUrl: "https://api-inference.huggingface.co/v1",
+      models: ["meta-llama/Meta-Llama-3.1-70B-Instruct", "mistralai/Mixtral-8x7B-Instruct-v0.1", "google/gemma-2-27b-it"],
+      defaultModel: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    },
+    "Google AI Studio": {
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+      models: ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b"],
+      defaultModel: "gemini-1.5-pro",
+    },
+    "Google Vertex AI": {
+      specialHandling: "vertex",
+    },
+    "DeepSeek": {
+      baseUrl: "https://api.deepseek.com/v1",
+      models: ["deepseek-chat", "deepseek-coder", "deepseek-r1"],
+      defaultModel: "deepseek-chat",
+    },
+    "Z.AI / GLM": {
+      baseUrl: "https://api.z.ai/v1",
+      models: ["glm-4", "glm-4-air", "glm-4-airx"],
+      defaultModel: "glm-4",
+    },
+    "Kimi / Moonshot": {
+      baseUrl: "https://api.moonshot.cn/v1",
+      models: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
+      defaultModel: "moonshot-v1-8k",
+    },
+    "StepFun Step Plan": {
+      baseUrl: "https://api.stepfun.com/v1",
+      models: ["step-1", "step-2"],
+      defaultModel: "step-1",
+    },
+    "MiniMax": {
+      baseUrl: "https://api.minimax.chat/v1",
+      models: ["abab6.5s-chat", "abab6.5-chat", "abab5.5-chat"],
+      defaultModel: "abab6.5s-chat",
+    },
+    "Ollama Cloud": {
+      baseUrl: "https://api.ollama.com/v1",
+      models: ["llama3.1", "llama3.1:70b", "qwen2.5:72b", "codellama:34b"],
+      defaultModel: "llama3.1",
+    },
+    "Arcee AI": {
+      baseUrl: "https://api.arcee.ai/v1",
+      models: ["trinity-7b", "trinity-14b"],
+      defaultModel: "trinity-14b",
+    },
+    "GMI Cloud": {
+      baseUrl: "https://api.gmi-cloud.com/v1",
+      models: ["gmi-1", "gmi-2"],
+      defaultModel: "gmi-1",
+    },
+    "Kilo Code": {
+      baseUrl: "https://api.kilocode.ai/v1",
+      models: ["kilocode-pro", "kilocode-lite"],
+      defaultModel: "kilocode-pro",
+    },
+    "OpenCode Go": {
+      baseUrl: "https://api.opencode.ai/v1",
+      models: ["opencode-gpt", "opencode-claude"],
+      defaultModel: "opencode-gpt",
+    },
+    "AWS Bedrock": {
+      specialHandling: "bedrock",
+    },
+    "Azure Foundry": {
+      specialHandling: "azure",
+    },
+    "Vercel AI Gateway": {
+      baseUrl: "https://ai-gateway.vercel.sh/v1",
+      models: ["gpt-4o", "claude-3.5-sonnet", "llama-3.1-70b"],
+      defaultModel: "gpt-4o",
+    },
+    "Actual Computer": {
+      baseUrl: "https://api.actual.inc/v1",
+      models: ["actual-pro", "actual-lite"],
+      defaultModel: "actual-pro",
+    },
+    "CommandCode — 20+ models via OpenAI-compatible API": {
+      baseUrl: "https://api.commandcode.com/v1",
+      models: ["command-r-plus", "command-r", "command-r-08-2024"],
+      defaultModel: "command-r-plus",
+    },
+    "CommandCode — Claude models via Anthropic Messages API": {
+      baseUrl: "https://api.anthropic.com/v1",
+      models: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
+      defaultModel: "claude-3-5-sonnet-20241022",
+    },
+    "custom (direct API)": {
+      specialHandling: "custom",
+    },
+    "DeepInfra": {
+      baseUrl: "https://api.deepinfra.com/v1/openai",
+      models: ["meta-llama/Meta-Llama-3.1-70B-Instruct", "microsoft/phi-3-medium-4k-instruct", "mistralai/Mixtral-8x7B-Instruct-v0.1"],
+      defaultModel: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    },
+    "Meta Muse Spark family": {
+      baseUrl: "https://api.muse.meta.com/v1",
+      models: ["muse-spark-1", "muse-spark-2"],
+      defaultModel: "muse-spark-1",
+    },
+    "Nebius Token Factory": {
+      baseUrl: "https://api.studio.nebius.ai/v1",
+      models: ["meta-llama/Meta-Llama-3.1-405B-Instruct", "mistralai/Mixtral-8x7B-Instruct-v0.1"],
+      defaultModel: "meta-llama/Meta-Llama-3.1-405B-Instruct",
+    },
+    "Ramp Router": {
+      baseUrl: "https://api.ramp.router/v1",
+      models: ["auto"],
+      defaultModel: "auto",
+    },
+    "Upstage": {
+      baseUrl: "https://api.upstage.ai/v1/solar",
+      models: ["solar-1-mini", "solar-1-pro"],
+      defaultModel: "solar-1-pro",
+    },
+    "Ollama": {
+      specialHandling: "ollama",
+    },
+  };
+
+  const config = providerConfig[provider] || {};
+
+// Type guard to narrow specialHandling type
+  function isSpecialHandling(
+    s: string | undefined,
+  ): s is
+    | "ollama"
+    | "copilot"
+    | "vertex"
+    | "bedrock"
+    | "azure"
+    | "custom"
+    | undefined {
+    return (
+      s === "ollama" ||
+      s === "copilot" ||
+      s === "vertex" ||
+      s === "bedrock" ||
+      s === "azure" ||
+      s === "custom" ||
+      s === undefined
     );
-    apiKey = await askRequiredSecret("Paste your OpenAI API key");
-    baseUrl = "https://api.openai.com/v1";
-  } else if (provider.startsWith("Ollama")) {
+  }
+
+  const specialHandling = config.specialHandling;
+
+  if (specialHandling === "ollama") {
     model = await askText("Model name", { defaultValue: "llama3.1" });
     baseUrl = await askText("Base URL", {
       defaultValue: "http://localhost:11434/v1",
     });
-    apiKey = "ollama"; // dummy
-  } else {
-    baseUrl = await askText(
-      "Your gateway base URL (example: https://your-gateway.example/v1)",
-    );
-    if (!/^https?:\/\/.+/.test(baseUrl)) {
-      console.log(
-        "That does not look like a web address — it starts with http:// or https://.",
-      );
+    apiKey = "ollama";
+  } else if (specialHandling === "copilot") {
+    console.log("GitHub Copilot ACP uses stdio transport. Spawning copilot --acp --stdio...");
+    model = "copilot";
+    baseUrl = "stdio";
+    apiKey = "copilot";
+  } else if (specialHandling === "vertex") {
+    console.log("Google Vertex AI uses ADC (Application Default Credentials).");
+    console.log("Ensure gcloud auth application-default login is set up.");
+    model = await askChoice("Select model:", [
+      "gemini-1.5-pro",
+      "gemini-1.5-flash",
+      "gemini-1.5-flash-8b",
+    ], 0);
+    baseUrl = "vertex";
+    apiKey = "adc";
+  } else if (specialHandling === "bedrock") {
+    console.log("AWS Bedrock uses IAM credentials or API key.");
+    console.log("Ensure AWS credentials are configured (aws configure).");
+    model = await askChoice("Select model:", [
+      "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "anthropic.claude-3-5-haiku-20241022-v1:0",
+      "meta.llama3-1-70b-instruct-v1:0",
+      "amazon.nova-pro-v1:0",
+    ], 0);
+    baseUrl = "bedrock";
+    apiKey = "aws";
+  } else if (specialHandling === "azure") {
+    console.log("Azure Foundry uses Azure credentials.");
+    console.log("Ensure az login or service principal is configured.");
+    model = await askText("Model deployment name (example: gpt-4o)");
+    baseUrl = await askText("Azure OpenAI endpoint (example: https://your-resource.openai.azure.com)");
+    apiKey = await askRequiredSecret("Paste your Azure OpenAI API key");
+    baseUrl = "azure";
+  } else if (specialHandling === "custom") {
       baseUrl = await askText(
         "Your gateway base URL (example: https://your-gateway.example/v1)",
       );
       if (!/^https?:\/\/.+/.test(baseUrl)) {
-        throw new Error("A valid gateway base URL is required");
+        console.log(
+          "That does not look like a web address — it starts with http:// or https://.",
+        );
+        baseUrl = await askText(
+          "Your gateway base URL (example: https://your-gateway.example/v1)",
+        );
+        if (!/^https?:\/\/.+/.test(baseUrl)) {
+          throw new Error("A valid gateway base URL is required");
+        }
       }
+      model = await askText("Model name (example: gpt-4o-mini)");
+      apiKey = await askRequiredSecret("Paste your gateway API key");
+    } else if (specialHandling === undefined) {
+      // Standard OpenAI-compatible providers
+      if (config.baseUrl) {
+        if (config.models && config.models.length > 0) {
+          model = await askChoice(
+            `Select model for ${provider}:`,
+            config.models,
+            0,
+          );
+        } else {
+          model = await askText("Model name", { defaultValue: config.defaultModel });
+        }
+        baseUrl = config.baseUrl;
+        apiKey = await askRequiredSecret(`Paste your ${provider} API key`);
+      } else {
+        // Fallback for unknown providers
+        baseUrl = await askText(
+          "Your gateway base URL (example: https://your-gateway.example/v1)",
+        );
+        if (!/^https?:\/\/.+/.test(baseUrl)) {
+          console.log(
+            "That does not look like a web address — it starts with http:// or https://.",
+          );
+          baseUrl = await askText(
+            "Your gateway base URL (example: https://your-gateway.example/v1)",
+          );
+          if (!/^https?:\/\/.+/.test(baseUrl)) {
+            throw new Error("A valid gateway base URL is required");
+          }
+        }
+        model = await askText("Model name (example: gpt-4o-mini)");
+      apiKey = await askRequiredSecret("Paste your gateway API key");
     }
-    model = await askText("Model name (example: gpt-4o-mini)");
-    apiKey = await askRequiredSecret("Paste your gateway API key");
   }
 
   if (!model.trim()) {
@@ -1580,7 +1857,7 @@ async function runSetupFlow(): Promise<void> {
     if (universe.length > 0) {
       console.log(`   Markets: ${universe.join(", ")}`);
     }
-    console.log(formatNextSteps(mode as "PAPER" | "LIVE"));
+    console.log(formatNextSteps(mode as "SHADOW" | "LIVE"));
     process.loadEnvFile(ENV_PATH as string);
     closeSharedSession();
   } catch (err) {
