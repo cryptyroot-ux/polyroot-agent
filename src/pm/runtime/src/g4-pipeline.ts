@@ -132,6 +132,10 @@ export class G4Pipeline {
       this.paperFillConfig,
     );
 
+    // Single step-complete emission point: covers every exit path
+    // (abstains, gates, fills) exactly once for persistence observers.
+    this.deps.observability?.emitStepComplete?.(input, result);
+
     // Update metrics
     this.metrics.totalOrders++;
     if (

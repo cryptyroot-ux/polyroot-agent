@@ -388,19 +388,10 @@ export async function executeG4Step(
     config.mode,
     deps.venueMode(),
   );
+  // NOTE: no emitStepComplete here — callers (G4Pipeline.processMarket,
+  // G4Loop.step) emit exactly once per step so every exit path is recorded
+  // without doubles.
   if (gate !== "ALLOW") {
-    core.deps.observability?.emitStepComplete?.(input, {
-      market_id,
-      decision: "NO_TRADE",
-      reason: `Financial gate: ${gate}`,
-      outcome: undefined,
-      pnl: 0,
-      fill: undefined,
-      orderId: undefined,
-      permitId: undefined,
-      p: undefined,
-      size: undefined,
-    } as G4CoreResult);
     return {
       market_id,
       decision: "NO_TRADE",
@@ -416,7 +407,9 @@ export async function executeG4Step(
     p = await deps.forecast({ market_id, bid, ask });
   }
   if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02) {
-    console.debug(`[AI Forecaster] Abstain: p=${p}, bookBid=${bid}, bookAsk=${ask}`);
+    console.debug(
+      `[AI Forecaster] Abstain: p=${p}, bookBid=${bid}, bookAsk=${ask}`,
+    );
     return {
       market_id,
       decision: "NO_TRADE",
@@ -426,7 +419,9 @@ export async function executeG4Step(
       bookAsk: ask,
     };
   }
-  console.info(`[AI Forecaster] Trade Candidate: p=${p}, bookBid=${bid}, bookAsk=${ask}`);
+  console.info(
+    `[AI Forecaster] Trade Candidate: p=${p}, bookBid=${bid}, bookAsk=${ask}`,
+  );
 
   // 3. Edge evaluation
   const edge = evaluateEdge(
@@ -700,6 +695,5 @@ export async function executeG4Step(
     bookBid: bid,
     bookAsk: ask,
   };
-  deps.observability?.emitStepComplete?.(input, res);
   return res;
 }

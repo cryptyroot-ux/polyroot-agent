@@ -125,6 +125,9 @@ export class G4AutonomousLoop {
       this.paperFillConfig,
     );
 
+    // Single step-complete emission point (see G4Pipeline.processMarket).
+    this.deps.observability?.emitStepComplete?.(input, result);
+
     // Update metrics
     this.metrics.totalOrders++;
     if (
