@@ -1,6 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { persistStep, createStepPersistence } from "@polyroot/runtime";
+import {
+  persistStep,
+  createStepPersistence,
+  flushStepPersistence,
+} from "@polyroot/runtime";
 
 function capturePool(opts: { failTables?: string[] } = []) {
   const statements: Array<{ table: string; params: unknown[] }> = [];
@@ -109,6 +113,39 @@ describe("pipeline step persistence", () => {
     assert.equal(errs.length, 1);
     assert.equal(errs[0]?.table, "market_snapshots");
     void statements;
+  });
+
+  it("flushStepPersistence waits for slow in-flight writes", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const seen: string[] = [];
+    const slowPool = {
+      query: async (text: string) => {
+        const m = /INSERT INTO (\w+)/.exec(text);
+        await gate;
+        seen.push(m?.[1] ?? "?");
+        return { rows: [] };
+      },
+    };
+    const hook = createStepPersistence({ pool: slowPool, mode: "SHADOW" });
+    hook.emitStepComplete(
+      { ...INPUT } as never,
+      {
+        market_id: "mkt-1",
+        decision: "NO_TRADE",
+        reason: "x",
+        p: 0.6,
+      } as never,
+    );
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(seen.length, 0, "write must still be gated");
+    release();
+    await flushStepPersistence();
+    assert.ok(seen.includes("market_snapshots"));
+    assert.ok(seen.includes("forecasts"));
+    assert.ok(seen.includes("shadow_log"));
   });
 
   it("createStepPersistence hook is fire-and-forget and never throws", async () => {

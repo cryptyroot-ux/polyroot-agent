@@ -41,6 +41,7 @@ export {
 export {
   persistStep,
   createStepPersistence,
+  flushStepPersistence,
   type StepPersistenceDeps,
   type PersistedStep,
 } from "./step-persistence.js";

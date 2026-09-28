@@ -168,6 +168,17 @@ export async function persistStep(
   return out;
 }
 
+const pendingWrites = new Set<Promise<PersistedStep>>();
+
+/**
+ * Wait for all in-flight step writes to settle. The trading loop never
+ * calls this per step (fire-and-forget there); shutdown paths (`--once`,
+ * SIGINT) call it before closing the pool so the last steps are not lost.
+ */
+export async function flushStepPersistence(): Promise<void> {
+  await Promise.allSettled([...pendingWrites]);
+}
+
 /**
  * Build the G4CoreObservability hook for bootstrapAgent. Fire-and-forget:
  * the returned hook never blocks or throws into the trading loop.
@@ -177,7 +188,11 @@ export function createStepPersistence(deps: StepPersistenceDeps): {
 } {
   return {
     emitStepComplete: (input, result) => {
-      void persistStep(deps, input, result);
+      const p = persistStep(deps, input, result);
+      pendingWrites.add(p);
+      void p.finally(() => {
+        pendingWrites.delete(p);
+      });
     },
   };
 }

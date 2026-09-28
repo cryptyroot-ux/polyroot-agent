@@ -27,6 +27,7 @@ import {
   collectHealth,
   createBackup,
   explainLastDecision,
+  flushStepPersistence,
   formatHealth,
   formatInsight,
   marketDeepDive,
@@ -1601,6 +1602,9 @@ export async function startAgent(config: CLIConfig): Promise<void> {
       ask: 0.55,
     });
     console.log("Once result: " + JSON.stringify(result));
+    // Flush fire-and-forget step writes before closing the pool,
+    // otherwise the single cycle's rows are lost on exit.
+    await flushStepPersistence();
     await agent.pool.end().catch(() => undefined);
     return;
   }
@@ -1628,10 +1632,15 @@ export async function startAgent(config: CLIConfig): Promise<void> {
       .catch((err: unknown) =>
         console.error("Metrics server stop error:", err),
       );
-    // Close the shared PG pool so the event loop can drain, then exit.
-    // Without this the process hangs on open pool sockets until SIGKILL.
-    void agent.pool
-      .end()
+    // Flush pending step writes (5s cap), then close the shared PG pool
+    // so the event loop can drain, then exit. Without pool.end the
+    // process hangs on open pool sockets until SIGKILL.
+    void Promise.race([
+      flushStepPersistence(),
+      new Promise((r) => setTimeout(r, 5000)),
+    ])
+      .catch(() => undefined)
+      .then(() => agent.pool.end())
       .catch((err: unknown) => console.error("Pool close error:", err))
       .finally(() => process.exit(0));
     // Failsafe: never hang forever on shutdown.
@@ -1646,7 +1655,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   }
   await pipeline.runContinuous();
   // Resolved without a signal (e.g. stop() called externally):
-  // close the pool so the process can exit cleanly.
+  // flush step writes, then close the pool so the process can exit cleanly.
   if (!stopping) {
     try {
       agent.stopReservationExpiry();
@@ -1654,6 +1663,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
       // never block shutdown on timer cleanup
     }
     await metricsServer.stop().catch(() => undefined);
+    await flushStepPersistence().catch(() => undefined);
     await agent.pool.end().catch(() => undefined);
   }
 }

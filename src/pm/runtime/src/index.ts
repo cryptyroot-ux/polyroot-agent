@@ -96,6 +96,7 @@ export {
 export {
   persistStep,
   createStepPersistence,
+  flushStepPersistence,
   type StepPersistenceDeps,
   type PersistedStep,
 } from "./observability/index.js";
