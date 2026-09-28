@@ -83,6 +83,32 @@ export function parseDetailedForecast(text: string): DetailedForecast {
   return { p, rationale, factors };
 }
 
+/**
+ * Build the per-step user prompt: book snapshot plus derived context the
+ * model should weigh (midpoint fair value, spread cost, contestedness).
+ * Pure and unit-tested — this IS the default PolyRoot forecaster prompt.
+ */
+export function buildForecastUserPrompt(input: ForecastInput): string {
+  const mid = (input.bid + input.ask) / 2;
+  const spread = Math.abs(input.ask - input.bid);
+  const contested =
+    Math.abs(mid - 0.5) < 0.1
+      ? "contested (mid near 0.50 — coin flip zone, demand strong evidence)"
+      : mid < 0.5
+        ? "long-shot YES (cheap tickets, most expire worthless)"
+        : "consensus YES (expensive tickets, small mispricings only)";
+  return (
+    `Market ${input.market_id}` +
+    (input.question ? ` (${input.question})` : "") +
+    ` — bid ${input.bid}, ask ${input.ask}.\n` +
+    `Book context: midpoint ${mid.toFixed(4)} (unadjusted fair value), ` +
+    `spread ${(spread * 100).toFixed(1)}¢ (round-trip cost you must beat), ` +
+    `regime: ${contested}.\n` +
+    `Weigh the spread as adverse selection: wide spread means the book ` +
+    `knows something you do not. Probability of YES?`
+  );
+}
+
 /** Parse model output into a probability, or null when unusable. */
 export function parseForecastProbability(text: string): number | null {
   let parsed: unknown;
@@ -128,10 +154,7 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const user =
-        `Market ${input.market_id}` +
-        (input.question ? ` (${input.question})` : "") +
-        ` — bid ${input.bid}, ask ${input.ask}. Probability of YES?`;
+      const user = buildForecastUserPrompt(input);
       const res = await this.fetchImpl(
         joinApiPath(this.baseUrl, "chat/completions"),
         {

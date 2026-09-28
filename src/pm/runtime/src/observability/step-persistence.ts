@@ -29,12 +29,15 @@ import type {
   G4Mode,
   StepReasoning,
 } from "../g4-core.js";
+import { classifyRegime, resolveEdgeFloor } from "../g4-core.js";
 
 export interface StepPersistenceDeps {
   pool: QueryablePool;
   mode: G4Mode;
   /** Model label for forecast rows (env POLYROOT_FORECAST_MODEL or unknown). */
   model?: string | undefined;
+  /** Base edge floor the loop enforces (default 0.03, mirrors core default). */
+  baseMinEdge?: number | undefined;
   /** Latest stated AI reasoning per market (best-effort, may be absent). */
   getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
   /** Called on persistence failure (default: console.warn). Never throws. */
@@ -133,6 +136,11 @@ export async function persistStep(
     const lineage: Record<string, unknown> = {
       source: "g4-step",
       mode: deps.mode,
+      regime: classifyRegime(input.bid, input.ask),
+      edgeFloor: resolveEdgeFloor(
+        deps.baseMinEdge ?? 0.03,
+        Math.abs(input.ask - input.bid),
+      ),
     };
     if (reasoning?.rationale) lineage["rationale"] = reasoning.rationale;
     if (reasoning && reasoning.factors.length > 0) {

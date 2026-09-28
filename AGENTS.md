@@ -39,4 +39,59 @@ Prettier governs formatting: run `npx prettier --write` on every file you touch.
 ## 3. Code conventions (non-negotiable)
 
 - Strict TypeScript: `verbatimModuleSyntax` (use `import type`),
-  ...[truncated 4474 chars]
+  `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`. Zero `any`
+  in new code; `unknown` + narrowing instead.
+- Fail-closed: every uncertainty resolves to refusal with a reason code.
+  No silent fallbacks, no fabricated values, no `|| default` on money math.
+- Pure engines, thin wiring: decision logic lives in dependency-injected
+  pure functions (see `G4CoreDeps`, `QueryablePool`); CLI/DB/network stay at
+  the edges. Unit tests inject fakes — they never need Postgres or network.
+- Display never fabricates: print only values the engine produced. A missing
+  number renders as `—`, never `0`.
+- Run `npx prettier --write` on every file you touch.
+
+## 4. Profit contract (how money is made or lost here)
+
+```
+forecast p → abstain unless 0.02 < p < 0.98 AND |p − 0.5| ≥ 0.02
+         → edge_after_fees = best_side(p − price) − taker_fee
+         → TRADE only if edge_after_fees > adaptive floor
+            floor = minEdgeAfterCost (default 0.03)
+                  + min(spread × 0.5, 0.05)   // adverse-selection add-on
+         → sizeIntent → validateAndReserve → buildSignedOrder → executor
+```
+
+- Book regime (`classifyRegime`: DUST / TIGHT_CONSENSUS / CONTESTED /
+  NORMAL) and the applied floor are recorded per step in
+  `forecasts.lineage`. Query there before claiming a threshold change is
+  "needed" — bring numbers, not hunches.
+- `confidence` is derived as certainty `2·|p − 0.5|`, NOT a model
+  self-report. Any new derived number must document its formula in a code
+  comment and in `lineage`.
+- The default forecaster prompt lives in
+  `src/pm/intelligence/src/forecast-provider.ts` (`buildForecastUserPrompt`).
+  `p` parsing stays strict JSON; reasoning (`rationale`, `factors`) is
+  best-effort and must never influence the decision path.
+- There is no resolved-outcome feedback loop yet (`shadow_log` records
+  decisions, not settlements). Do NOT invent auto-tuning from history
+  without a ground-truth signal — propose the schema first.
+
+## 5. What you must never do
+
+- Lower `minEdgeAfterCost` (or the spread add-on cap) to "get more trades".
+  Fewer, better trades beat volume. Changes need backtest evidence + review.
+- Let any mode except PAPER touch mock data (`LIVE_LOOP_UNWIRED` exists
+  for a reason — keep it).
+- Commit secrets: `.env*`, `keystore.json`, API keys, private keys.
+  `.gitignore` covers them; `gitleaks` runs in CI. Never print secrets
+  in logs, tests, or chat output.
+- Touch `MICRO_LIVE`/`LIVE` paths without running the FULL suite
+  (`npm run test:unit`) plus `polyroot doctor --live` reasoning in the PR.
+
+## 6. Workflow
+
+- Branch from `main`, conventional commits (`feat:`, `fix:`, `docs:` …),
+  one concern per commit. PRs need: typecheck + lint + tests + build green.
+- Small, reviewable steps. Update CHANGELOG.md for user-visible changes.
+- After finishing: `git status` clean, branch pushed, PR description states
+  evidence (test counts, not adjectives).

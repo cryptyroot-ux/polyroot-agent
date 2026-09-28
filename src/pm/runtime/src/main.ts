@@ -396,6 +396,7 @@ export async function bootstrapAgent(
         pool,
         mode,
         model: process.env["POLYROOT_FORECAST_MODEL"],
+        baseMinEdge: 0.03,
         getReasoning: (marketId: string) => lastReasoning.get(marketId),
       }),
     },

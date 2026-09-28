@@ -31,6 +31,7 @@ import {
   createG4Core,
   buildLoopInputs,
   formatStepBlock,
+  resolveEdgeFloor,
   type StepFunds,
 } from "./g4-core.js";
 
@@ -209,7 +210,11 @@ export class G4AutonomousLoop {
               fillPrice: result.fill?.fillPrice,
               fillStatus: result.fill?.status,
               size: result.size,
-              floorPct: (this.config.minEdgeAfterCost ?? 0.03) * 100,
+              floorPct:
+                resolveEdgeFloor(
+                  this.config.minEdgeAfterCost ?? 0.03,
+                  Math.abs(loopInput.ask - loopInput.bid),
+                ) * 100,
               funds,
             }),
           );

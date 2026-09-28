@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   OpenAICompatibleForecastProvider,
+  buildForecastUserPrompt,
   createForecastProviderFromEnv,
   parseForecastProbability,
   parseDetailedForecast,
@@ -81,6 +82,28 @@ describe("forecast provider (fail-closed abstain)", () => {
       POLYROOT_FORECAST_MODEL: "m",
     });
     assert.ok(p !== null);
+  });
+});
+
+describe("default forecaster prompt (book context)", () => {
+  it("embeds midpoint, spread cost and regime guidance", () => {
+    const prompt = buildForecastUserPrompt({
+      market_id: "m",
+      bid: 0.45,
+      ask: 0.55,
+    });
+    assert.ok(prompt.includes("midpoint 0.5000"));
+    assert.ok(prompt.includes("spread 10.0¢"));
+    assert.ok(prompt.includes("contested"));
+    assert.ok(prompt.includes("adverse selection"));
+    const withQ = buildForecastUserPrompt({
+      market_id: "m",
+      bid: 0.9,
+      ask: 0.92,
+      question: "Will it rain?",
+    });
+    assert.ok(withQ.includes("Will it rain?"));
+    assert.ok(withQ.includes("consensus YES"));
   });
 });
 

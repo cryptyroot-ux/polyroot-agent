@@ -161,6 +161,39 @@ export interface G4CoreResult {
   bookAsk?: number | undefined;
 }
 
+/** Book regime from prices alone (no model input). */
+export type MarketRegime =
+  | "DUST"
+  | "TIGHT_CONSENSUS"
+  | "CONTESTED"
+  | "NORMAL";
+
+/**
+ * Classify the book: DUST (extreme, untradeable), TIGHT_CONSENSUS
+ * (≤2¢ spread — the book agrees with itself), CONTESTED (mid near 0.50),
+ * else NORMAL. Pure and unit-tested.
+ */
+export function classifyRegime(bid: number, ask: number): MarketRegime {
+  const mid = (bid + ask) / 2;
+  const spread = Math.abs(ask - bid);
+  if (mid <= 0.02 || mid >= 0.98) return "DUST";
+  if (spread <= 0.02) return "TIGHT_CONSENSUS";
+  if (Math.abs(mid - 0.5) < 0.1) return "CONTESTED";
+  return "NORMAL";
+}
+
+/**
+ * Adverse-selection edge floor: base floor plus half the spread, capped at
+ * +5pp. Wide spreads mean the book knows something you do not, so demand
+ * more edge. Pure and unit-tested.
+ */
+export function resolveEdgeFloor(baseMinEdge: number, spread: number): number {
+  const base =
+    Number.isFinite(baseMinEdge) && baseMinEdge > 0 ? baseMinEdge : 0.03;
+  const addon = Math.min(Math.max(spread, 0) * 0.5, 0.05);
+  return Math.round((base + addon) * 10000) / 10000;
+}
+
 /** Funds snapshot for the operator display block. */
 export interface StepFunds {
   bankrollUsd: number | null;
@@ -577,7 +610,12 @@ export async function executeG4Step(
         schema_version: "1.1",
       },
     },
-    { minEdge: config.minEdgeAfterCost ?? 0.03 },
+    {
+      minEdge: resolveEdgeFloor(
+        config.minEdgeAfterCost ?? 0.03,
+        Math.abs(ask - bid),
+      ),
+    },
   );
   if (edge.action === "NO_TRADE") {
     return {
