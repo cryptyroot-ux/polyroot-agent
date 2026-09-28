@@ -172,12 +172,12 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
           "  polyroot shadow-fund --amount <usd>  Credit SHADOW play bankroll\n" +
           "  polyroot markets         Browse popular markets by name\n" +
           "  polyroot status          Show current configuration\n" +
-      "  polyroot explain [--last N] Explain the latest AI decision chain\n" +
-      "  polyroot halt [--cancel-orders] Emergency stop + exit\n" +
-      "  polyroot health [--watch]    Real-time system health\n" +
-      "  polyroot insight [--market]  Market opportunities + heatmap\n" +
-      "  polyroot backup [--encrypt]  Export state (keystore, config, data)\n" +
-      "  polyroot restore --from DIR  Verify (and --apply) a backup\n" +
+          "  polyroot explain [--last N] Explain the latest AI decision chain\n" +
+          "  polyroot halt [--cancel-orders] Emergency stop + exit\n" +
+          "  polyroot health [--watch]    Real-time system health\n" +
+          "  polyroot insight [--market]  Market opportunities + heatmap\n" +
+          "  polyroot backup [--encrypt]  Export state (keystore, config, data)\n" +
+          "  polyroot restore --from DIR  Verify (and --apply) a backup\n" +
           "  polyroot doctor          Basic health check\n" +
           "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
           "  polyroot wallet verify   Check wallet with no network\n" +
@@ -383,7 +383,10 @@ async function askRequiredSecret(message: string): Promise<string> {
 }
 
 /** Best-effort reachability ping for a user's own gateway. Warning-only: never blocks setup. */
-async function pingModelsEndpoint(baseUrl: string, apiKey: string): Promise<boolean> {
+async function pingModelsEndpoint(
+  baseUrl: string,
+  apiKey: string,
+): Promise<boolean> {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
@@ -464,10 +467,16 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     });
     apiKey = "ollama"; // dummy
   } else {
-    baseUrl = await askText("Your gateway base URL (example: https://your-gateway.example/v1)");
+    baseUrl = await askText(
+      "Your gateway base URL (example: https://your-gateway.example/v1)",
+    );
     if (!/^https?:\/\/.+/.test(baseUrl)) {
-      console.log("That does not look like a web address — it starts with http:// or https://.");
-      baseUrl = await askText("Your gateway base URL (example: https://your-gateway.example/v1)");
+      console.log(
+        "That does not look like a web address — it starts with http:// or https://.",
+      );
+      baseUrl = await askText(
+        "Your gateway base URL (example: https://your-gateway.example/v1)",
+      );
       if (!/^https?:\/\/.+/.test(baseUrl)) {
         throw new Error("A valid gateway base URL is required");
       }
@@ -480,7 +489,9 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     throw new Error("Model name is required");
   }
   if (!apiKey.trim()) {
-    throw new Error("API key is required (Ollama on this machine uses any placeholder)");
+    throw new Error(
+      "API key is required (Ollama on this machine uses any placeholder)",
+    );
   }
 
   if (!provider.startsWith("Ollama")) {
@@ -489,9 +500,13 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       console.log(
         "⚠️  Could not reach that address with your key — corporate gateways sometimes block the check while chat still works.",
       );
-      const goOn = await askText("Continue anyway? (y/n)", { defaultValue: "y" });
+      const goOn = await askText("Continue anyway? (y/n)", {
+        defaultValue: "y",
+      });
       if (!goOn.trim().toLowerCase().startsWith("y")) {
-        throw new Error("Setup stopped — double-check the base URL and key, then run `polyroot onboard` again");
+        throw new Error(
+          "Setup stopped — double-check the base URL and key, then run `polyroot onboard` again",
+        );
       }
     }
   }
@@ -504,7 +519,10 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   );
   const walletChoice = await askChoice(
     "Wallet (Enter = create new):",
-    ["Create new wallet for me (recommended)", "I already have a wallet (import secret key)"],
+    [
+      "Create new wallet for me (recommended)",
+      "I already have a wallet (import secret key)",
+    ],
     0,
   );
 
@@ -525,9 +543,13 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     console.log(`   (Write this address down — it is shown only once)`);
   } else {
     for (;;) {
-      privateKey = await askRequiredSecret("Paste your wallet secret key (starts with 0x)");
+      privateKey = await askRequiredSecret(
+        "Paste your wallet secret key (starts with 0x)",
+      );
       if (/^(0x)?[0-9a-fA-F]{64}$/.test(privateKey)) break;
-      console.log("That does not look like a wallet secret key — it is 64 letters/numbers, starting with 0x.");
+      console.log(
+        "That does not look like a wallet secret key — it is 64 letters/numbers, starting with 0x.",
+      );
     }
     passphrase = await askRequiredSecret("Create a vault password");
     console.log(
@@ -1213,10 +1235,14 @@ async function restartBackgroundAgent(): Promise<void> {
 
   const logFile = `${polyrootHome}/paper.log`;
   console.log("\n📋 To start the agent in background, run:");
-  console.log(`   cd "${polyrootHome}" && setsid nohup polyroot run >> "${logFile}" 2>&1 &`);
+  console.log(
+    `   cd "${polyrootHome}" && setsid nohup polyroot run >> "${logFile}" 2>&1 &`,
+  );
   console.log(`\n📝 Logs: tail -f ${logFile}`);
   console.log(`🏥 Health: curl http://127.0.0.1:9090/healthz`);
-  console.log("\n💡 Tip: For production, use systemd or tmux/screen instead of nohup.");
+  console.log(
+    "\n💡 Tip: For production, use systemd or tmux/screen instead of nohup.",
+  );
 }
 
 /** `restart` inside the interactive console. */
@@ -1940,11 +1966,10 @@ async function runInsightCLI(args: string[]): Promise<void> {
       const lines = ["🌡️ Risk Heatmap (label × risk)", ""];
       lines.push("        Low   Med   High");
       for (const label of labels) {
-        const cells = risks.map(
-          (risk) =>
-            String(
-              rows.filter((r) => r.label === label && r.risk === risk).length,
-            ).padStart(5),
+        const cells = risks.map((risk) =>
+          String(
+            rows.filter((r) => r.label === label && r.risk === risk).length,
+          ).padStart(5),
         );
         const icon = label === "BUY" ? "🟢" : label === "WATCH" ? "🟡" : "🔴";
         lines.push(`${icon} ${label.padEnd(5)}${cells.join("")}`);
@@ -1996,10 +2021,14 @@ async function runBackupCLI(args: string[]): Promise<void> {
       console.log(JSON.stringify({ ok: true, manifestPath, files }));
     } else {
       console.log(`\n✅ Backup complete: ${manifestPath}`);
-      console.log(`   Files: ${files.length} (${encrypt ? "encrypted" : "redacted"})`);
+      console.log(
+        `   Files: ${files.length} (${encrypt ? "encrypted" : "redacted"})`,
+      );
       for (const f of files) console.log(`   • ${f}`);
       if (!encrypt) {
-        console.log("\n💡 Tip: re-run with --encrypt + POLYROOT_BACKUP_PASSPHRASE");
+        console.log(
+          "\n💡 Tip: re-run with --encrypt + POLYROOT_BACKUP_PASSPHRASE",
+        );
         console.log("   so a future restore can bring secrets back.");
       }
     }
@@ -2044,9 +2073,13 @@ async function runRestoreCLI(args: string[]): Promise<void> {
     if (asJson) {
       console.log(JSON.stringify({ ok: true, ...result }));
     } else {
-      console.log(`\n✅ Verified ${result.verified.length} file(s) — checksums OK`);
+      console.log(
+        `\n✅ Verified ${result.verified.length} file(s) — checksums OK`,
+      );
       if (result.apply) {
-        console.log(`   Restored: ${result.restored.join(", ") || "(nothing)"}`);
+        console.log(
+          `   Restored: ${result.restored.join(", ") || "(nothing)"}`,
+        );
       } else {
         console.log("   Dry-run only — pass --apply to write files.");
       }

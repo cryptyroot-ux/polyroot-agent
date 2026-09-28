@@ -235,9 +235,7 @@ export async function collectHealth(deps: HealthDeps): Promise<HealthReport> {
   const probes: HealthProbe[] = [];
   probes.push(await probeDatabase(deps.pool, deps.dbSlowMs ?? 1000));
   probes.push(await probePipeline(deps.pool));
-  probes.push(
-    await probeRpc(deps.rpcUrl, deps.rpcSlowMs ?? 2000, fetchImpl),
-  );
+  probes.push(await probeRpc(deps.rpcUrl, deps.rpcSlowMs ?? 2000, fetchImpl));
   probes.push(
     await probeVenue(
       deps.venueBaseUrl ?? DEFAULT_VENUE,

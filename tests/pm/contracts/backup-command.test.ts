@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  createBackup,
-  restoreBackup,
-  decryptText,
-} from "@polyroot/runtime";
+import { createBackup, restoreBackup, decryptText } from "@polyroot/runtime";
 
 function fakePool() {
   const writes: string[] = [];
@@ -62,7 +58,10 @@ describe("polyroot backup/restore", () => {
       join(home, ".env"),
       "DATABASE_URL=postgresql://u:p%40ss@localhost:5432/db\nOPENAI_API_KEY=sk-secret-123\nRUNTIME_MODE=SHADOW\n",
     );
-    writeFileSync(join(home, "keystore.json"), JSON.stringify({ sealed: true }));
+    writeFileSync(
+      join(home, "keystore.json"),
+      JSON.stringify({ sealed: true }),
+    );
   });
   after(() => {
     rmSync(home, { recursive: true, force: true });

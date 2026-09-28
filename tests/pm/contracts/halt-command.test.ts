@@ -62,7 +62,10 @@ describe("polyroot halt", () => {
             throw new ExitSignal(code);
           },
           report: (r) => {
-            reported = { openOrders: r.openOrders, canceledOrders: r.canceledOrders };
+            reported = {
+              openOrders: r.openOrders,
+              canceledOrders: r.canceledOrders,
+            };
           },
         },
         { reason: "operator panic", cancelOrders: true },

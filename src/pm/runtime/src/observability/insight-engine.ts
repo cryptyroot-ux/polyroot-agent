@@ -45,13 +45,20 @@ function scoreOne(
   volume24h: number | null,
 ): { score: number; edge: number | null; risk: ScoredMarket["risk"] } {
   const risk: ScoredMarket["risk"] =
-    spread === null ? "High" : spread <= 0.02 ? "Low" : spread <= 0.06 ? "Med" : "High";
+    spread === null
+      ? "High"
+      : spread <= 0.02
+        ? "Low"
+        : spread <= 0.06
+          ? "Med"
+          : "High";
   if (yes === null || p === null) return { score: 0, edge: null, risk };
   const noPrice = no ?? 1 - yes;
   const edge = Math.max(p - yes, 1 - p - noPrice);
   const edgeNorm = clamp(edge, 0, 0.1) / 0.1;
   const conf = clamp(confidence ?? 0.5, 0, 1);
-  const liq = volume24h === null ? 0 : clamp(Math.log10(1 + volume24h) / 6, 0, 1);
+  const liq =
+    volume24h === null ? 0 : clamp(Math.log10(1 + volume24h) / 6, 0, 1);
   const score = Math.round(100 * (0.55 * edgeNorm + 0.25 * conf + 0.2 * liq));
   return { score, edge, risk };
 }
@@ -80,9 +87,10 @@ export async function topOpportunities(
   const out: ScoredMarket[] = [];
   for (const r of res.rows) {
     const marketId = typeof r["market_id"] === "string" ? r["market_id"] : "—";
-    const q = typeof r["question"] === "string" && r["question"].length > 0
-      ? (r["question"] as string)
-      : marketId;
+    const q =
+      typeof r["question"] === "string" && r["question"].length > 0
+        ? (r["question"] as string)
+        : marketId;
     const { score, edge, risk } = scoreOne(
       num(r["yes_price"]),
       num(r["no_price"]),
@@ -143,7 +151,9 @@ export async function marketDeepDive(
   lines.push(
     `Book: YES ${str(s["yes_price"])} / NO ${str(s["no_price"])}  Spread: ${str(s["spread"])}`,
   );
-  lines.push(`24h vol: ${str(s["volume_24h"])}  Captured: ${str(s["captured_at"])}`);
+  lines.push(
+    `24h vol: ${str(s["volume_24h"])}  Captured: ${str(s["captured_at"])}`,
+  );
   const f = fc.rows[0];
   lines.push("");
   lines.push(
@@ -151,7 +161,11 @@ export async function marketDeepDive(
       ? `AI: p(YES)=${str(f["probability_yes"])} conf=${str(f["confidence"])} model=${str(f["model"])}`
       : "AI: no forecast yet for this market.",
   );
-  if (f && typeof f["abstain_reason"] === "string" && (f["abstain_reason"] as string).length > 0) {
+  if (
+    f &&
+    typeof f["abstain_reason"] === "string" &&
+    (f["abstain_reason"] as string).length > 0
+  ) {
     lines.push(`Abstain: ${f["abstain_reason"] as string}`);
   }
   lines.push("");
@@ -179,9 +193,14 @@ export function formatInsight(rows: ScoredMarket[], asJson: boolean): string {
   }
   const lines = ["🧠 Strategic Insight (Top Opportunities)", ""];
   lines.push(" #  Score  Action  Edge     Risk  Market");
-  lines.push("─── ────── ─────── ──────── ───── ──────────────────────────────");
+  lines.push(
+    "─── ────── ─────── ──────── ───── ──────────────────────────────",
+  );
   rows.forEach((m, i) => {
-    const edge = m.edgePct === null ? "   —  " : `${m.edgePct >= 0 ? "+" : ""}${m.edgePct.toFixed(1)}% `;
+    const edge =
+      m.edgePct === null
+        ? "   —  "
+        : `${m.edgePct >= 0 ? "+" : ""}${m.edgePct.toFixed(1)}% `;
     lines.push(
       `${String(i + 1).padStart(2)}  ${m.icon} ${String(m.score).padStart(3)}  ${m.label.padEnd(5)} ${edge} ${m.risk.padEnd(4)}  ${m.question}`,
     );

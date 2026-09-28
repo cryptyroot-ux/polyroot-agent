@@ -14,7 +14,13 @@
  *   `--encrypt`.
  */
 
-import { createHash, randomBytes, scryptSync, createCipheriv, createDecipheriv } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  scryptSync,
+  createCipheriv,
+  createDecipheriv,
+} from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, basename } from "node:path";
 import type { QueryablePool } from "../mode-watcher.js";
@@ -55,7 +61,11 @@ function redactEnv(text: string): string {
       const eq = t.indexOf("=");
       if (eq <= 0) return line;
       const key = t.slice(0, eq).trim();
-      if (key === "DATABASE_URL" || key === "RPC_URL" || SECRET_NAME.test(key)) {
+      if (
+        key === "DATABASE_URL" ||
+        key === "RPC_URL" ||
+        SECRET_NAME.test(key)
+      ) {
         return `${key}=***REDACTED***`;
       }
       return line;
@@ -144,7 +154,10 @@ export async function createBackup(
   const envRaw = await readIfExists(join(deps.homeDir, ".env"));
   if (envRaw) {
     if (req.encrypt) {
-      await track(".env.enc", encryptText(envRaw.toString("utf8"), req.passphrase as string));
+      await track(
+        ".env.enc",
+        encryptText(envRaw.toString("utf8"), req.passphrase as string),
+      );
     } else {
       await track(".env.redacted", redactEnv(envRaw.toString("utf8")));
     }
@@ -245,11 +258,12 @@ export async function restoreBackup(
   deps: RestoreDeps,
   req: RestoreRequest,
 ): Promise<RestoreResult> {
-  const manifestRaw = await readFile(join(req.fromDir, "manifest.json"), "utf8").catch(
-    () => {
-      throw new Error(`manifest.json not found in ${req.fromDir}`);
-    },
-  );
+  const manifestRaw = await readFile(
+    join(req.fromDir, "manifest.json"),
+    "utf8",
+  ).catch(() => {
+    throw new Error(`manifest.json not found in ${req.fromDir}`);
+  });
   const manifest = JSON.parse(manifestRaw) as BackupManifest;
   if (manifest.version !== 1 || typeof manifest.files !== "object") {
     throw new Error("unsupported or corrupt manifest");
@@ -269,7 +283,9 @@ export async function restoreBackup(
   const restored: string[] = [];
   const notes: string[] = [];
   if (!req.apply) {
-    notes.push("dry-run: verified only, nothing written (pass --apply to restore).");
+    notes.push(
+      "dry-run: verified only, nothing written (pass --apply to restore).",
+    );
     return { verified, restored, apply: false, notes };
   }
 
@@ -281,7 +297,9 @@ export async function restoreBackup(
     );
   }
   if (!req.passphrase) {
-    throw new Error("restore needs POLYROOT_BACKUP_PASSPHRASE to decrypt .env.enc");
+    throw new Error(
+      "restore needs POLYROOT_BACKUP_PASSPHRASE to decrypt .env.enc",
+    );
   }
   const envPlain = decryptText(
     await readFile(join(req.fromDir, encNames[0] as string), "utf8"),
@@ -298,7 +316,10 @@ export async function restoreBackup(
 
   // Latch state + wallets (best-effort, idempotent).
   try {
-    const latchRaw = await readFile(join(req.fromDir, "data", "live_guard_state.json"), "utf8");
+    const latchRaw = await readFile(
+      join(req.fromDir, "data", "live_guard_state.json"),
+      "utf8",
+    );
     const rows = JSON.parse(latchRaw) as Record<string, unknown>[];
     if (Array.isArray(rows)) {
       for (const r of rows) {
@@ -308,7 +329,11 @@ export async function restoreBackup(
            ON CONFLICT (key) DO UPDATE SET halted = EXCLUDED.halted,
              halted_at = EXCLUDED.halted_at,
              realized_loss_pusd = EXCLUDED.realized_loss_pusd, updated_at = now()`,
-          [r["halted"] === true, (r["halted_at"] as string) ?? null, Number(r["realized_loss_pusd"] ?? 0)],
+          [
+            r["halted"] === true,
+            (r["halted_at"] as string) ?? null,
+            Number(r["realized_loss_pusd"] ?? 0),
+          ],
         );
       }
       restored.push("live_guard_state");
@@ -317,7 +342,10 @@ export async function restoreBackup(
     notes.push("live_guard_state not restored (absent or unreadable).");
   }
   try {
-    const wRaw = await readFile(join(req.fromDir, "wallet-config.json"), "utf8");
+    const wRaw = await readFile(
+      join(req.fromDir, "wallet-config.json"),
+      "utf8",
+    );
     const rows = JSON.parse(wRaw) as Record<string, unknown>[];
     if (Array.isArray(rows)) {
       for (const r of rows) {
@@ -326,8 +354,14 @@ export async function restoreBackup(
              funder, chain_id, verified_at, created_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (wallet_id) DO NOTHING`,
           [
-            r["wallet_id"], r["wallet_type"], r["signer_address"], r["account_wallet"],
-            r["funder"], r["chain_id"], r["verified_at"], r["created_at"],
+            r["wallet_id"],
+            r["wallet_type"],
+            r["signer_address"],
+            r["account_wallet"],
+            r["funder"],
+            r["chain_id"],
+            r["verified_at"],
+            r["created_at"],
           ],
         );
       }

@@ -146,13 +146,14 @@ export async function explainLastDecision(
     idx += 1;
     const marketId = str(d.market_id);
     const action = str(d.action);
-    const icon =
-      action === "BUY" ? "🟢" : action === "SELL" ? "🔴" : "⏭️";
+    const icon = action === "BUY" ? "🟢" : action === "SELL" ? "🔴" : "⏭️";
     lines.push("");
     lines.push(
       `${decisions.length > 1 ? `#${idx} ` : ""}${icon} ${action} — ${marketId} [${d.source}]`,
     );
-    lines.push(`  Forecast p(YES): ${str(d.forecast_p)}   Size: ${str(d.size)}`);
+    lines.push(
+      `  Forecast p(YES): ${str(d.forecast_p)}   Size: ${str(d.size)}`,
+    );
     lines.push(`  Fill: ${str(d.fill_status)}   At: ${str(d.created_at)}`);
 
     if (marketId !== "—") {

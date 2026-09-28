@@ -416,6 +416,7 @@ export async function executeG4Step(
     p = await deps.forecast({ market_id, bid, ask });
   }
   if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02) {
+    console.debug(`[AI Forecaster] Abstain: p=${p}, bookBid=${bid}, bookAsk=${ask}`);
     return {
       market_id,
       decision: "NO_TRADE",
@@ -425,6 +426,7 @@ export async function executeG4Step(
       bookAsk: ask,
     };
   }
+  console.info(`[AI Forecaster] Trade Candidate: p=${p}, bookBid=${bid}, bookAsk=${ask}`);
 
   // 3. Edge evaluation
   const edge = evaluateEdge(

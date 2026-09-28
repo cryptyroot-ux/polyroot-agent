@@ -2,9 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { collectHealth, formatHealth } from "@polyroot/runtime";
 
-function okFetch(
-  handler: (url: string) => Response,
-): typeof fetch {
+function okFetch(handler: (url: string) => Response): typeof fetch {
   return (async (input: string | URL | Request) => {
     return handler(String(input));
   }) as typeof fetch;
@@ -72,10 +70,7 @@ describe("polyroot health", () => {
     const slowFetch = okFetch(
       () =>
         new Promise<Response>((resolve) => {
-          setTimeout(
-            () => resolve(jsonResponse({ result: "0x1" })),
-            150,
-          );
+          setTimeout(() => resolve(jsonResponse({ result: "0x1" })), 150);
         }),
     );
     const slow = await collectHealth({
@@ -85,10 +80,7 @@ describe("polyroot health", () => {
       fetchImpl: slowFetch,
     });
     assert.equal(slow.overall, "DEGRADED");
-    assert.equal(
-      slow.probes.find((p) => p.name === "RPC")?.status,
-      "degraded",
-    );
+    assert.equal(slow.probes.find((p) => p.name === "RPC")?.status, "degraded");
 
     const unset = await collectHealth({
       pool: healthyPool(),

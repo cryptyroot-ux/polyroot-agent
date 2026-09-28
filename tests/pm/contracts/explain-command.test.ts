@@ -14,8 +14,12 @@ function runCli(...args: string[]): Promise<{ code: number; out: string }> {
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";
-    child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
-    child.stderr.on("data", (d: Buffer) => { out += d.toString(); });
+    child.stdout.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
+    child.stderr.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
     child.stdout.resume();
     child.stderr.resume();
     const killer = setTimeout(() => {
