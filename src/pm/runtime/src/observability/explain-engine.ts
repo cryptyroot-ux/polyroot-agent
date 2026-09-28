@@ -123,19 +123,25 @@ function reasoningLines(f: Record<string, unknown>): string[] {
   let rationale: string | null = null;
   let factors: string[] = [];
   const rawLineage = f["lineage"];
+  let lin: Record<string, unknown> | null = null;
   if (typeof rawLineage === "string" && rawLineage.length > 0) {
     try {
-      const lin = JSON.parse(rawLineage) as Record<string, unknown>;
-      if (typeof lin["rationale"] === "string" && lin["rationale"].length > 0) {
-        rationale = lin["rationale"];
-      }
-      if (Array.isArray(lin["factors"])) {
-        factors = lin["factors"].filter(
-          (x): x is string => typeof x === "string" && x.length > 0,
-        );
-      }
+      lin = JSON.parse(rawLineage) as Record<string, unknown>;
     } catch {
-      // corrupt lineage: fall through to assumptions
+      lin = null; // corrupt lineage: fall through to assumptions
+    }
+  } else if (typeof rawLineage === "object" && rawLineage !== null) {
+    // pg returns JSONB columns pre-parsed as objects
+    lin = rawLineage as Record<string, unknown>;
+  }
+  if (lin) {
+    if (typeof lin["rationale"] === "string" && lin["rationale"].length > 0) {
+      rationale = lin["rationale"];
+    }
+    if (Array.isArray(lin["factors"])) {
+      factors = lin["factors"].filter(
+        (x): x is string => typeof x === "string" && x.length > 0,
+      );
     }
   }
   if (!rationale && Array.isArray(f["assumptions"])) {

@@ -121,6 +121,31 @@ describe("polyroot explain", () => {
     assert.ok(out.includes("polyroot run --once"));
   });
 
+  it("reads reasoning from pre-parsed JSONB lineage objects too (pg behavior)", async () => {
+    const pool = makePool([
+      (t) => (t.includes("FROM paper_log") ? PAPER_ROWS : null),
+      (t) => (t.includes("FROM shadow_log") ? [] : null),
+      (t) =>
+        t.includes("FROM forecasts")
+          ? [
+              {
+                ...FORECAST_ROWS[0],
+                assumptions: [],
+                lineage: {
+                  source: "g4-step",
+                  rationale: "Object-form rationale.",
+                  factors: ["f1"],
+                },
+              },
+            ]
+          : null,
+      (t) => (t.includes("FROM risk_decisions") ? RISK_ROWS : null),
+    ]);
+    const out = await explainLastDecision(pool, 1);
+    assert.ok(out.includes("AI reasoning: Object-form rationale."));
+    assert.ok(out.includes("· f1"));
+  });
+
   it("shows the AI's stated reasoning when the forecast row carries it", async () => {
     const pool = makePool([
       (t) => (t.includes("FROM paper_log") ? PAPER_ROWS : null),
