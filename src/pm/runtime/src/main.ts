@@ -34,7 +34,11 @@ import { Metrics } from "@polyroot/observability";
 import { PgLiveGuardStore } from "./live-guard-store.js";
 import { createStepPersistence } from "./observability/index.js";
 import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
-import { resolveMarketUniverse } from "@polyroot/venue";
+import {
+  resolveMarketUniverseWithSides,
+  type MarketSide,
+  type MarketUniverseWithSides,
+} from "@polyroot/venue";
 import {
   createForecastProviderFromEnv,
   type ForecastProvider,
@@ -308,8 +312,10 @@ export async function bootstrapAgent(
   // exactly the owner-curated CLOB token ids; auto mode lets the agent
   // discover the most liquid markets itself within owner guardrails —
   // never mock data either way.
-  const marketUniverse =
-    mode === "PAPER" ? [] : await resolveMarketUniverse(process.env);
+  const { ids: marketUniverse, sides: marketSides }: MarketUniverseWithSides =
+    mode === "PAPER"
+      ? { ids: [], sides: {} }
+      : await resolveMarketUniverseWithSides(process.env);
   const marketSource =
     marketUniverse.length === 0
       ? undefined
@@ -320,7 +326,9 @@ export async function bootstrapAgent(
             if (snap.yes_price === undefined || snap.no_price === undefined) {
               return null;
             }
-            return { bid: snap.yes_price, ask: snap.no_price };
+            const side: MarketSide =
+              marketSides[marketId] ?? "UNKNOWN";
+            return { bid: snap.yes_price, ask: snap.no_price, side };
           },
         };
 

@@ -177,7 +177,8 @@ function makePipeline(forecastP: number | null) {
     policy: {
       ...DEFAULT_RISK_POLICY,
       policy_version: "v0-bootstrap",
-      capital_usd_cap: 10_000,
+      capital_usd_cap: 100_000,
+      max_order_pct: 0.1,
     },
     policyHash: "ph_e2e",
     venueMode: () => "NORMAL" as VenueMode,

@@ -32,16 +32,22 @@ export function readMarketUniverse(env: {
   return [...new Set(ids)];
 }
 
+/** Token side within its binary market (absent = UNKNOWN, treated as YES). */
+export type MarketSide = "YES" | "NO" | "UNKNOWN";
+
 /** Live price source backing collectLiveInputs (venue-backed in prod). */
 export interface MarketSource {
   universe(): string[];
-  snapshot(marketId: string): Promise<{ bid: number; ask: number } | null>;
+  snapshot(
+    marketId: string,
+  ): Promise<{ bid: number; ask: number; side?: MarketSide } | null>;
 }
 
 export interface LiveMarketInput {
   market_id: string;
   bid: number;
   ask: number;
+  side?: MarketSide;
 }
 
 /**
@@ -57,7 +63,12 @@ export async function collectLiveInputs(
     if (!snap || !Number.isFinite(snap.bid) || !Number.isFinite(snap.ask)) {
       continue;
     }
-    inputs.push({ market_id, bid: snap.bid, ask: snap.ask });
+    inputs.push({
+      market_id,
+      bid: snap.bid,
+      ask: snap.ask,
+      ...(snap.side ? { side: snap.side } : {}),
+    });
   }
   return inputs;
 }

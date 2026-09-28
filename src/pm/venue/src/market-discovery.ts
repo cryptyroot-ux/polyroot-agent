@@ -296,14 +296,37 @@ export async function resolveMarketUniverse(env: {
   POLYROOT_DISCOVERY_MAX_MARKETS?: string;
   POLYROOT_DISCOVERY_MAX_SPREAD?: string;
 }): Promise<string[]> {
+  return (await resolveMarketUniverseWithSides(env)).ids;
+}
+
+/** Token side within its binary market. */
+export type TokenSide = "YES" | "NO";
+
+export interface MarketUniverseWithSides {
+  ids: string[];
+  /**
+   * Side per token id. Discovery fills it from yesTokenId/noTokenId;
+   * manual ids are absent (= UNKNOWN — treated as YES, see executeG4Step).
+   */
+  sides: Partial<Record<string, TokenSide>>;
+}
+
+/**
+ * resolveMarketUniverse plus per-token sides. resolveMarketUniverse
+ * delegates to this and returns ids only (unchanged contract).
+ */
+export async function resolveMarketUniverseWithSides(env: {
+  POLYROOT_MARKET_DISCOVERY?: string;
+  POLYROOT_MARKET_IDS?: string;
+  POLYROOT_DISCOVERY_MIN_VOLUME_24H?: string;
+  POLYROOT_DISCOVERY_MAX_MARKETS?: string;
+  POLYROOT_DISCOVERY_MAX_SPREAD?: string;
+}): Promise<MarketUniverseWithSides> {
   const { readMarketUniverse } = await import("./market-universe.js");
   if (resolveDiscoveryMode(env) !== "auto") {
-    return readMarketUniverse(env);
+    return { ids: readMarketUniverse(env), sides: {} };
   }
   const bounds = parseDiscoveryBounds(env);
-  // Volume pre-filter WITHOUT the maxMarkets slice: the top-by-volume
-  // markets are often dust (0.001/0.999), so spread-check a wider pool
-  // first and only then take the top-N survivors.
   const volOk = (await fetchActiveMarkets(50))
     .filter((m) => m.volume24h >= bounds.minVolume24h)
     .sort((a, b) => b.volume24h - a.volume24h);
@@ -318,5 +341,12 @@ export async function resolveMarketUniverse(env: {
       `MARKET_UNIVERSE_MISSING: auto-discovery found no tradeable tokens (24h volume >= $${bounds.minVolume24h}, spread <= ${bounds.maxSpread}). Lower the guardrails via \`polyroot setup\` or curate POLYROOT_MARKET_IDS.`,
     );
   }
-  return readMarketUniverse({ POLYROOT_MARKET_IDS: ids.join(",") });
+  const sides: Partial<Record<string, TokenSide>> = {};
+  for (const id of ids) {
+    for (const m of volOk) {
+      if (m.yesTokenId === id) sides[id] = "YES";
+      else if (m.noTokenId === id) sides[id] = "NO";
+    }
+  }
+  return { ids: readMarketUniverse({ POLYROOT_MARKET_IDS: ids.join(",") }), sides };
 }

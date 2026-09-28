@@ -165,6 +165,7 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
   function makeShadowPipeline(
     forecastP: number | null,
     customAdapter?: VenueAdapter,
+    capitalUsd = 10_000,
   ) {
     const balance = new FakeBalanceStore(1_000_000_000n);
     (
@@ -218,7 +219,7 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
       policy: {
         ...DEFAULT_RISK_POLICY,
         policy_version: "v0-bootstrap",
-        capital_usd_cap: 10_000,
+        capital_usd_cap: capitalUsd,
       },
       policyHash: "ph_shadow",
       venueMode: () => adapter.mode,
@@ -239,7 +240,8 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
   });
 
   it("tradable market in SHADOW produces decision + simulated fill (no venue financial I/O)", async () => {
-    const { pipeline, venueAdapter } = makeShadowPipeline(0.65);
+    // Capital sized so the honest ask-based limit ($55) clears max_order_pct.
+    const { pipeline, venueAdapter } = makeShadowPipeline(0.65, undefined, 100_000);
     const result = await pipeline.processMarket({
       market_id: "mkt_shadow_1",
       bid: 0.45,

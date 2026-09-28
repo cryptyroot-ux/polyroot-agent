@@ -123,6 +123,12 @@ export interface G4CoreInput {
   market_id: string;
   bid: number;
   ask: number;
+  /**
+   * Quoted token side. UNKNOWN (manual ids carry no side info) is treated
+   * as YES — setup labels YES token ids for curation, discovery always
+   * provides real sides.
+   */
+  side?: "YES" | "NO" | "UNKNOWN";
   /** Optional forecast override (for testing/overrides). */
   forecastOverride?: number | null;
   /** Optional forecast object (for metadata). */
@@ -393,7 +399,7 @@ export interface CreateG4CoreOptions {
   liveGuard?: LiveGuardDeps;
   marketSource?: MarketSource;
   getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
-  getFunds?: () => Promise<StepFunds | undefined>;
+  getFunds?: (() => Promise<StepFunds | undefined>) | undefined;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -572,7 +578,12 @@ export async function executeG4Step(
       bookAsk: ask,
     };
   }
-  // 3. Edge evaluation
+  // 3. Edge evaluation — side-aware. The quote is a single token's book,
+  // so only that token's side is evaluable: BUY the quoted token at its
+  // ask. The old code fed the YES ask in as the NO price, fabricating
+  // +90% SELL edges (avg SELL p was 0.09 in production). SELL requires
+  // inventory, which no path tracks — entries are BUY-only by construction.
+  const evalSide = input.side === "NO" ? "NO" : "YES";
   const edge = evaluateEdge(
     {
       forecast: {
@@ -590,8 +601,7 @@ export async function executeG4Step(
         invalidators: [],
       },
       book: {
-        yes_price: bid,
-        no_price: ask,
+        ...(evalSide === "NO" ? { no_price: ask } : { yes_price: ask }),
         market_id,
         event_id: "",
         question: "",
@@ -629,8 +639,9 @@ export async function executeG4Step(
     };
   }
 
-  // 4. Build intent from edge
-  const intentSide = edge.side === "YES" ? "BUY" : "SELL";
+  // 4. Build intent from edge. Entries are always BUY on the quoted
+  // token (SELL needs inventory, which no path tracks — see §3 above).
+  const intentSide = "BUY";
   const size = deps.sizeIntent({ market_id, bid, ask }, p);
   if (size <= 0) {
     return {
@@ -656,7 +667,7 @@ export async function executeG4Step(
         market_id,
         side: intentSide,
         desired_qty: size,
-        limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
+        limit_price: edge.reference_price ?? ask,
         created_at: now,
         evidence_ids: [],
         forecast_refs: [],
@@ -698,7 +709,7 @@ export async function executeG4Step(
         market_id,
         side: intentSide,
         desired_qty: size,
-        limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
+        limit_price: edge.reference_price ?? ask,
         created_at: now,
         evidence_ids: [],
         forecast_refs: [],
@@ -817,20 +828,25 @@ export async function executeG4Step(
     }
   }
 
+  // Entries are BUY-only (see §4): the label follows the intent, and sim
+  // PnL is directional — profit scales with (fair − paid) on the quoted
+  // side, not with distance from 0.5.
   let decision: G4CoreResult["decision"] = "NO_TRADE";
   if (fill) {
-    decision = p > 0.5 ? "BUY" : "SELL";
+    decision = intentSide;
   } else if (
     (config.mode === "MICRO_LIVE" || config.mode === "LIVE") &&
     (outcome === "SUBMITTED" || outcome === "NEEDS_RECONCILIATION")
   ) {
-    decision = p > 0.5 ? "BUY" : "SELL";
+    decision = intentSide;
   }
 
   // Calculate PnL
+  const fairDiff =
+    evalSide === "NO" && fill ? (1 - p) - fill.fillPrice : p - (fill?.fillPrice ?? 0.5);
   const pnl = fill
     ? fill.status === "FILLED" || fill.status === "PARTIAL"
-      ? fill.filledSize * (p - 0.5) - (fill.makerFee + fill.takerFee)
+      ? fill.filledSize * fairDiff - (fill.makerFee + fill.takerFee)
       : 0
     : 0;
 
