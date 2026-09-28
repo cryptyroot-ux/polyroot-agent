@@ -5,11 +5,11 @@ import { mkdtempSync, readFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const CLI_SRC = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
+const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
 
 describe("onboarding contains zero maintainer-owned provider defaults", () => {
   it("never ships files.pango.fun in the onboarding path", () => {
-    const src = readFileSync(CLI_SRC, "utf8");
+    const src = readFileSync(join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts"), "utf8");
     assert.ok(
       !src.includes("files.pango.fun"),
       "onboarding must not default to a maintainer-owned gateway",
@@ -25,9 +25,12 @@ describe("onboarding contains zero maintainer-owned provider defaults", () => {
   });
 });
 
-const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
-
-function runOnboardLikeHuman(home: string, lines: string[], markers?: string[], extraEnv: Record<string, string> = {}): Promise<{ code: number; out: string }> {
+function runOnboardLikeHuman(
+  home: string,
+  lines: string[],
+  markers?: string[],
+  extraEnv: Record<string, string> = {}
+): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ["--import", "tsx", CLI, "onboard"], {
       cwd: process.cwd(),
@@ -39,11 +42,6 @@ function runOnboardLikeHuman(home: string, lines: string[], markers?: string[], 
     child.stderr.on("data", (d: Buffer) => { out += d.toString(); });
     child.stdout.resume();
     child.stderr.resume();
-    // Prompt-gated keystrokes: fixed-interval writes race tsx startup and
-    // the no-question ping window — readline drops lines written while no
-    // question is pending (its echo still pollutes the output), so scripted
-    // answers land on the wrong prompts. Instead, send each line only after
-    // the flow has printed the prompt that consumes it and output settles.
     const waitFor: string[] = markers ?? [
       "Choose AI provider",
       "Select model:",
@@ -52,8 +50,9 @@ function runOnboardLikeHuman(home: string, lines: string[], markers?: string[], 
       "Wallet (Enter = create new):",
       "Create a vault password",
       "Repeat the vault password",
-      "Choose mode (Enter = PAPER):",
-      "Watch a 1-step demo trade now?",
+      "Choose mode (Enter = SHADOW):",
+      "Capital cap in USD",
+      "Daily loss cap in bps",
     ];
     let i = 0;
     let lastLen = 0;
@@ -80,6 +79,24 @@ function runOnboardLikeHuman(home: string, lines: string[], markers?: string[], 
   });
 }
 
+describe("onboarding contains zero maintainer-owned provider defaults", () => {
+  it("never ships files.pango.fun in the onboarding path", () => {
+    const src = readFileSync(join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts"), "utf8");
+    assert.ok(
+      !src.includes("files.pango.fun"),
+      "onboarding must not default to a maintainer-owned gateway",
+    );
+  });
+
+  it("ships no maintainer-owned gateway in .env.example provider comments", () => {
+    const envExample = readFileSync(join(process.cwd(), ".env.example"), "utf8");
+    assert.ok(
+      !envExample.includes("files.pango.fun"),
+      ".env.example must not point users at a maintainer-owned gateway",
+    );
+  });
+});
+
 describe("super-easy onboarding E2E (create wallet path)", () => {
   it("completes with OpenAI key + new wallet + PAPER default", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
@@ -91,7 +108,9 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
       "",               // wallet: create new (default)
       "test-pass-123",  // vault password
       "test-pass-123",  // repeat vault password
-      "",               // mode: PAPER (default)
+      "1",              // mode: SHADOW (default) - press 1
+      "10000",          // capital cap
+      "500",            // loss cap bps
       "n",              // demo trade offer (no DB here, so never asked; keeps runs fast)
     ]);
     assert.equal(code, 0);
@@ -99,8 +118,9 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
     const envPath = join(home, ".polyroot", ".env");
     assert.equal(existsSync(envPath), true);
     const env = readFileSync(envPath, "utf8");
-    assert.ok(env.includes("RUNTIME_MODE=PAPER"));
+    assert.ok(env.includes("RUNTIME_MODE=SHADOW"));
     assert.ok(env.includes("POLYROOT_FORECAST_PROVIDER=openai"));
+    assert.ok(env.includes("OPENAI_BASE_URL=https://api.openai.com/v1"));
     assert.ok(env.includes("OPENAI_API_KEY=sk-test-key-1"));
     assert.ok(/WALLET_ADDRESS=0x[0-9a-fA-F]{40}/.test(env));
     const ksPath = join(home, ".polyroot", "keystore.json");
@@ -122,7 +142,9 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
       "",                         // wallet: create new (default)
       "test-pass-123",            // vault password
       "test-pass-123",            // repeat vault password
-      "",                         // mode: PAPER (default)
+      "1",                        // mode: SHADOW (default) - press 1
+      "10000",                    // capital cap
+      "500",                      // loss cap bps
       "n",                        // demo trade offer (no DB here, so never asked; keeps runs fast)
     ], [
       "Choose AI provider",
@@ -133,8 +155,9 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
       "Wallet (Enter = create new):",
       "Create a vault password",
       "Repeat the vault password",
-      "Choose mode (Enter = PAPER):",
-      "Watch a 1-step demo trade now?",
+      "Choose mode (Enter = SHADOW):",
+      "Capital cap in USD",
+      "Daily loss cap in bps",
     ]);
     assert.equal(code, 0);
     const envPath = join(home, ".polyroot", ".env");
@@ -161,7 +184,9 @@ describe("onboarding finish is resilient without a database", () => {
       "",               // wallet: create new (default)
       "test-pass-123",  // vault password
       "test-pass-123",  // repeat vault password
-      "",               // mode: PAPER (default)
+      "1",              // mode: SHADOW (default) - press 1
+      "10000",          // capital cap
+      "500",            // loss cap bps
       "n",              // demo trade offer (no DB here, so never asked; keeps runs fast)
     ], undefined, { DATABASE_URL: "postgresql://onboard_test:none@127.0.0.1:1/nodb" });
     assert.equal(code, 0);

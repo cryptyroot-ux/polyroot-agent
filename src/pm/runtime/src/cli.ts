@@ -623,57 +623,69 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   chmodSync(KEYSTORE_PATH, 0o600);
   console.log(`🔐 Keystore saved to ${KEYSTORE_PATH} (encrypted, 600 perms)`);
 
-  // 3. Mode selection — PAPER = practice with play money (100% safe).
+  // 3. Mode selection — SHADOW = live data, simulated fills (100% safe).
   console.log("\n🚀 Step 3/3: Choose Mode");
   console.log(
-    "   PAPER = practice with play money (100% safe). LIVE = real money.",
+    "   SHADOW = live data, simulated fills ($0 risk). LIVE = real money.",
   );
   const modeChoice = await askChoice(
-    "Choose mode (Enter = PAPER):",
+    "Choose mode (Enter = SHADOW):",
     [
-      "PAPER — Safe practice with play money (recommended, no real money)",
+      "SHADOW — Live data, simulated fills, $0 risk (recommended)",
       "LIVE — Real trading on Polymarket (requires capital, API keys)",
     ],
     0,
   );
-  let mode: "PAPER" | "LIVE" = "PAPER";
+  let mode: "SHADOW" | "LIVE" = "SHADOW";
   let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
   let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
-  if (modeChoice.startsWith("LIVE")) {
-    console.log(
-      "\nLIVE uses REAL MONEY. The daily loss cap shuts the system",
-      "down automatically when reached (needs your manual reset).",
-    );
-    const confirm = await askText(
-      "Type LIVE to continue (anything else stays PAPER)",
-    );
-    if (confirm.trim() === "LIVE") {
+
+  // Both SHADOW and LIVE need capital/loss caps since SHADOW simulates with real data
+  const needsCapitalConfig = modeChoice.startsWith("SHADOW") || modeChoice.startsWith("LIVE");
+  if (needsCapitalConfig) {
+    const isLive = modeChoice.startsWith("LIVE");
+    if (isLive) {
       mode = "LIVE";
-      const capitalRaw = await askText(
-        `Capital cap in USD — max money allowed in play (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
-        { defaultValue: String(AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
-      );
-      const capitalParsed = Number(capitalRaw);
-      capitalUsd =
-        Number.isFinite(capitalParsed) && capitalParsed > 0
-          ? capitalParsed
-          : AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
-      const bpsRaw = await askText(
-        `Daily loss cap in bps, 500 = 5% (default ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})`,
-        { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
-      );
-      const bpsParsed = Number(bpsRaw);
-      lossBps =
-        Number.isFinite(bpsParsed) && bpsParsed > 0
-          ? bpsParsed
-          : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
-      const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
       console.log(
-        `\n✅ Your limits: capital $${capitalUsd}, stop-loss $${lossCap}/day.`,
+        "\nLIVE uses REAL MONEY. The daily loss cap shuts the system",
+        "down automatically when reached (needs your manual reset).",
       );
+      const confirm = await askText(
+        "Type LIVE to continue (anything else stays SHADOW)",
+      );
+      if (confirm.trim() !== "LIVE") {
+        console.log("Staying on SHADOW.");
+      } else {
+        mode = "LIVE";
+      }
     } else {
-      console.log("Staying on PAPER. Change later with: polyroot setup");
+      mode = "SHADOW";
     }
+
+    const capitalRaw = await askText(
+      `Capital cap in USD — max money allowed in play (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
+      { defaultValue: String(AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
+    );
+    const capitalParsed = Number(capitalRaw);
+    capitalUsd =
+      Number.isFinite(capitalParsed) && capitalParsed > 0
+        ? capitalParsed
+        : AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
+    const bpsRaw = await askText(
+      `Daily loss cap in bps, 500 = 5% (default ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})`,
+      { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
+    );
+    const bpsParsed = Number(bpsRaw);
+    lossBps =
+      Number.isFinite(bpsParsed) && bpsParsed > 0
+        ? bpsParsed
+        : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
+    const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
+    console.log(
+      `\n✅ Your limits: capital $${capitalUsd}, stop-loss $${lossCap}/day.`,
+    );
+  } else {
+    console.log("Staying on SHADOW. Change later with: polyroot setup");
   }
 
   return {

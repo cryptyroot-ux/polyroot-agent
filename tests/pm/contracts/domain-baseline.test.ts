@@ -9,7 +9,7 @@ import {
 } from "@polyroot/domain";
 
 describe("Domain baseline — canonical enums vs spec pack 124 PM-*", () => {
-  it("PM-GOV-02: operation modes are RESEARCH/PAPER/SHADOW/LIVE; fresh install defaults to PAPER", () => {
+  it("PM-GOV-02: operation modes are RESEARCH/PAPER/SHADOW/LIVE; fresh install defaults to SHADOW", () => {
     const modes = OperationModeSchema.options;
     assert.deepEqual([...modes].sort(), [
       "LIVE",
@@ -19,6 +19,7 @@ describe("Domain baseline — canonical enums vs spec pack 124 PM-*", () => {
     ]);
     assert.equal(OperationModeSchema.safeParse("RESEARCH").success, true);
     assert.equal(OperationModeSchema.safeParse("PAPER").success, true);
+    assert.equal(OperationModeSchema.safeParse("SHADOW").success, true);
   });
 
   it("PM-VENUE-01: venue modes are NORMAL/POST_ONLY/CANCEL_ONLY/READ_ONLY/UNAVAILABLE/UNKNOWN, free of RESTARTING", () => {
