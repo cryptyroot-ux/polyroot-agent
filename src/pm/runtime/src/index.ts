@@ -76,3 +76,9 @@ export {
   type HealthReport,
   type ProbeStatus,
 } from "./observability/index.js";
+export {
+  topOpportunities,
+  marketDeepDive,
+  formatInsight,
+  type ScoredMarket,
+} from "./observability/index.js";

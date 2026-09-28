@@ -21,3 +21,9 @@ export {
   type HealthReport,
   type ProbeStatus,
 } from "./health-monitor.js";
+export {
+  topOpportunities,
+  marketDeepDive,
+  formatInsight,
+  type ScoredMarket,
+} from "./insight-engine.js";

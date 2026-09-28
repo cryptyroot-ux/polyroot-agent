@@ -27,7 +27,10 @@ import {
   collectHealth,
   explainLastDecision,
   formatHealth,
+  formatInsight,
+  marketDeepDive,
   requestHalt,
+  topOpportunities,
 } from "./observability/index.js";
 
 /**
@@ -170,6 +173,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
       "  polyroot explain [--last N] Explain the latest AI decision chain\n" +
       "  polyroot halt [--cancel-orders] Emergency stop + exit\n" +
       "  polyroot health [--watch]    Real-time system health\n" +
+      "  polyroot insight [--market]  Market opportunities + heatmap\n" +
           "  polyroot doctor          Basic health check\n" +
           "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
           "  polyroot wallet verify   Check wallet with no network\n" +
@@ -925,6 +929,7 @@ function printConsoleHelp(): void {
       "  explain        Explain the latest AI decision chain\n" +
       "  halt           Emergency stop (latch + exit)\n" +
       "  health         Real-time system health\n" +
+      "  insight        Market opportunities + heatmap\n" +
       "  logs [N]       Show recent agent activity (default 15 lines)\n" +
       "  logs --follow  Watch activity live (Ctrl+C back to prompt)\n" +
       "  shadow-fund    Credit SHADOW play bankroll: shadow-fund --amount 1000\n" +
@@ -1063,6 +1068,8 @@ async function runConsole(): Promise<void> {
         await runHaltCLI(args);
       } else if (cmd === "health") {
         await runHealthCLI(args);
+      } else if (cmd === "insight") {
+        await runInsightCLI(args);
       } else if (cmd === "setup") {
         await runSetupFlow();
       } else if (cmd === "shadow-fund") {
@@ -1890,6 +1897,64 @@ async function runHealthCLI(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * Insight command - strategic market intelligence: opportunity ranking,
+ * single-market deep dive, or risk heatmap. Read-only.
+ * Usage: polyroot insight [--market <token-id>] [--heatmap] [--json]
+ */
+async function runInsightCLI(args: string[]): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL required (set in ~/.polyroot/.env).");
+    process.exit(1);
+  }
+  const asJson = args.includes("--json");
+  const heatmap = args.includes("--heatmap");
+  const mIdx = args.indexOf("--market");
+  const marketId =
+    mIdx >= 0 && args[mIdx + 1] && !args[mIdx + 1]?.startsWith("--")
+      ? (args[mIdx + 1] as string)
+      : "";
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    if (marketId) {
+      const text = await marketDeepDive(pool, marketId);
+      console.log(asJson ? JSON.stringify({ ok: true, marketId, text }) : text);
+      return;
+    }
+    const rows = await topOpportunities(pool, heatmap ? 20 : 10);
+    if (heatmap) {
+      const risks = ["Low", "Med", "High"] as const;
+      const labels = ["BUY", "WATCH", "AVOID"] as const;
+      const lines = ["🌡️ Risk Heatmap (label × risk)", ""];
+      lines.push("        Low   Med   High");
+      for (const label of labels) {
+        const cells = risks.map(
+          (risk) =>
+            String(
+              rows.filter((r) => r.label === label && r.risk === risk).length,
+            ).padStart(5),
+        );
+        const icon = label === "BUY" ? "🟢" : label === "WATCH" ? "🟡" : "🔴";
+        lines.push(`${icon} ${label.padEnd(5)}${cells.join("")}`);
+      }
+      console.log(
+        asJson
+          ? JSON.stringify({ ok: true, heatmap: true, markets: rows })
+          : lines.join("\n"),
+      );
+      return;
+    }
+    console.log(formatInsight(rows, asJson));
+  } catch (err) {
+    console.error(`❌ insight failed: ${(err as Error).message}`);
+    process.exit(1);
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
 /** Status command - shows current configuration and health. */
 async function runStatus(): Promise<void> {
   loadDotEnv();
@@ -2407,6 +2472,10 @@ export async function main(
     await runHealthCLI(argv.slice(1));
     return;
   }
+  if (argv[0] === "insight") {
+    await runInsightCLI(argv.slice(1));
+    return;
+  }
   if (argv[0] === "update") {
     await runUpdate();
     return;
@@ -2482,6 +2551,7 @@ export async function main(
     argv[0] !== "explain" &&
     argv[0] !== "halt" &&
     argv[0] !== "health" &&
+    argv[0] !== "insight" &&
     argv[0] !== "update" &&
     argv[0] !== "doctor" &&
     argv[0] !== "docker-fix" &&
