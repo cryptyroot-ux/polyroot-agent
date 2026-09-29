@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔧 Fixed
 - **TypeScript build** — corrected `specialHandling` type, `isSpecialHandling` type guard, and duplicate `copilot` case
+- **Provider-label lookup** — menu labels carry descriptions in parentheses, config keys are short prefixes; lookup now matches longest-prefix so every one of the 33 providers resolves to its own base URL/models (previously only `custom` matched and all others silently fell through to the generic gateway prompt)
+- **Onboarding E2E harness** — default markers updated for the 33-provider menu (`Select model`, `Paste your`); custom-gateway case selects entry 27
+- **Version alignment** — all 14 workspace `package.json` bumped to 1.4.0 to match tag/CHANGELOG/README/landing
 
 ## [1.3.0] - 2026-09-28
 

@@ -44,8 +44,8 @@ function runOnboardLikeHuman(
     child.stderr.resume();
     const waitFor: string[] = markers ?? [
       "Choose AI provider",
-      "Select model:",
-      "Paste your OpenAI API key",
+      "Select model",
+      "Paste your",
       "Continue anyway?",
       "Wallet (Enter = create new):",
       "Create a vault password",
@@ -98,7 +98,7 @@ describe("onboarding contains zero maintainer-owned provider defaults", () => {
 });
 
 describe("super-easy onboarding E2E (create wallet path)", () => {
-  it("completes with OpenAI key + new wallet + PAPER default", async () => {
+  it("completes with OpenAI key + new wallet + SHADOW default", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(home, [
       "",               // provider: OpenAI (default)
@@ -134,7 +134,7 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
   it("writes openai provider + custom base URL so the brain stays live", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(home, [
-      "2",                        // provider: own OpenAI-compatible gateway
+      "27",                       // provider: custom (direct API)
       "https://gateway.example/v1", // gateway base URL (valid first try, no retry)
       "gpt-4o-mini",              // model name
       "sk-custom-1",              // gateway API key

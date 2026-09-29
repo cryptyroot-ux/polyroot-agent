@@ -702,29 +702,13 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     },
   };
 
-  const config = providerConfig[provider] || {};
-
-// Type guard to narrow specialHandling type
-  function isSpecialHandling(
-    s: string | undefined,
-  ): s is
-    | "ollama"
-    | "copilot"
-    | "vertex"
-    | "bedrock"
-    | "azure"
-    | "custom"
-    | undefined {
-    return (
-      s === "ollama" ||
-      s === "copilot" ||
-      s === "vertex" ||
-      s === "bedrock" ||
-      s === "azure" ||
-      s === "custom" ||
-      s === undefined
-    );
-  }
+  // Labels shown in the menu carry descriptions in parentheses; config keys
+  // are the short prefixes ("OpenAI", "Ollama Cloud", ...). Match longest
+  // first so "Ollama Cloud (...)" wins over "Ollama".
+  const configKey = Object.keys(providerConfig)
+    .sort((a, b) => b.length - a.length)
+    .find((k) => provider === k || provider.startsWith(`${k} `) || provider.startsWith(`${k} (`));
+  const config = (configKey ? providerConfig[configKey] : undefined) || {};
 
   const specialHandling = config.specialHandling;
 
