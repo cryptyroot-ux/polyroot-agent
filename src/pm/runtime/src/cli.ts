@@ -2120,6 +2120,24 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   // pool); PAPER/SHADOW warn and continue.
   await agent.hydrateSeen();
 
+  // Single-instance guard (continuous runs only): a second loop would
+  // double-trade every market. Refuses BEFORE any side effects when a
+  // supervised agent or a bound metrics port is detected.
+  if (!config.once) {
+    try {
+      const { assertSingleInstance } = await import("./instance-guard.js");
+      await assertSingleInstance();
+    } catch (err) {
+      if ((err as Error).name === "AgentAlreadyRunningError") {
+        console.error(`\n⛔ ${(err as Error).message}\n`);
+        await agent.pool.end().catch(() => undefined);
+        closeSharedSession();
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+
   // Metrics/health HTTP server for agent runs. The server is started for
   // continuous runs so public /healthz is available; /metrics stays disabled
   // without POLYROOT_METRICS_OWNER_KEY. `--once` exits before `start()`.
@@ -2208,8 +2226,24 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   if (metricsServer) {
-    const addr = await metricsServer.start();
-    console.log(`Metrics server listening on ${addr.host}:${addr.port}`);
+    try {
+      const addr = await metricsServer.start();
+      console.log(`Metrics server listening on ${addr.host}:${addr.port}`);
+    } catch (err) {
+      // Final arbiter for double-run races the pre-check misses: translate
+      // the raw bind error into the same friendly refusal, then exit clean.
+      const { isAddrInUse } = await import("./instance-guard.js");
+      if (isAddrInUse(err)) {
+        console.error(
+          "\n⛔ Port 9090 is already bound — another agent is live. " +
+            "Manage it with: sudo systemctl status polyroot\n",
+        );
+        await agent.pool.end().catch(() => undefined);
+        closeSharedSession();
+        process.exit(1);
+      }
+      throw err;
+    }
   }
 
   // Learning loop: record Gamma resolutions → retrain calibration.

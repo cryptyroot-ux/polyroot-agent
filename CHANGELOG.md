@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.2] - 2026-09-30
+
+### 🔧 Fixed
+- **Second `polyroot run` no longer dies on raw `EADDRINUSE`** — a single-instance guard refuses first (systemd-active check with PID + management hints, then metrics-port probe), and the metrics bind itself translates leftovers into the same friendly refusal. No more split-brain loops, no more cryptic bind errors
+
 ## [1.10.1] - 2026-09-30
 
 ### 🔧 Fixed

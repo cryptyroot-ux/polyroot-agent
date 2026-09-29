@@ -6,8 +6,8 @@ autonomy** architecture: the AI proposes intents only, while a separate
 deterministic **Executor** signs and submits orders. The AI never holds private
 keys.
 
-> **Status: v1.10.1-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
-> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 824 passing tests (812 contract + 12 property).
+> **Status: v1.10.2-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
+> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 830 passing tests (818 contract + 12 property).
 > Default onboarding mode is `SHADOW`. Live trading requires explicit Autonomy Charter commissioning.
 
 ---
