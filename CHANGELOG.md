@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🔧 Fixed
 - Replaces ad-hoc units pointing at wrong paths/entrypoints (`dist/control/src/index.js`) that crash-looped tens of thousands of times
+- **`polyroot update` now delivers everything alone** — auto-migrate (idempotent, manual command stays as fallback) + supervisor unit refresh + `try-restart` of a running service, so operators only ever run one command
 
 ### 📈 Strategy upgrades — research-backed (audit P0/P1)
 - **CLOB Θ fee model** — taker fee now `Θ·p·(1−p)` per share (Θ=0.05, CFTC filing 2026) instead of flat 200bps: mid-price books price their true cost; explicit flat overrides still win (backward compatible)

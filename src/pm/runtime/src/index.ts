@@ -53,6 +53,7 @@ export {
   main,
   assertRuntimeEnv,
   assertMicroLiveReady,
+  refreshSupervisorUnit,
   loadDotEnv,
   runWalletVerify,
   runGuardReset,

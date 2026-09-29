@@ -2585,12 +2585,91 @@ async function runUpdate(): Promise<void> {
       console.log(`\n⚠️  Launcher refresh skipped: ${(err as Error).message}`);
     }
 
-    console.log("\n✅ Update complete! If migrations changed, run:");
-    console.log("     npm run migrate:latest   (safe, idempotent)");
+    // Auto-migrate (idempotent). On failure keep the manual fallback below.
+    let migrateOk = true;
+    try {
+      console.log("\n🗄️  Running migrations...");
+      execSync("npm run migrate:latest", { cwd: installDir, stdio: "inherit" });
+    } catch (err) {
+      migrateOk = false;
+      console.log(`\n⚠️  Auto-migrate skipped: ${(err as Error).message}`);
+    }
+
+    // Refresh the 24/7 supervisor unit so `polyroot update` alone delivers
+    // unit fixes (paths, entrypoint, restart policy). Best-effort.
+    await refreshSupervisorUnit(installDir);
+
+    console.log("\n✅ Update complete!" + (migrateOk ? "" : " If migrations changed, run:"));
+    if (!migrateOk) {
+      console.log("     npm run migrate:latest   (safe, idempotent)");
+    }
   } catch (err) {
     console.error("❌ Update failed:", (err as Error).message);
     process.exit(1);
   }
+}
+
+/**
+ * Re-render + reload the systemd unit after an update, then `try-restart`
+ * (restarts only a RUNNING service — never starts a stopped one).
+ * Skipped with POLYROOT_NO_SYSTEMD=1. Never throws: update must survive
+ * hosts without systemd/root. Exported for tests (SYSTEMD_DIR override).
+ */
+export async function refreshSupervisorUnit(installDir: string): Promise<{
+  refreshed: boolean;
+  restarted: boolean;
+}> {
+  const out = { refreshed: false, restarted: false };
+  if (process.env["POLYROOT_NO_SYSTEMD"] === "1") return out;
+  const { execSync } = await import("node:child_process");
+  const script = `${installDir}/scripts/install-systemd.sh`;
+  try {
+    const { existsSync } = await import("node:fs");
+    if (!existsSync(script)) return out;
+    execSync(
+      `bash ${JSON.stringify(script)} --home ${JSON.stringify(installDir)} --user ${JSON.stringify(ownerUser())}`,
+      {
+        // Tests point SYSTEMD_DIR at a temp dir (no sudo/daemon touch).
+        env: {
+          ...process.env,
+          ...(process.env["POLYROOT_SYSTEMD_DIR"]
+            ? { SYSTEMD_DIR: process.env["POLYROOT_SYSTEMD_DIR"] as string }
+            : {}),
+        },
+        stdio: "inherit",
+      },
+    );
+    out.refreshed = true;
+  } catch (err) {
+    console.log(`\n⚠️  Supervisor refresh skipped: ${(err as Error).message}`);
+    return out;
+  }
+  try {
+    const show = execSync("systemctl show polyroot --property=LoadState 2>/dev/null", {
+      encoding: "utf8",
+    });
+    // SYSTEMD_DIR override = render-only test mode: never touch real systemd.
+    if (!process.env["POLYROOT_SYSTEMD_DIR"] && show.trim() === "LoadState=loaded") {
+      execSync("systemctl try-restart polyroot 2>/dev/null", { stdio: "ignore" });
+      out.restarted = true;
+      console.log("\n✅ Supervisor unit refreshed (service try-restarted if active)");
+    } else if (out.refreshed) {
+      console.log("\n✅ Supervisor unit refreshed");
+    }
+  } catch {
+    // No systemd / no privileges — update itself already succeeded.
+  }
+  return out;
+}
+
+/** OS user that should own the service (sudo-aware). */
+function ownerUser(): string {
+  return (
+    process.env["SUDO_USER"] ||
+    process.env["USER"] ||
+    process.env["LOGNAME"] ||
+    "root"
+  );
 }
 
 /** Doctor command - health checks. */

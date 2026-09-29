@@ -7,7 +7,7 @@ deterministic **Executor** signs and submits orders. The AI never holds private
 keys.
 
 > **Status: v1.5-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
-> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 767 passing tests (755 contract + 12 property).
+> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 770 passing tests (758 contract + 12 property).
 > Default onboarding mode is `SHADOW`. Live trading requires explicit Autonomy Charter commissioning.
 
 ---

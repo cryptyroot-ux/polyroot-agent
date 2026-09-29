@@ -105,3 +105,51 @@ describe("install.sh wires the 24/7 service", () => {
     assert.ok(linkIdx >= 0 && sysIdx >= 0 && sysIdx > linkIdx);
   });
 });
+
+// `polyroot update` must deliver unit fixes by itself (render-only here:
+// SYSTEMD_DIR override never touches real systemd, even on hosts that
+// have a polyroot unit loaded).
+describe("polyroot update refreshes the supervisor unit", () => {
+  it("renders the unit into SYSTEMD_DIR and reports refreshed", async () => {
+    const { refreshSupervisorUnit } = await import("@polyroot/runtime");
+    const dir = mkdtempSync(join(tmpdir(), "polyroot-update-systemd-"));
+    const prev = process.env["POLYROOT_SYSTEMD_DIR"];
+    process.env["POLYROOT_SYSTEMD_DIR"] = dir;
+    try {
+      const res = await refreshSupervisorUnit(process.cwd());
+      assert.equal(res.refreshed, true);
+      assert.equal(res.restarted, false);
+      const unit = readFileSync(join(dir, "polyroot.service"), "utf8");
+      assert.ok(unit.includes("ExecStart="));
+      assert.ok(unit.includes("src/pm/runtime/dist/cli.js run"));
+      assert.ok(!unit.includes("{{"));
+    } finally {
+      if (prev === undefined) delete process.env["POLYROOT_SYSTEMD_DIR"];
+      else process.env["POLYROOT_SYSTEMD_DIR"] = prev;
+    }
+  });
+
+  it("is a no-op (never throws) with POLYROOT_NO_SYSTEMD=1", async () => {
+    const { refreshSupervisorUnit } = await import("@polyroot/runtime");
+    const prev = process.env["POLYROOT_NO_SYSTEMD"];
+    process.env["POLYROOT_NO_SYSTEMD"] = "1";
+    try {
+      const res = await refreshSupervisorUnit(process.cwd());
+      assert.equal(res.refreshed, false);
+      assert.equal(res.restarted, false);
+    } finally {
+      if (prev === undefined) delete process.env["POLYROOT_NO_SYSTEMD"];
+      else process.env["POLYROOT_NO_SYSTEMD"] = prev;
+    }
+  });
+
+  it("update path runs migrations automatically (best-effort)", () => {
+    const cli = readFileSync(
+      join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts"),
+      "utf8",
+    );
+    assert.ok(cli.includes("npm run migrate:latest"));
+    assert.ok(cli.includes("refreshSupervisorUnit"));
+    assert.ok(cli.includes("systemctl try-restart polyroot"));
+  });
+});
