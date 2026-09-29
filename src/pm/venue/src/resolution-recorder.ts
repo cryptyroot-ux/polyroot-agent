@@ -63,7 +63,7 @@ function tryJson(raw: string): unknown {
   }
 }
 
-function toMs(raw: unknown, fallback: number): number {
+function toMs(raw: unknown, fallback?: number): number | undefined {
   if (typeof raw === "string" && raw) {
     const ms = Date.parse(raw);
     if (Number.isFinite(ms)) return ms;
@@ -126,10 +126,11 @@ export function parseResolvedMarkets(
         noTokenId: ids[1] as string,
         winningTokenId,
         finalYesPrice: prices[0] as number,
-        resolvedAtMs: toMs(
-          rec["closedTime"] ?? rec["endDate"],
-          toMs(eventRec["closedTime"] ?? eventRec["endDate"], nowMs),
-        ),
+        resolvedAtMs:
+          toMs(
+            rec["closedTime"] ?? rec["endDate"],
+            toMs(eventRec["closedTime"] ?? eventRec["endDate"], nowMs),
+          ) ?? nowMs,
       });
     }
   }
@@ -207,11 +208,18 @@ export async function recordResolvedClusters(
 /**
  * Fetch recently closed events from Gamma. Throws plain Error on failure
  * (scheduler treats it as a skipped tick, never a crash).
+ *
+ * Recency filter (default 30 days): Gamma serves oldest-closed first, so
+ * an unfiltered poll keeps returning 2021 markets whose tokens no live
+ * forecast will ever join against — the calibration trainer would starve
+ * forever while the table fills with archaeology. Only recent resolutions
+ * can meet live forecasts. 0 disables the filter.
  */
 export async function fetchClosedEvents(
-  limit = 50,
+  limit = 100,
   timeoutMs = 15_000,
-): Promise<unknown> {
+  maxAgeDays = 30,
+): Promise<unknown[]> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -222,7 +230,19 @@ export async function fetchClosedEvents(
     if (!res.ok) {
       throw new Error(`Gamma API HTTP ${res.status}`);
     }
-    return (await res.json()) as unknown;
+    const data: unknown = await res.json();
+    if (!Array.isArray(data)) return [];
+    if (!(maxAgeDays > 0)) return data;
+    const cutoff = Date.now() - maxAgeDays * 24 * 3_600_000;
+    return data.filter((event) => {
+      if (typeof event !== "object" || event === null) return false;
+      const rec = event as Record<string, unknown>;
+      const stamp =
+        toMs(rec["closedTime"]) ??
+        toMs(rec["endDate"]) ??
+        toMs(rec["updatedAt"]);
+      return stamp !== undefined && stamp >= cutoff;
+    });
   } catch (err) {
     throw new Error(
       `resolution fetch failed: ${(err as Error).message ?? err}`,

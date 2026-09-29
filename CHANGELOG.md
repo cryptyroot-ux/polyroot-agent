@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.4] - 2026-09-30
+
+### 🔧 Fixed (found by final audit)
+- **Resolution recency filter** — Gamma serves oldest-closed first, so the recorder kept archiving 2021 markets no live forecast can join against (calibration would starve forever). `fetchClosedEvents` now keeps only closures within 30 days (0 disables); the trainer finally has a chance to meet live forecasts
+
 ## [1.10.3] - 2026-09-30
 
 ### 🔧 Fixed (critical — crash-looped supervised agents)

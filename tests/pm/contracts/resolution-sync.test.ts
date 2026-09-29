@@ -5,6 +5,7 @@ import {
   parseResolvedMarkets,
   toResolvedCluster,
   recordResolvedClusters,
+  fetchClosedEvents,
 } from "@polyroot/venue";
 import { PgCalibrationService } from "../../../src/pm/intelligence/src/calibration";
 import { startResolutionSync } from "@polyroot/runtime";
@@ -83,6 +84,55 @@ describe("resolution recorder (pure)", () => {
     assert.equal(c1.isIndependent, true);
     const other = toResolvedCluster({ ...m, winningTokenId: "tokNO" });
     assert.notEqual(other.clusterHash, c1.clusterHash);
+  });
+
+  it("fetchClosedEvents drops ancient closures (trainer would starve)", async () => {
+    const origFetch = globalThis.fetch;
+    const ancient = gammaEvent({
+      id: "ev-old",
+      closedTime: "2021-12-05T00:00:00Z",
+      markets: [
+        {
+          id: "m-old",
+          question: "Old?",
+          closed: true,
+          clobTokenIds: '["oa","ob"]',
+          outcomePrices: '["0.99", "0.01"]',
+          closedTime: "2021-12-05T00:00:00Z",
+        },
+      ],
+    });
+    const fresh = gammaEvent({
+      id: "ev-new",
+      closedTime: new Date(Date.now() - 24 * 3600_000).toISOString(),
+      markets: [
+        {
+          id: "m-new",
+          question: "New?",
+          closed: true,
+          clobTokenIds: '["na","nb"]',
+          outcomePrices: '["0.01", "0.99"]',
+          closedTime: new Date(Date.now() - 24 * 3600_000).toISOString(),
+        },
+      ],
+    });
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify([ancient, fresh]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as never;
+    try {
+      const data = await fetchClosedEvents(50, 15_000, 30);
+      assert.equal(data.length, 1);
+      const decided = parseResolvedMarkets(data, NOW);
+      assert.equal(decided.length, 1);
+      assert.equal(decided[0]?.eventId, "ev-new");
+      assert.equal(decided[0]?.winningTokenId, "nb");
+      const unfiltered = await fetchClosedEvents(50, 15_000, 0);
+      assert.equal(unfiltered.length, 2);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
   });
 });
 
