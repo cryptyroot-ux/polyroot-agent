@@ -213,6 +213,42 @@ export function formatOnceTranscript(
 
 const MODES = ["PAPER", "SHADOW", "MICRO_LIVE", "LIVE"] as const;
 
+/**
+ * Closest known command by edit distance (typo rescue for
+ * `polyroot market` -> `markets`). Returns null when nothing is close.
+ * Pure and unit-tested.
+ */
+export function suggestCommand(input: string, known: string[]): string | null {
+  const distance = (a: string, b: string): number => {
+    const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) =>
+      Array.from({ length: b.length + 1 }, (_, j) =>
+        i === 0 ? j : j === 0 ? i : 0,
+      ),
+    );
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        dp[i]![j] = Math.min(
+          (dp[i - 1]![j] ?? 0) + 1,
+          (dp[i]![j - 1] ?? 0) + 1,
+          (dp[i - 1]![j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1),
+        );
+      }
+    }
+    return dp[a.length]![b.length] ?? Number.MAX_SAFE_INTEGER;
+  };
+  let best: string | null = null;
+  let bestScore = Number.MAX_SAFE_INTEGER;
+  for (const k of known) {
+    const d = distance(input.toLowerCase(), k.toLowerCase());
+    const threshold = Math.max(2, Math.floor(k.length / 3));
+    if (d <= threshold && d < bestScore) {
+      best = k;
+      bestScore = d;
+    }
+  }
+  return best;
+}
+
 function parseMode(raw: string | undefined, source: string): CLIConfig["mode"] {
   if (!raw || !(MODES as readonly string[]).includes(raw)) {
     throw new Error(
@@ -242,6 +278,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
           "  polyroot setup           Change mode, capital, loss cap, markets\n" +
           "  polyroot shadow-fund --amount <usd>  Credit SHADOW play bankroll\n" +
           "  polyroot markets         Browse popular markets by name\n" +
+          "  polyroot logs [--follow] Watch agent log files\n" +
           "  polyroot status          Show current configuration\n" +
           "  polyroot explain [--last N] Explain the latest AI decision chain\n" +
           "  polyroot halt [--cancel-orders] Emergency stop + exit\n" +
@@ -1662,6 +1699,19 @@ async function runConsole(): Promise<void> {
       } else if (cmd === "restart") {
         await runRestart(args);
       } else if (cmd === "run" || cmd === "start") {
+        // Pre-flight the single-instance guard BEFORE handing the terminal
+        // to the loop: a refusal here returns to the prompt instead of
+        // killing the console session (the supervised agent keeps trading).
+        try {
+          const { assertSingleInstance } = await import("./instance-guard.js");
+          await assertSingleInstance();
+        } catch (err) {
+          if ((err as Error).name === "AgentAlreadyRunningError") {
+            console.error(`\n⛔ ${(err as Error).message}\n`);
+            continue;
+          }
+          throw err;
+        }
         // The loop owns stdin via readline (raw mode) which would swallow
         // Ctrl+C meant for the agent — hand the terminal back first.
         closeSharedSession();
@@ -3475,9 +3525,15 @@ export async function main(
   }
 
   // Bare `polyroot` opens the interactive console (Hermes-style).
-  if (argv.length === 0) {
+  if (argv.length === 0 || argv[0] === "console") {
     await runFirstTimeSetup();
     await runConsole();
+    return;
+  }
+
+  // Agent/log inspection without entering the console.
+  if (argv[0] === "logs" || argv[0] === "log") {
+    await runConsoleLogs(argv.slice(1));
     return;
   }
 
@@ -3491,6 +3547,44 @@ export async function main(
     }
     await startAgent(runConfig);
     return;
+  }
+
+  // Unknown subcommand: NEVER boot the loop by accident (a typo like
+  // `polyroot market` used to fall through to startAgent). Flag-style
+  // legacy invocations (`polyroot --once`) still pass through to parseArgs.
+  const KNOWN_COMMANDS = new Set([
+    "run",
+    "start",
+    "onboard",
+    "setup",
+    "mode",
+    "shadow-fund",
+    "wallet",
+    "venue",
+    "markets",
+    "guard",
+    "status",
+    "explain",
+    "halt",
+    "health",
+    "insight",
+    "backup",
+    "restore",
+    "update",
+    "doctor",
+    "docker-fix",
+    "restart",
+    "logs",
+    "log",
+    "console",
+  ]);
+  const first = argv[0] ?? "";
+  if (argv.length > 0 && !KNOWN_COMMANDS.has(first) && !first.startsWith("-")) {
+    console.error(`\n❌ Unknown command: ${first}`);
+    const suggestion = suggestCommand(first, [...KNOWN_COMMANDS]);
+    if (suggestion) console.error(`   Did you mean: polyroot ${suggestion}?`);
+    console.error("   See: polyroot --help\n");
+    process.exit(2);
   }
 
   // First-run onboarding (skip for subcommands)

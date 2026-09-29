@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.1] - 2026-09-30
+
+### 🔧 Fixed (found in a live user session)
+- **Unknown commands no longer boot the trading loop** — typos like `polyroot market` fell through to `startAgent`. Now: `Unknown command` + did-you-mean suggestion + exit 2, before any side effects. Legacy flag style (`polyroot --once`) still passes through
+- **Console `run` refusal stays at the prompt** — pre-flights the single-instance guard before handing the terminal to the loop, so a supervised agent yields advice instead of killing your console session
+- **New top-level `polyroot logs [--follow]`** — watch agent logs without entering the console (answers "how do I monitor it" alongside `status`, `journalctl -f`, `health`, `explain`)
+
 ## [1.11.0] - 2026-09-30
 
 ### 🔧 Fixed — forensic audit findings (verified, then fixed with proof)
