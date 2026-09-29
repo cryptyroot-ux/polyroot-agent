@@ -17,7 +17,7 @@ import {
   touchDepthNotionalUsd,
   type TokenTouch,
 } from "@polyroot/venue";
-import { kellyFraction, kellyShares, QuoteEngine } from "@polyroot/strategy";
+import { kellyFraction, kellyShares, QuoteEngine, evaluateMultiOutcomeArb } from "@polyroot/strategy";
 import { countComponentFamilies } from "../../../src/pm/intelligence/src/ensemble-pg";
 import { countEnsembleFamilies } from "../../../src/pm/intelligence/src/calibration";
 import { randomUUID } from "crypto";
@@ -394,6 +394,72 @@ describe("QuoteEngine prices the intent's own token side", () => {
     assert.equal(q.valid, true);
     assert.equal(q.size, 12);
     assert.equal(q.reason, "DEPTH_SCALED");
+  });
+});
+
+/* ─── Multi-outcome sum≠1 arbitrage ─────────────────────────────────── */
+
+describe("multi-outcome arbitrage detector", () => {
+  it("BUY_ALL_YES when YES prices sum under $1 after fees", () => {
+    const v = evaluateMultiOutcomeArb(
+      [
+        { tokenId: "a", yesPrice: 0.2 },
+        { tokenId: "b", yesPrice: 0.25 },
+        { tokenId: "c", yesPrice: 0.3 },
+      ],
+      { minEdge: 0.03 },
+    );
+    assert.equal(v.valid, true);
+    assert.equal(v.direction, "BUY_ALL_YES");
+    assert.equal(v.guaranteedPayout, 1);
+    const fees = 0.05 * (0.2 * 0.8 + 0.25 * 0.75 + 0.3 * 0.7);
+    assert.ok(Math.abs(v.edge - (1 - 0.75 - fees)) < 1e-9);
+  });
+
+  it("BUY_ALL_NO when YES prices sum over $1 after fees", () => {
+    const v = evaluateMultiOutcomeArb(
+      [
+        { tokenId: "a", yesPrice: 0.4 },
+        { tokenId: "b", yesPrice: 0.4 },
+        { tokenId: "c", yesPrice: 0.4 },
+      ],
+      { minEdge: 0.03 },
+    );
+    assert.equal(v.valid, true);
+    assert.equal(v.direction, "BUY_ALL_NO");
+    assert.equal(v.guaranteedPayout, 2);
+    assert.ok(v.edge >= 0.03);
+  });
+
+  it("NO_EDGE on a fair book, BAD_INPUT on garbage", () => {
+    const fair = evaluateMultiOutcomeArb(
+      [
+        { tokenId: "a", yesPrice: 0.33 },
+        { tokenId: "b", yesPrice: 0.33 },
+        { tokenId: "c", yesPrice: 0.34 },
+      ],
+      { minEdge: 0.03 },
+    );
+    assert.equal(fair.valid, false);
+    assert.equal(fair.reason, "NO_EDGE");
+    assert.equal(
+      evaluateMultiOutcomeArb([{ tokenId: "a", yesPrice: 0.5 }]).reason,
+      "BAD_INPUT",
+    );
+    assert.equal(
+      evaluateMultiOutcomeArb([
+        { tokenId: "a", yesPrice: 0 },
+        { tokenId: "b", yesPrice: 0.5 },
+      ]).reason,
+      "BAD_INPUT",
+    );
+    assert.equal(
+      evaluateMultiOutcomeArb([
+        { tokenId: "a", yesPrice: 0.4 },
+        { tokenId: "", yesPrice: 0.4 },
+      ]).reason,
+      "BAD_INPUT",
+    );
   });
 });
 

@@ -1989,10 +1989,16 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   }
 
   let stopping = false;
+  let stopResolutionSync: (() => void) | null = null;
   const shutdown = (signal: string): void => {
     if (stopping) return;
     stopping = true;
     console.log(`Received ${signal} — stopping agent...`);
+    try {
+      stopResolutionSync?.();
+    } catch (err: unknown) {
+      console.error("Resolution sync stop error:", err);
+    }
     try {
       agent.stopReservationExpiry();
     } catch (err: unknown) {
@@ -2032,10 +2038,43 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     const addr = await metricsServer.start();
     console.log(`Metrics server listening on ${addr.host}:${addr.port}`);
   }
+
+  // Learning loop: record Gamma resolutions → retrain calibration.
+  // Fail-open by construction (a dead learner never blocks trading);
+  // disable with POLYROOT_RESOLUTION_SYNC=0.
+  if (process.env["POLYROOT_RESOLUTION_SYNC"] !== "0") {
+    try {
+      const { startResolutionSync } = await import("./resolution-sync.js");
+      const { PgCalibrationService } = await import("@polyroot/intelligence");
+      const syncMs = Number(process.env["POLYROOT_RESOLUTION_SYNC_MS"]);
+      const handle = startResolutionSync({
+        pool: agent.pool,
+        calibration: new PgCalibrationService(agent.pool),
+        ...(Number.isFinite(syncMs) && syncMs > 0 ? { intervalMs: syncMs } : {}),
+        onTick: (s) =>
+          console.log(
+            `📚 Resolution sync: ${s.decidedMarkets} decided, ${s.recordedNew} new, calibration ${s.calibrationGroups} group(s)/${s.calibrationSamples} samples`,
+          ),
+        onError: (e) =>
+          console.log(`⚠️  Resolution sync skipped: ${e.message}`),
+      });
+      stopResolutionSync = handle.stop;
+    } catch (err) {
+      console.log(
+        `⚠️  Resolution sync unavailable: ${(err as Error).message}`,
+      );
+    }
+  }
+
   await pipeline.runContinuous();
   // Resolved without a signal (e.g. stop() called externally):
   // flush step writes, then close the pool so the process can exit cleanly.
   if (!stopping) {
+    try {
+      stopResolutionSync?.();
+    } catch {
+      // never block shutdown on timer cleanup
+    }
     try {
       agent.stopReservationExpiry();
     } catch {

@@ -764,6 +764,15 @@ export class PgCatalystBus {
 
 export * from "./catalyst-gate.js";
 export * from "./forecast-provider.js";
+export {
+  PgCalibrationService,
+  PgEnsembleStore,
+  MIN_CALIBRATION_SAMPLES,
+  fitIsotonic,
+  applyIsotonic,
+  countEnsembleFamilies,
+} from "./calibration.js";
+export { countComponentFamilies } from "./ensemble-pg.js";
 
 /* ─── minor re-exports ───────────────────────────────────────────────── */
 

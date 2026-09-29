@@ -120,11 +120,71 @@ export class PgCalibrationService {
   }
 
   /**
+   * Train every (model, horizon) group that has enough resolved samples by
+   * joining `forecasts` against `resolved_clusters`:
+   * a forecast scores 1 when its token won, else 0 — exact for both
+   * YES- and NO-quoted forecasts. Category is "general" (resolutions carry
+   * no category dimension). Groups under MIN_CALIBRATION_SAMPLES are
+   * skipped, never force-trained. Returns the training summary.
+   */
+  async trainFromResolvedClusters(input: {
+    limitClusters?: number;
+  } = {}): Promise<{ groupsTrained: number; samplesTotal: number }> {
+    const limit = input.limitClusters ?? 500;
+    const res = await this.pool.query(
+      `SELECT f.probability_yes AS p, f.model AS model, f.horizon_sec AS horizon,
+              CASE WHEN rc.resolution_outcome = f.market_id THEN 1 ELSE 0 END AS y
+         FROM forecasts f
+         JOIN resolved_clusters rc ON f.market_id = ANY (rc.market_ids)
+        WHERE rc.is_independent = TRUE
+          AND f.created_at < rc.resolved_at
+        ORDER BY rc.resolved_at DESC
+        LIMIT $1`,
+      [Math.max(1, Math.floor(limit))],
+    );
+    const groups = new Map<
+      string,
+      { model: string; horizon: number; ps: number[]; ys: number[] }
+    >();
+    for (const row of res.rows) {
+      const p = Number(row["p"]);
+      const y = Number(row["y"]);
+      const model = typeof row["model"] === "string" ? row["model"] : "";
+      const horizon = Number(row["horizon"]);
+      if (!model || !Number.isFinite(horizon)) continue;
+      if (!Number.isFinite(p) || !(y === 0 || y === 1)) continue;
+      const key = `${model}|${horizon}`;
+      let g = groups.get(key);
+      if (!g) {
+        g = { model, horizon, ps: [], ys: [] };
+        groups.set(key, g);
+      }
+      g.ps.push(p);
+      g.ys.push(y);
+    }
+    let groupsTrained = 0;
+    let samplesTotal = 0;
+    for (const g of groups.values()) {
+      try {
+        await this.train({
+          model: g.model,
+          category: "general",
+          horizon_sec: g.horizon,
+          predictions: g.ps,
+          outcomes: g.ys,
+        });
+        groupsTrained += 1;
+        samplesTotal += g.ps.length;
+      } catch {
+        // Under-sampled groups stay on the previous map (or identity).
+      }
+    }
+    return { groupsTrained, samplesTotal };
+  }
+  /**
    * Calibrate a raw probability through the stored isotonic map.
    * No map (or a corrupt one) = identity: an untrained calibrator must
    * pass the forecast through untouched, never invent a correction.
-   * (This replaces the old constant `p*0.9` shrink, which encoded a
-   * permanent bias as calibration.)
    */
   async calibrate(input: {
     p_raw: number;

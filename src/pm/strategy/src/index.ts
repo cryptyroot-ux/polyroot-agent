@@ -46,6 +46,14 @@ export { kellyFraction, kellyShares } from "./sizing.js";
 
 export { QuoteEngine, type QuoteEngineConfig, type AdjustedQuote } from "./quote-engine.js";
 
+export {
+  evaluateMultiOutcomeArb,
+  thetaFeePerShare,
+  type MultiOutcomeLeg,
+  type MultiOutcomeDirection,
+  type MultiOutcomeVerdict,
+} from "./multi-outcome-arb.js";
+
 export { type ExitEngineConfig, ExitEngine } from "./exit-engine.js";
 
 export {

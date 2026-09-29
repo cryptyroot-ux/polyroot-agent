@@ -45,6 +45,7 @@ import {
   type ForecastProvider,
 } from "@polyroot/intelligence";
 import { kellyShares } from "@polyroot/strategy";
+import { PgCalibrationService } from "@polyroot/intelligence";
 import type { G4CoreMetrics } from "./g4-core.js";
 
 /**
@@ -391,6 +392,9 @@ export async function bootstrapAgent(
   const microLiveCapUsd =
     bounds.capUsd ?? (isLiveMode ? AUTONOMY_BOUNDS.CAPITAL_CAP_USD : undefined);
   const liveGuardStore = new PgLiveGuardStore(pool);
+  // Learned correction service: identity until the resolution sync trains
+  // real maps (fail-open by construction — see calibrate()).
+  const calibrationService = new PgCalibrationService(pool);
   // DB-backed hot-reload: `polyroot mode X` takes effect in the running
   // loop within one pass (no restart). Fail-closed on DB loss (READ_ONLY),
   // latch-guarded upgrades to live modes. Owned by the pipeline lifecycle:
@@ -472,7 +476,20 @@ export async function bootstrapAgent(
           });
           // No console output here: the per-market display block (pipeline)
           // renders the rationale right below with book + verdict context.
-          return detailed.p;
+          if (detailed.p === null) return null;
+          // Learned correction, fail-open: no trained map = identity, so
+          // behavior is byte-identical until resolutions teach it otherwise.
+          try {
+            const cal = await calibrationService.calibrate({
+              p_raw: detailed.p,
+              model,
+              category: "general",
+              horizon_sec: 3600,
+            });
+            return cal.p_calibrated;
+          } catch {
+            return detailed.p;
+          }
         }
         return await forecastProvider.forecast(market);
       } catch {

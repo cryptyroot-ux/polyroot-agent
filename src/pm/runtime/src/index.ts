@@ -29,6 +29,7 @@ export {
 export * from "./g4-core.js";
 export * from "./reality-gap.js";
 export * from "./micro-live-guard.js";
+export * from "./resolution-sync.js";
 export * from "./live-guard-store.js";
 export * from "./autonomy-bounds.js";
 export * from "./live-preflight.js";

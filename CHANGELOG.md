@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-09-29
+
+### ✨ Added — the learning loop closes (resolutions → calibration)
+- **Resolution recorder** (`venue/resolution-recorder.ts`) — polls Gamma `closed=true`, converts final `outcomePrices` into per-token win/loss facts (exactly-one-side->0.5 rule; splits/voids skipped, never guessed), idempotent sha256-clustered inserts into `resolved_clusters`
+- **Training from resolutions** — `trainFromResolvedClusters()` joins forecasts ⨝ resolutions per (model, horizon); under-sampled groups keep their old map, never force-trained
+- **Calibrate wired fail-open into the live forecast path** — identity until the first real map lands (zero behavior change today; proven by the suite: trained maps lift winners and shrink losers)
+- **Resolution sync scheduler** (`runtime/resolution-sync.ts`) — hourly tick + boot tick, started/stopped with the agent (`POLYROOT_RESOLUTION_SYNC=0` disables); every stage fail-open, trading never blocks on learning
+- **Multi-outcome arb detector** (`strategy/multi-outcome-arb.ts`) — BUY_ALL_YES / BUY_ALL_NO baskets with per-leg Θ fees; pure + tested (live entry wiring pending shadow validation — detection only, no fills)
+
 ## [1.6.0] - 2026-09-29
 
 ### ✨ Added — live mode hot-reload (no restart)
