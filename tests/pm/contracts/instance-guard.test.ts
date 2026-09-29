@@ -82,6 +82,21 @@ describe("single-instance guard", () => {
     );
   });
 
+  it("own boot never refuses itself (activating or self-PID)", async () => {
+    const port = await freePort();
+    const self = `LoadState=loaded\nActiveState=activating\nMainPID=0\n`;
+    await assertSingleInstance(
+      { port },
+      { readUnitState: () => self, portInUse: async () => false },
+    );
+    const selfActive =
+      `LoadState=loaded\nActiveState=active\nMainPID=${process.pid}\n`;
+    await assertSingleInstance(
+      { port },
+      { readUnitState: () => selfActive, portInUse: async () => false },
+    );
+  });
+
   it("inactive unit + free port resolves", async () => {
     const port = await freePort();
     await assertSingleInstance(

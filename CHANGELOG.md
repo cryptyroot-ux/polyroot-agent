@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.3] - 2026-09-30
+
+### 🔧 Fixed (critical — crash-looped supervised agents)
+- **Single-instance guard excluded everyone including itself**: the systemd unit read back as `activating` on boot and refused its own startup into a restart loop. The guard now refuses only `ActiveState=active` with a foreign MainPID (self-PID proceeds); the port probe + metrics bind stay as backstops. Regression test: own boot (activating and self-PID) never refuses
+
 ## [1.10.2] - 2026-09-30
 
 ### 🔧 Fixed

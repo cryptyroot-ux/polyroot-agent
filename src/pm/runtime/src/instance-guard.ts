@@ -104,11 +104,22 @@ export async function assertSingleInstance(
     const show = (deps.readUnitState ?? defaultReadUnitState)();
     if (show && parseUnitProp(show, "LoadState") === "loaded") {
       const active = parseUnitProp(show, "ActiveState");
-      if (active === "active" || active === "activating") {
-        const pid = parseUnitProp(show, "MainPID");
+      const pid = parseUnitProp(show, "MainPID");
+      // Refuse ONLY a genuinely foreign live owner: ActiveState=active with
+      // a main PID that is not this process. Own boot reads back as
+      // activating (or active-with-self-PID on recheck) and must proceed —
+      // otherwise the supervised service refuses itself into a crash loop.
+      // Anything else (inactive, failed, unknown) is not an owner.
+      if (
+        active === "active" &&
+        pid !== "" &&
+        pid !== "0" &&
+        pid !== String(process.pid)
+      ) {
+        const who = ` (PID ${pid})`;
         throw new AgentAlreadyRunningError(
           [
-            `Agent already running under systemd (PID ${pid || "?"}).`,
+            `Agent already running under systemd${who}.`,
             "Starting a second loop would double-trade every market.",
             "Use instead:",
             "  sudo systemctl status polyroot    # is it healthy?",
