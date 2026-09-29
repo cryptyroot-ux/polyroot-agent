@@ -19,6 +19,17 @@ import {
   decideGuardReset,
 } from "./live-guard-store.js";
 import { type RuntimeMode } from "./mode-watcher.js";
+import {
+  uiEnabled,
+  theme,
+  banner,
+  stepper,
+  box,
+  kv,
+  table,
+  menuFrame,
+  startSpinner,
+} from "./console-ui.js";
 import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 import { bootstrapAgent, buildWalletIdentity } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
@@ -221,8 +232,10 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
+      const helpThemeBold = theme().bold;
+      console.log(banner("PolyRoot Agent", "Autonomous AI trading for Polymarket"));
       console.log(
-        "PolyRoot Agent — commands:\n" +
+        helpThemeBold("commands:") + "\n" +
           "  polyroot                 Open the interactive console\n" +
           "  polyroot run             Start the agent (mode from settings)\n" +
           "  polyroot onboard         First-time setup (new users)\n" +
@@ -471,6 +484,17 @@ async function askChoice(
   options: string[],
   defaultIdx = 0,
 ): Promise<string> {
+  // Arrow-key menu on real terminals; the classic numbered list everywhere
+  // else (piped stdin, tests, systemd units). Any interactive failure falls
+  // back to numbered input — selection must never depend on a TTY.
+  if (uiEnabled()) {
+    try {
+      const picked = await askChoiceArrows(message, options, defaultIdx);
+      if (picked !== null) return picked;
+    } catch {
+      // fall through to the numbered list below
+    }
+  }
   console.log(message);
   options.forEach((opt, i) => {
     const marker = i === defaultIdx ? "→" : " ";
@@ -489,15 +513,138 @@ async function askChoice(
   }
 }
 
+/**
+ * Arrow-key menu (TTY only): ↑/↓ or j/k move, Enter selects, 1-9 jumps,
+ * Esc/Ctrl-C cancels like every other prompt (OnboardingCancelled).
+ * Suspends the shared readline while raw mode owns stdin; restores it in
+ * `finally`. Returns null when a TTY menu is impossible (caller falls back).
+ */
+async function askChoiceArrows(
+  message: string,
+  options: string[],
+  defaultIdx = 0,
+): Promise<string | null> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return null;
+  if (typeof process.stdin.setRawMode !== "function") return null;
+  const session = await getSharedSession();
+  const readline = await import("node:readline");
+  const PAGE = 12;
+  return await new Promise<string>((resolve, reject) => {
+    let cursor = Math.min(Math.max(defaultIdx, 0), options.length - 1);
+    let settled = false;
+    let frameLines = 0;
+    const up = (n: number): void => {
+      if (n > 0) process.stdout.write(`\u001b[${n}A`);
+    };
+    const clearFrame = (): void => {
+      up(frameLines);
+      process.stdout.write("\u001b[0J");
+    };
+    const render = (): void => {
+      const frame = menuFrame(message, options, defaultIdx, cursor, {
+        pageSize: PAGE,
+        hint: "↑↓ move · Enter select · 1-9 jump · Esc cancel",
+      });
+      process.stdout.write(`${frame}\n`);
+      frameLines = frame.split("\n").length + 1;
+    };
+    const done = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      try {
+        process.stdin.setRawMode(false);
+      } catch {
+        // not a TTY after all — caller falls back
+      }
+      try {
+        process.stdin.removeListener("keypress", onKey);
+      } catch {
+        // listener already gone
+      }
+      try {
+        session.rl.resume();
+      } catch {
+        // session teardown is best-effort
+      }
+      fn();
+    };
+    const onKey = (
+      _ch: string | undefined,
+      key:
+        | { name?: string; ctrl?: boolean; meta?: boolean; sequence?: string }
+        | undefined,
+    ): void => {
+      if (settled) return;
+      const name = key?.name ?? "";
+      if (key?.ctrl && (name === "c" || name === "d")) {
+        clearFrame();
+        done(() => reject(new OnboardingCancelled()));
+        return;
+      }
+      if (name === "escape") {
+        clearFrame();
+        done(() => reject(new OnboardingCancelled()));
+        return;
+      }
+      if (name === "up" || name === "k") {
+        cursor = (cursor - 1 + options.length) % options.length;
+        clearFrame();
+        render();
+        return;
+      }
+      if (name === "down" || name === "j") {
+        cursor = (cursor + 1) % options.length;
+        clearFrame();
+        render();
+        return;
+      }
+      if (name === "return" || name === "enter") {
+        const picked = options[cursor];
+        clearFrame();
+        if (picked === undefined) {
+          done(() => reject(new OnboardingCancelled()));
+        } else {
+          const t = theme();
+          done(() => {
+            console.log(`  ${t.green("→")} ${picked}`);
+            resolve(picked);
+          });
+        }
+        return;
+      }
+      const digit = Number.parseInt(key?.sequence ?? "", 10);
+      if (Number.isInteger(digit) && digit >= 1 && digit <= 9) {
+        const idx = digit - 1;
+        if (idx < options.length) {
+          cursor = idx;
+          clearFrame();
+          render();
+        }
+      }
+    };
+    try {
+      session.rl.pause();
+      // pause() halts the underlying stream too — resume it so keypress
+      // events actually arrive; the shared session is restored in done().
+      process.stdin.resume();
+      readline.emitKeypressEvents(process.stdin);
+      process.stdin.on("keypress", onKey);
+      process.stdin.setRawMode(true);
+      render();
+    } catch {
+      done(() => reject(new OnboardingCancelled()));
+    }
+  });
+}
+
 async function runOnboarding(): Promise<OnboardingConfig> {
-  console.log("\n═══════════════════════════════════════════════");
-  console.log("  Welcome to PolyRoot Agent — First-Time Setup");
-  console.log("  3 steps. Every step has a safe default: just press Enter.");
-  console.log("═══════════════════════════════════════════════\n");
+  console.log(banner("Welcome to PolyRoot Agent — First-Time Setup"));
+  console.log("  3 steps. Every step has a safe default: just press Enter.\n");
 
   // 1. AI Provider & Model — the brain that reads markets.
   // Hermes-style: generic OpenAI-compatible provider. The user always
   // supplies their own base URL + key; this repo ships no gateway default.
+  console.log(stepper(1, 3, "AI brain"));
   console.log("📡 Step 1/3: AI brain (reads the markets)");
   const provider = await askChoice(
     "Choose AI provider (Enter = default):",
@@ -835,6 +982,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   // 2. Wallet — keys are sealed in a locked vault on this machine and
   // are never sent anywhere.
+  console.log(stepper(2, 3, "Wallet"));
   console.log("\n🔐 Step 2/3: Wallet (where your keys live)");
   console.log(
     "   Keys stay locked in a vault on this computer, never sent anywhere.",
@@ -890,6 +1038,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   // 3. Mode selection — full PAPER → SHADOW → MICRO_LIVE → LIVE ladder.
   // SHADOW stays the default: live data, simulated fills, $0 risk.
+  console.log(stepper(3, 3, "Mode"));
   console.log("\n🚀 Step 3/3: Choose Mode");
   console.log(
     "   PAPER = practice, mock data, $0 risk. SHADOW = live data, sim fills, $0 risk.",
@@ -1111,9 +1260,7 @@ async function runOnboardingFlow(): Promise<void> {
         }
       }
     }
-    console.log("\n═══════════════════════════════════════════════");
-    console.log("  Setup complete! PolyRoot Agent is ready.");
-    console.log("═══════════════════════════════════════════════");
+    console.log(box("Setup complete", ["PolyRoot Agent is ready."]));
     console.log(formatNextSteps(config.mode));
 
     closeSharedSession();
@@ -1234,7 +1381,10 @@ async function promptMarketBrowser(): Promise<string[]> {
 
 /** One raw console line (blank allowed — blank just re-shows the prompt). */
 async function askConsoleLine(): Promise<string> {
-  return askOnShared("polyroot> ", { muted: false });
+  const t = theme();
+  return askOnShared(t.enabled ? t.cyan("polyroot> ") : "polyroot> ", {
+    muted: false,
+  });
 }
 
 /** Live snapshot for the console: DB, guard latch, reservations, universe. */
@@ -1409,9 +1559,7 @@ function printUnknownHint(raw: string): void {
  * (blocking; Ctrl+C there stops the process, same as before).
  */
 async function runConsole(): Promise<void> {
-  console.log("\n═══════════════════════════════════════════════");
-  console.log("  PolyRoot Agent — Console");
-  console.log("═══════════════════════════════════════════════\n");
+  console.log(banner("PolyRoot Agent — Console", "live terminal · type help"));
   await printConsoleSnapshot();
   console.log(
     '\nType "help" for commands, "run" to start the agent, "exit" to leave.\n',
@@ -1480,12 +1628,28 @@ async function runConsole(): Promise<void> {
           qIdx >= 0 && args[qIdx + 1] && !args[qIdx + 1]?.startsWith("--")
             ? (args[qIdx + 1] as string).toLowerCase()
             : "";
-        const all = await fetchActiveMarkets(50);
+        const spin = startSpinner("Fetching live markets…");
+        let all: Awaited<ReturnType<typeof fetchActiveMarkets>>;
+        try {
+          all = await fetchActiveMarkets(50);
+        } finally {
+          spin.stop();
+        }
         const list = query
           ? all.filter((m) => m.question.toLowerCase().includes(query))
           : all;
-        for (const m of list.slice(0, 10)) {
-          console.log(`• ${m.question}`);
+        const shown = list.slice(0, 10);
+        if (shown.length > 0) {
+          console.log(
+            table(
+              ["#", "Market", "24h Vol"],
+              shown.map((m, i) => [
+                String(i + 1),
+                m.question,
+                `$${Math.round(m.volume24h).toLocaleString("en-US")}`,
+              ]),
+            ),
+          );
         }
         if (list.length === 0) console.log("No markets found.");
         console.log(
@@ -1661,9 +1825,7 @@ async function promptVenueCredentials(): Promise<void> {
 async function runSetupFlow(): Promise<void> {
   try {
     loadDotEnv();
-    console.log("\n═══════════════════════════════════════════════");
-    console.log("  PolyRoot Setup — Full Configuration");
-    console.log("═══════════════════════════════════════════════\n");
+    console.log(banner("PolyRoot Setup — Full Configuration", "mode · bounds · markets · wallet · credentials"));
 
     // 1. MODE SELECTION
     const currentMode = process.env["RUNTIME_MODE"] ?? "PAPER";
@@ -2568,10 +2730,6 @@ async function runRestoreCLI(args: string[]): Promise<void> {
 async function runStatus(): Promise<void> {
   loadDotEnv();
   const env = process.env;
-  console.log("\n═══════════════════════════════════════════════");
-  console.log("  PolyRoot Agent — Status");
-  console.log("═══════════════════════════════════════════════\n");
-
   // Config
   const mode = env["RUNTIME_MODE"] || "PAPER";
   const dbUrl = env["DATABASE_URL"] ? "✅ Set" : "❌ Missing";
@@ -2601,37 +2759,64 @@ async function runStatus(): Promise<void> {
   const lossCap = env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] || "Not set";
   const expCap = env["POLYROOT_MICRO_LIVE_CAP_USD"] || "500 (default)";
 
-  console.log("📋 Configuration:");
-  console.log(`  Mode:              ${mode}`);
-  console.log(`  Database:          ${dbUrl}`);
-  console.log(`  RPC URL:           ${rpc}`);
-  console.log(`  Metrics:           ${metricsKey}`);
-  console.log("");
-  console.log("🔐 Wallet:");
-  console.log(`  Keystore:          ${hasKeystore ? "✅ Set" : "❌ Missing"}`);
+  const t = theme();
+  console.log(banner("PolyRoot Agent — Status"));
+  console.log(t.bold("📋 Configuration:"));
   console.log(
-    `  Passphrase:        ${hasPassphrase ? "✅ Set" : "❌ Missing"}`,
+    kv(
+      [
+        ["Mode:", mode],
+        ["Database:", dbUrl],
+        ["RPC URL:", rpc],
+        ["Metrics:", metricsKey],
+      ],
+      t,
+    ),
   );
-  console.log(`  Raw Key:           ${hasRawKey ? "✅ Set" : "❌ Missing"}`);
-  console.log(`  Address:           ${walletAddr}`);
-  console.log(`  Account:           ${account}`);
-  console.log(`  Funder:            ${funder}`);
   console.log("");
-  console.log("🏪 Venue (Polymarket):");
-  console.log(`  API Key:           ${venueKey}`);
-  console.log(`  API Secret:        ${venueSecret}`);
-  console.log(`  Passphrase:        ${venuePassphrase}`);
+  console.log(t.bold("🔐 Wallet:"));
+  console.log(
+    kv(
+      [
+        ["Keystore:", hasKeystore ? "✅ Set" : "❌ Missing"],
+        ["Passphrase:", hasPassphrase ? "✅ Set" : "❌ Missing"],
+        ["Raw Key:", hasRawKey ? "✅ Set" : "❌ Missing"],
+        ["Address:", walletAddr],
+        ["Account:", account],
+        ["Funder:", funder],
+      ],
+      t,
+    ),
+  );
   console.log("");
-  console.log("🛡️  Live Caps:");
-  console.log(`  Loss Cap (pUSD):   ${lossCap}`);
-  console.log(`  Exposure Cap (pUSD): ${expCap}`);
+  console.log(t.bold("🏪 Venue (Polymarket):"));
+  console.log(
+    kv(
+      [
+        ["API Key:", venueKey],
+        ["API Secret:", venueSecret],
+        ["Passphrase:", venuePassphrase],
+      ],
+      t,
+    ),
+  );
   console.log("");
-  // 24/7 supervisor state (best-effort, Linux-only — never fails status).
-  console.log("⚙️  Supervisor (24/7):");
-  console.log(`  Service:           ${await supervisorState()}`);
+  console.log(t.bold("🛡️  Live Caps:"));
+  console.log(
+    kv(
+      [
+        ["Loss Cap (pUSD):", lossCap],
+        ["Exposure Cap (pUSD):", expCap],
+      ],
+      t,
+    ),
+  );
   console.log("");
-  console.log("📁 Config: ~/.polyroot/.env");
-  console.log("🔐 Keystore: ~/.polyroot/keystore.json");
+  console.log(t.bold("⚙️  Supervisor (24/7):"));
+  console.log(kv([["Service:", await supervisorState()]], t));
+  console.log("");
+  console.log(`📁 Config: ${t.dim("~/.polyroot/.env")}`);
+  console.log(`🔐 Keystore: ${t.dim("~/.polyroot/keystore.json")}`);
   console.log("\n═══════════════════════════════════════════════\n");
 }
 
@@ -2715,10 +2900,13 @@ async function runUpdate(): Promise<void> {
     // unit fixes (paths, entrypoint, restart policy). Best-effort.
     await refreshSupervisorUnit(installDir);
 
-    console.log("\n✅ Update complete!" + (migrateOk ? "" : " If migrations changed, run:"));
-    if (!migrateOk) {
-      console.log("     npm run migrate:latest   (safe, idempotent)");
-    }
+    console.log(
+      box("Update complete", [
+        migrateOk
+          ? "Launcher, build, migrations and supervisor unit refreshed."
+          : "Launcher, build and supervisor refreshed. Migrations changed — run: npm run migrate:latest (safe, idempotent)",
+      ]),
+    );
   } catch (err) {
     console.error("❌ Update failed:", (err as Error).message);
     process.exit(1);
@@ -2790,7 +2978,7 @@ function ownerUser(): string {
 
 /** Doctor command - health checks. */
 async function runDoctor(): Promise<boolean> {
-  console.log("\n🏥 PolyRoot Agent — Doctor\n");
+  console.log(banner("\U0001F3E5 PolyRoot Agent \u2014 Doctor"));
   let allOk = true;
 
   // 1. Check DATABASE_URL

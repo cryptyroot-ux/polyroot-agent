@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.0] - 2026-09-30
+
+### ✨ Added — modern interactive CLI
+- **Console UI kit** (`runtime/console-ui.ts`) — one visual language: theme (auto-disabled off-TTY/`NO_COLOR`/dumb), banners, steppers, panels, aligned kv/tables, progress bars, pills, spinners (silent off-TTY). Two iron rules: ANSI never splits a machine-tested phrase; piped stdin/tests/systemd always get the classic rendering
+- **Arrow-key menus** — ↑/↓·jk navigate, Enter selects, 1-9 jumps, Esc cancels with shared-session semantics. Raw mode suspends/restores the readline session; any failure falls back to numbered input. Proven on a real pty: cursor moves, selection echoes, terminal restores clean
+- **Resurfaced everywhere** — onboarding stepper, setup banner, status dashboard, grouped `--help`, console banner + prompt, markets table + spinner, doctor banner, boxed setup/update completion
+
 ## [1.9.0] - 2026-09-29
 
 ### ✨ Added — the agent sizes and counts by itself (autonomy inside walls)
