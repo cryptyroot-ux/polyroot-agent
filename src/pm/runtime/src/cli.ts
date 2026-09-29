@@ -2544,9 +2544,40 @@ async function runStatus(): Promise<void> {
   console.log(`  Loss Cap (pUSD):   ${lossCap}`);
   console.log(`  Exposure Cap (pUSD): ${expCap}`);
   console.log("");
+  // 24/7 supervisor state (best-effort, Linux-only — never fails status).
+  console.log("⚙️  Supervisor (24/7):");
+  console.log(`  Service:           ${await supervisorState()}`);
+  console.log("");
   console.log("📁 Config: ~/.polyroot/.env");
   console.log("🔐 Keystore: ~/.polyroot/keystore.json");
   console.log("\n═══════════════════════════════════════════════\n");
+}
+
+/**
+ * One-line systemd state for `polyroot status`: active/enabled/loaded,
+ * missing-unit, or unavailable (non-systemd hosts). Static command, no
+ * user input — execSync is safe here. Never throws.
+ */
+async function supervisorState(): Promise<string> {
+  if (process.env["POLYROOT_NO_SYSTEMD"] === "1") return "skipped (manual mode)";
+  try {
+    const { execSync } = await import("node:child_process");
+    const show = execSync(
+      "systemctl show polyroot --property=LoadState,ActiveState,UnitFileState 2>/dev/null",
+      { encoding: "utf8" },
+    ) as string;
+    const get = (k: string): string => {
+      const m = new RegExp(`^${k}=(.*)$`, "m").exec(show);
+      return (m?.[1] ?? "").trim();
+    };
+    if (get("LoadState") !== "loaded") return "❌ unit not installed";
+    const active = get("ActiveState");
+    const enabled = get("UnitFileState");
+    const icon = active === "active" ? "✅" : "⚠️ ";
+    return `${icon} ${active} / ${enabled}`;
+  } catch {
+    return "unavailable (no systemd)";
+  }
 }
 
 /** Update command - git pull, rebuild, refresh launcher, remind migrations. */

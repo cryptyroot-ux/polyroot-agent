@@ -44,6 +44,8 @@ export { type StrategyArbiterConfig, StrategyArbiter } from "./arbiter.js";
 
 export { kellyFraction, kellyShares } from "./sizing.js";
 
+export { QuoteEngine, type QuoteEngineConfig, type AdjustedQuote } from "./quote-engine.js";
+
 export { type ExitEngineConfig, ExitEngine } from "./exit-engine.js";
 
 export {

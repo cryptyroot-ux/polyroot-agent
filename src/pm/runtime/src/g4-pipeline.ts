@@ -63,6 +63,7 @@ export class G4Pipeline {
   private readonly metrics: G4PipelineMetrics;
   private running = false;
   private stopFn?: () => void;
+  private degradedLogged = false;
   private readonly paperFillConfig: {
     cancelProbability: number;
     partialFraction: number;
@@ -126,6 +127,46 @@ export class G4Pipeline {
     return { ...this.metrics };
   }
 
+  /**
+   * Re-read the mode from the DB watcher (hot-reload without restart).
+   * Returns true when entries may proceed, false when the loop must skip
+   * the pass (READ_ONLY degradation — fail-closed, cancels/reconcile
+   * unaffected). Public so operators and tests can drive/inspect it
+   * without running the infinite loop. No watcher = always true.
+   */
+  syncModeFromWatcher(): boolean {
+    const w = this.deps.modeWatcher;
+    if (!w) return true;
+    if (w.isDegraded() || w.getMode() === "READ_ONLY") {
+      if (!this.degradedLogged) {
+        this.degradedLogged = true;
+        console.log(
+          "⛔ READ_ONLY — database unreachable, entries halted (fail-closed).",
+        );
+      }
+      return false;
+    }
+    this.degradedLogged = false;
+    const dbMode = w.getMode();
+    if (dbMode === this.config.mode) return true;
+    const target = dbMode as G4PipelineMode;
+    if (!isValidModeTransition(this.config.mode, target)) {
+      console.log(
+        `⚠️  Refusing live mode jump ${this.config.mode} -> ${dbMode} (DB); staying. Step with \`polyroot mode\`.`,
+      );
+      return true;
+    }
+    const from = this.config.mode;
+    this.config.mode = target;
+    console.log(`🔄 Live mode switch ${from} -> ${dbMode} (no restart needed)`);
+    this.deps.observability?.emitModeTransition?.(
+      from,
+      target,
+      "database live_guard_state",
+    );
+    return true;
+  }
+
   /** Run one iteration of the pipeline for a single market. */
   async processMarket(input: G4PipelineInput): Promise<G4PipelineResult> {
     const result = await executeG4Step(
@@ -179,10 +220,17 @@ export class G4Pipeline {
    */
   async runContinuous(): Promise<void> {
     this.running = true;
+    this.deps.modeWatcher?.start();
     console.log(`🔄 G4 Pipeline running in ${this.config.mode} mode...`);
 
     while (this.running) {
       try {
+        // Hot-reload: `polyroot mode X` lands here within one pass.
+        // READ_ONLY degradation skips entries until the DB is back.
+        if (!this.syncModeFromWatcher()) {
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          continue;
+        }
         // PAPER replays the mock fixture; every other mode iterates the
         // wired market universe (buildLoopInputs throws rather than
         // fabricating mock markets when live-configured).
@@ -243,6 +291,11 @@ export class G4Pipeline {
    */
   stop(): void {
     this.running = false;
+    try {
+      this.deps.modeWatcher?.stop();
+    } catch {
+      // timer cleanup must never break shutdown
+    }
     console.log("🛑 G4 Pipeline stopping...");
   }
 }

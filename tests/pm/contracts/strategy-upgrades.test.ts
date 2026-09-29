@@ -17,7 +17,7 @@ import {
   touchDepthNotionalUsd,
   type TokenTouch,
 } from "@polyroot/venue";
-import { kellyFraction, kellyShares } from "@polyroot/strategy";
+import { kellyFraction, kellyShares, QuoteEngine } from "@polyroot/strategy";
 import { countComponentFamilies } from "../../../src/pm/intelligence/src/ensemble-pg";
 import { countEnsembleFamilies } from "../../../src/pm/intelligence/src/calibration";
 import { randomUUID } from "crypto";
@@ -309,7 +309,93 @@ describe("discovery: expiry, depth and wash guards", () => {
   });
 });
 
-/* ─── U6: ensemble family counts ───────────────────────────────────── */
+/* ─── QuoteEngine: own-side pricing + depth honesty ──────────────────── */
+
+describe("QuoteEngine prices the intent's own token side", () => {
+  const engine = () =>
+    new QuoteEngine({
+      minEdgeAfterCost: 0.03,
+      maxSlippageAbs: 0.05,
+      makerFeeBps: 0,
+      takerFeeBps: 200,
+    });
+
+  const intent = (over: Record<string, unknown> = {}) => ({
+    schema_version: "1.1",
+    intent_id: randomUUID(),
+    dedupe_key: "k",
+    purpose: "ENTRY",
+    market_id: "mkt_1",
+    side: "YES",
+    forecast_refs: [],
+    evidence_ids: [],
+    ...over,
+  });
+
+  it("YES intent is edged against yes_price (not no_price)", () => {
+    // valuation 0.70 vs YES 0.60 → edge 0.10 − 0.02 fee = 0.08 ≥ 0.03.
+    // maxSlippageAbs 0.5 disables clamping so this tests pure edge math.
+    const eng = new QuoteEngine({
+      minEdgeAfterCost: 0.03,
+      maxSlippageAbs: 0.5,
+      makerFeeBps: 0,
+      takerFeeBps: 200,
+    });
+    const q = eng.adjustQuote(
+      intent({ side: "YES", price: 0.7, size: 10 }) as never,
+      { yes_price: 0.6, no_price: 0.4 },
+    );
+    assert.equal(q.valid, true);
+    assert.ok(Math.abs(q.edgeAfterCost - 0.08) < 1e-9);
+    // Old inverted code read no_price (0.40): edge would have been 0.28.
+    assert.ok(q.edgeAfterCost < 0.2);
+  });
+
+  it("NO intent is edged against no_price", () => {
+    const eng = new QuoteEngine({
+      minEdgeAfterCost: 0.03,
+      maxSlippageAbs: 0.5,
+      makerFeeBps: 0,
+      takerFeeBps: 200,
+    });
+    const q = eng.adjustQuote(
+      intent({ side: "NO", price: 0.72, size: 10 }) as never,
+      { yes_price: 0.6, no_price: 0.65 },
+    );
+    assert.equal(q.valid, true);
+    assert.ok(Math.abs(q.edgeAfterCost - (0.72 - 0.65 - 0.02)) < 1e-9);
+  });
+
+  it("slippage clamps toward the touch (exact 2¢ books stay exact)", () => {
+    // valuation 0.70 vs YES 0.60, maxSlip 5¢ → clamped to 0.65, edge 3¢.
+    const q = engine().adjustQuote(
+      intent({ side: "YES", price: 0.7, size: 10 }) as never,
+      { yes_price: 0.6, no_price: 0.4 },
+    );
+    assert.equal(q.valid, true);
+    assert.ok(Math.abs((q.price ?? -1) - 0.65) < 1e-9);
+    assert.equal(q.reason, "SLIPPAGE_CLAMPED");
+  });
+
+  it("bare BUY/SELL without a token side is invalid (fail-closed)", () => {
+    const q = engine().adjustQuote(
+      intent({ side: "BUY", price: 0.7, size: 10 }) as never,
+      { yes_price: 0.6, no_price: 0.4 },
+    );
+    assert.equal(q.valid, false);
+    assert.equal(q.reason, "SIDE_AMBIGUOUS");
+  });
+
+  it("size scales down to resting depth (no book-walking)", () => {
+    const q = engine().adjustQuote(
+      intent({ side: "YES", price: 0.7, size: 100 }) as never,
+      { yes_price: 0.6, no_price: 0.4, depth: 12 },
+    );
+    assert.equal(q.valid, true);
+    assert.equal(q.size, 12);
+    assert.equal(q.reason, "DEPTH_SCALED");
+  });
+});
 
 describe("ensemble PG stores count real families", () => {
   it("counts distinct component names (both stores agree)", () => {

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] - 2026-09-29
+
+### ✨ Added — live mode hot-reload (no restart)
+- **ModeWatcher wired into `G4Pipeline`** — the loop re-reads `live_guard_state` every pass: `polyroot mode X` takes effect live. Invalid jumps refused (stay + warn, transition table enforced); DB loss degrades to READ_ONLY (entries halt, fail-closed); watcher lifecycle owned by the pipeline (start on run, stop on shutdown)
+- **`polyroot status` shows supervisor state** — active/enabled, missing unit, or manual-mode (hermetic via `POLYROOT_NO_SYSTEMD=1`)
+
+### 🔧 Fixed — strategy correctness
+- **QuoteEngine priced its own token side** — BUY/YES intents were edged against `no_price` (every sign inverted); bare BUY/SELL without a token side is now invalid (fail-closed); size scales down to resting depth (no book-walking)
+- **Real isotonic calibration** — `train()` fits pool-adjacent-violators from resolved samples (refuses <20: noise dressed as math); `calibrate()` interpolates the stored map, identity when untrained. Replaces the fabricated `p*0.9` shrink. Live wiring waits on the resolution feed (`resolved_clusters` unwired) — noted, not faked
+- **Float-hardened regime gate** — exact 2¢ spreads (0.52−0.50) no longer slip the TIGHT_CONSENSUS block via float dust
+
 ## [1.5.0] - 2026-09-29
 
 ### ✨ Added — 24/7 systemd supervisor (automatic)

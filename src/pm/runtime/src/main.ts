@@ -29,6 +29,7 @@ import {
 } from "@polyroot/venue";
 import { Executor } from "@polyroot/executor";
 import { createG4Pipeline } from "./g4-pipeline.js";
+import { ModeWatcher } from "./mode-watcher.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
 import { PgLiveGuardStore } from "./live-guard-store.js";
@@ -390,6 +391,18 @@ export async function bootstrapAgent(
   const microLiveCapUsd =
     bounds.capUsd ?? (isLiveMode ? AUTONOMY_BOUNDS.CAPITAL_CAP_USD : undefined);
   const liveGuardStore = new PgLiveGuardStore(pool);
+  // DB-backed hot-reload: `polyroot mode X` takes effect in the running
+  // loop within one pass (no restart). Fail-closed on DB loss (READ_ONLY),
+  // latch-guarded upgrades to live modes. Owned by the pipeline lifecycle:
+  // started on runContinuous, stopped on pipeline.stop().
+  const modeWatcher = new ModeWatcher({
+    pool,
+    initialMode: mode,
+    onModeChange: (from, to, reason) =>
+      console.log(`🔄 ModeWatcher: ${from} -> ${to} (${reason})`),
+    onDegrade: (reason) =>
+      console.log(`⛔ ModeWatcher degraded: ${reason}`),
+  });
   const pipeline = createG4Pipeline({
     config: {
       mode,
@@ -419,6 +432,7 @@ export async function bootstrapAgent(
     },
     policyHash: "ph_prod_audited_137",
     venueMode: () => venueAdapter.mode,
+    modeWatcher,
     leaseEpoch: () => 1,
     now: () => new Date(),
     ...(marketSource ? { marketSource } : {}),
@@ -486,6 +500,7 @@ export async function bootstrapAgent(
     signer,
     executor,
     pipeline,
+    modeWatcher,
     metrics,
     reservationManager,
     stopReservationExpiry,

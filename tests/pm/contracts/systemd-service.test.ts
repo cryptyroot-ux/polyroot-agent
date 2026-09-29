@@ -152,4 +152,33 @@ describe("polyroot update refreshes the supervisor unit", () => {
     assert.ok(cli.includes("refreshSupervisorUnit"));
     assert.ok(cli.includes("systemctl try-restart polyroot"));
   });
+
+  it("polyroot status reports supervisor state (hermetic manual mode)", async () => {
+    const { spawn } = await import("node:child_process");
+    const cli = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
+    const out = await new Promise<string>((resolve) => {
+      const child = spawn(process.execPath, ["--import", "tsx", cli, "status"], {
+        cwd: process.cwd(),
+        env: { ...process.env, POLYROOT_NO_SYSTEMD: "1" },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let text = "";
+      child.stdout.on("data", (d: Buffer) => {
+        text += d.toString();
+      });
+      child.stderr.on("data", (d: Buffer) => {
+        text += d.toString();
+      });
+      const killer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve(text);
+      }, 30_000);
+      child.on("close", () => {
+        clearTimeout(killer);
+        resolve(text);
+      });
+    });
+    assert.ok(out.includes("Supervisor (24/7):"));
+    assert.ok(out.includes("skipped (manual mode)"));
+  });
 });

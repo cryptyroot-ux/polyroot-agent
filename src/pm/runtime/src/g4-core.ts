@@ -17,6 +17,7 @@ import type { MoneyKernel } from "@polyroot/risk";
 import type { SignerVault } from "@polyroot/signer";
 import type { Executor } from "@polyroot/executor";
 import { evaluateLossGuard, type LossGuardState } from "./micro-live-guard.js";
+import type { ModeWatcher } from "./mode-watcher.js";
 import {
   collectLiveInputs,
   type LiveMarketInput,
@@ -107,6 +108,14 @@ export interface G4CoreDeps {
    * configured.
    */
   marketSource?: MarketSource;
+  /**
+   * DB-backed mode watcher (hot-reload without restart). When present, the
+   * continuous loop re-reads the mode from `live_guard_state` every pass:
+   * `polyroot mode X` takes effect live. Jumps that violate the transition
+   * table are refused (stay + warn); DB loss degrades to READ_ONLY
+   * (entries halt, fail-closed). Absent = fixed boot mode (tests, --once).
+   */
+  modeWatcher?: ModeWatcher;
 }
 
 /**
@@ -447,6 +456,7 @@ export interface CreateG4CoreOptions {
   marketSource?: MarketSource;
   getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
   getFunds?: (() => Promise<StepFunds | undefined>) | undefined;
+  modeWatcher?: ModeWatcher;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -467,6 +477,7 @@ export function createG4Core(options: CreateG4CoreOptions) {
     ...(options.marketSource ? { marketSource: options.marketSource } : {}),
     ...(options.getReasoning ? { getReasoning: options.getReasoning } : {}),
     ...(options.getFunds ? { getFunds: options.getFunds } : {}),
+    ...(options.modeWatcher ? { modeWatcher: options.modeWatcher } : {}),
   };
   return {
     config: options.config,
