@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-09-29
+
+### ✨ Added — Comprehensive AI Provider Onboarding
+- **30+ AI providers** in interactive onboarding: OpenAI, Qwen, xAI Grok, Xiaomi MiMo, Tencent Hy, NVIDIA NIM, GitHub Copilot ACP, Hugging Face, Google AI Studio, Google Vertex AI, DeepSeek, Z.AI/GLM, Kimi/Moonshot, StepFun, MiniMax, Ollama Cloud, Arcee AI, GMI Cloud, Kilo Code, OpenCode Go, AWS Bedrock, Azure Foundry, Vercel AI Gateway, Actual Computer, CommandCode (OpenAI-compatible), CommandCode (Anthropic), custom gateway, DeepInfra, Meta Muse Spark, Nebius Token Factory, Ramp Router, Upstage, Ollama (local)
+- **Smart defaults per provider** — pre-filled base URLs, model lists, and default model selections
+- **Special handling paths** for Ollama (local/stdio), Copilot (ACP stdio), Vertex AI (ADC), Bedrock (AWS IAM), Azure Foundry, and custom gateways
+- **SHADOW mode now the onboarding default** — live data, simulated fills, $0 risk with configurable capital/loss caps
+
+### 🔧 Fixed
+- **TypeScript build** — corrected `specialHandling` type, `isSpecialHandling` type guard, and duplicate `copilot` case
+
 ## [1.3.0] - 2026-09-28
 
 ### ✨ Added
