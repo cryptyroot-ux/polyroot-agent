@@ -1,6 +1,6 @@
 {
   "name": "@polyroot/control",
-  "version": "1.10.4",
+  "version": "1.11.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -24,7 +24,6 @@
   "dependencies": {
     "@polyroot/domain": "*",
     "@polyroot/executor": "*",
-    "@polyroot/ledger": "*",
     "@polyroot/risk": "*",
     "@polyroot/signer": "*",
     "@polyroot/venue": "*",

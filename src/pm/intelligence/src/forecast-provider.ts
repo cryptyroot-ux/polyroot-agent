@@ -8,7 +8,7 @@
  * never to a fabricated probability.
  */
 
-import { normalizeOpenAICompatible, joinApiPath } from "./index.js";
+import { normalizeOpenAICompatible, joinApiPath } from "./api-url.js";
 
 /** Market snapshot handed to a forecast provider. */
 export interface ForecastInput {

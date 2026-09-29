@@ -1,6 +1,6 @@
 {
   "name": "@polyroot/runtime",
-  "version": "1.10.4",
+  "version": "1.11.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -31,9 +31,6 @@
     "@polyroot/signer": "*",
     "@polyroot/strategy": "*",
     "@polyroot/venue": "*",
-    "@polyroot/ledger": "*",
-    "@polyroot/security": "*",
-    "@polyroot/data": "*",
     "@polyroot/observability": "*",
     "pg": "^8.11.5",
     "zod": "^3.22.4"

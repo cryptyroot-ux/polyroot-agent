@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { PolymarketLiveFeed } from "../src/live-feed.js";
+import { PolymarketLiveFeed } from "@polyroot/data";
 
 describe("Task 3 — LiveFeed reconnection max retries and exponential backoff", () => {
   it("limits reconnection attempts to MAX_RECONNECT_ATTEMPTS with exponential backoff", async () => {

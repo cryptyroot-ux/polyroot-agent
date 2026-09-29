@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.0] - 2026-09-30
+
+### 🔧 Fixed — forensic audit findings (verified, then fixed with proof)
+- **Migration resequencing** — duplicate `0015_*` prefix eliminated (`0015_market_event_graph` → `0016`, cascade to `0024_arb_observations`). Upgrade safety proven by simulation: old applied-set + new runner applies renamed files as harmless no-ops, zero errors (all statements idempotent)
+- **Dependency hygiene** — pruned 8 unused workspace declarations (ledger×2, strategy, security, data, domain, type-only data/intelligence → devDependencies), regenerated the drifted lockfile (it still pinned 0.1.x versions), `npm ci` clean
+- **Zero circular imports** — 3 real runtime cycles broken by leaf extraction (signer `payload-hash`, intelligence `api-url`, data `book-primitives`; API-stable via re-exports); 3 ledger + 2 intelligence madge hits proven type-only and converted to explicit `import type`; removed an `export *` barrel in live-feed. madge: 13/13 packages clean
+- **Dead code removed** — unreferenced `src/pm/auth`, `src/pm/budget` (the latter imported nonexistent `@polyroot/types`) plus its orphan test; adopted 2 orphaned live-code tests (`supervisor-reconciler`, `live-feed-reconnect`) into the contracts suite
+- **Audit correction** — the "RiskEngine/PositionSizer coverage gap" does not exist under those names; risk-gate, MoneyKernel and guards all carry dedicated contract tests (verified, no action)
+
 ## [1.10.4] - 2026-09-30
 
 ### 🔧 Fixed (found by final audit)

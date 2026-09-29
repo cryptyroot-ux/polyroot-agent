@@ -16,12 +16,12 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
-import {
-  type EventStore,
-  type EventCursor,
-  type ProjectionEngine,
-  type ProjectionResult,
-  type ProjectionOptions,
+import type {
+  EventStore,
+  EventCursor,
+  ProjectionEngine,
+  ProjectionResult,
+  ProjectionOptions,
 } from "./index.js";
 import { type LedgerEvent } from "@polyroot/domain";
 

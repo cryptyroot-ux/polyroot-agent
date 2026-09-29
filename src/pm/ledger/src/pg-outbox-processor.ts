@@ -16,11 +16,11 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
-import {
-  type EventStore,
-  type OutboxJob,
-  type OutboxProcessor,
-  type OutboxResult,
+import type {
+  EventStore,
+  OutboxJob,
+  OutboxProcessor,
+  OutboxResult,
 } from "./index.js";
 
 export class PgOutboxProcessor implements OutboxProcessor {

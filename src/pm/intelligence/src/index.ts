@@ -314,21 +314,8 @@ export function gateForecast(f: Forecast): ForecastGateResult {
  * /v1/v1. Kept as a pure helper; adapters are thin I/O wrappers tested against
  * a fake transport in the contract tests.
  */
-export function joinApiPath(baseUrl: string, path: string): string {
-  const base = baseUrl.replace(/\/+$/, "");
-  const p = path.replace(/^\/+/, "");
-  if (base.endsWith("/v1") && p.startsWith("v1/"))
-    return `${base}/${p.slice(3)}`;
-  return `${base}/${p}`;
-}
+export { joinApiPath, normalizeOpenAICompatible } from "./api-url.js";
 
-export function normalizeOpenAICompatible(
-  baseUrl?: string,
-  fallback = "https://api.openai.com/v1",
-): string {
-  if (!baseUrl || baseUrl.length === 0) return fallback;
-  return baseUrl.replace(/\/+$/, "");
-}
 
 /* ─── PM-AI-03: probability quality split ────────────────────────────── */
 

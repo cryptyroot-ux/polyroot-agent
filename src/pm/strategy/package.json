@@ -1,6 +1,6 @@
 {
   "name": "@polyroot/strategy",
-  "version": "1.10.4",
+  "version": "1.11.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -37,14 +37,14 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@polyroot/data": "*",
     "@polyroot/domain": "*",
-    "@polyroot/intelligence": "*",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@polyroot/tsconfig": "*",
     "@types/node": "^20.19.0",
+    "@polyroot/data": "*",
+    "@polyroot/intelligence": "*",
     "typescript": "^5.5.0"
   }
 }

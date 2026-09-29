@@ -1,6 +1,6 @@
 {
   "name": "@polyroot/risk",
-  "version": "1.10.4",
+  "version": "1.11.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -23,7 +23,6 @@
   },
   "dependencies": {
     "@polyroot/domain": "*",
-    "@polyroot/strategy": "*",
     "decimal.js": "^10.4.3",
     "pg": "^8.11.5",
     "ulid": "^2.3.0",

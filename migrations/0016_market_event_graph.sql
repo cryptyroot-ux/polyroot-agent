@@ -1,4 +1,4 @@
--- migrations/0015_market_event_graph.sql
+-- migrations/0016_market_event_graph.sql
 CREATE TABLE IF NOT EXISTS graph_edges (
   from_market_id TEXT NOT NULL,
   to_market_id TEXT NOT NULL,
