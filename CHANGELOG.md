@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.1] - 2026-09-30
+
+### 🔧 Fixed
+- **Arb observation dedup** — same event+direction observed within the hour is skipped instead of re-inserted every scan (the table was growing one row per scan per event)
+
 ## [1.10.0] - 2026-09-30
 
 ### ✨ Added — modern interactive CLI

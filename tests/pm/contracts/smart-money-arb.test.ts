@@ -221,4 +221,38 @@ describe("arb scan (observation only)", () => {
       partial.stop();
     }
   });
+
+  it("skips events already observed within the hour (no dup flood)", async () => {
+    let inserts = 0;
+    const pool = {
+      query: async (text: string) => {
+        if (text.startsWith("INSERT INTO arb_observations")) {
+          inserts += 1;
+          return { rows: [], rowCount: 1 };
+        }
+        // Recent-observation check: pretend ev1 was just logged.
+        return { rows: [{ "?column?": 1 }] };
+      },
+    };
+    const book: Record<string, number> = { t1: 0.2, t2: 0.25, t3: 0.3 };
+    const handle = startArbScan({
+      pool: pool as never,
+      fetchEvents: async () =>
+        events([
+          { closed: false, clobTokenIds: '["t1","t1n"]' },
+          { closed: false, clobTokenIds: '["t2","t2n"]' },
+          { closed: false, clobTokenIds: '["t3","t3n"]' },
+        ]),
+      readTouch: async (id) =>
+        book[id] === undefined ? null : { yesPrice: book[id] as number },
+    });
+    try {
+      const s = await handle.tick();
+      assert.equal(s.eventsScanned, 1);
+      assert.equal(s.observations, 0);
+      assert.equal(inserts, 0);
+    } finally {
+      handle.stop();
+    }
+  });
 });

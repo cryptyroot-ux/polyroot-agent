@@ -190,6 +190,16 @@ export function startArbScan(deps: ArbScanDeps): ArbScanHandle {
         if (legs.length !== ev.yesTokens.length) continue;
         const verdict = evaluateMultiOutcomeArb(legs, { minEdge });
         if (!verdict.valid || !verdict.direction) continue;
+        // Same event+direction seen within the hour: refresh nothing.
+        // Without this the table fills with one row per scan per event.
+        const recent = await deps.pool.query(
+          `SELECT 1 FROM arb_observations
+            WHERE event_id = $1 AND direction = $2
+              AND observed_at > now() - interval '1 hour'
+            LIMIT 1`,
+          [ev.eventId, verdict.direction],
+        );
+        if (recent.rows.length > 0) continue;
         await deps.pool.query(
           `INSERT INTO arb_observations
              (event_id, direction, legs, total_cost, guaranteed_payout, edge)
