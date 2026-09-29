@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.2] - 2026-09-30
+
+### 🔧 Fixed (critical — the brain was silently dead)
+- **SSE-streaming gateways**: several OpenAI-compatible gateways emit `data:` chunks even when `stream` was not requested; `res.json()` on that body threw on every forecast, so the AI abstained on 100% of markets. Responses are now read as text and stitched from either shape (chunked deltas or full JSON)
+- **Thinking-prose JSON extraction**: reasoning models wrap answers in prose — the parser now takes the first balanced `{...}` (string-aware) instead of requiring a bare object. Proven live: real `p` + rationale + factors from the production gateway
+
 ## [1.11.1] - 2026-09-30
 
 ### 🔧 Fixed (found in a live user session)

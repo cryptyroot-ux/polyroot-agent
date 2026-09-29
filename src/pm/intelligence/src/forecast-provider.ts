@@ -52,7 +52,7 @@ export interface DetailedForecast {
 export function parseDetailedForecast(text: string): DetailedForecast {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text) as unknown;
+    parsed = JSON.parse(extractJsonObject(text)) as unknown;
   } catch {
     return { p: null, rationale: null, factors: [] };
   }
@@ -127,6 +127,82 @@ export function parseForecastProbability(text: string): number | null {
   return p;
 }
 
+/**
+ * First balanced {...} object in free text (moved above class).
+ */
+export function extractJsonObject(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{")) return trimmed;
+  const start = trimmed.indexOf("{");
+  if (start < 0) return trimmed;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < trimmed.length; i++) {
+    const ch = trimmed[i] as string;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return trimmed.slice(start, i + 1);
+    }
+  }
+  return trimmed;
+}
+
+/**
+ * Read a chat-completions body in EITHER shape: a JSON object
+ * (`choices[0].message.content`) or an SSE stream (`data:` chunks with
+ * `delta.content`, which several gateways emit even when `stream` was not
+ * requested). Returns the stitched assistant text, or null when unusable.
+ * Pure over the body text — unit-tested without network.
+ */
+export function readCompletionContent(
+  bodyText: string,
+): string | null {
+  const text = bodyText.trim();
+  if (!text) return null;
+  if (!text.startsWith("data:") && !text.includes("\ndata:")) {
+    try {
+      const data = JSON.parse(text) as {
+        choices?: Array<{ message?: { content?: unknown } }>;
+      };
+      const content = data.choices?.[0]?.message?.content;
+      return typeof content === "string" && content.trim() ? content : null;
+    } catch {
+      return null;
+    }
+  }
+  let stitched = "";
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("data:")) continue;
+    const payload = t.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const chunk = JSON.parse(payload) as {
+        choices?: Array<{
+          delta?: { content?: unknown };
+          message?: { content?: unknown };
+        }>;
+      };
+      const c = chunk.choices?.[0];
+      const piece = c?.delta?.content ?? c?.message?.content;
+      if (typeof piece === "string") stitched += piece;
+    } catch {
+      // one malformed chunk never poisons the rest
+    }
+  }
+  return stitched.trim() ? stitched : null;
+}
+
+
 export class OpenAICompatibleForecastProvider implements ForecastProvider {
   readonly name = "openai-compatible";
   private readonly baseUrl: string;
@@ -149,7 +225,8 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
     return (await this.forecastDetailed(input)).p;
   }
 
-  /** Full reply: probability plus the model's stated reasoning (nullable). */
+  /**
+/** Full reply: probability plus the model's stated reasoning (nullable). */
   async forecastDetailed(input: ForecastInput): Promise<DetailedForecast> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -175,12 +252,8 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
         },
       );
       if (!res.ok) return { p: null, rationale: null, factors: [] };
-      const data = (await res.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const content = data.choices?.[0]?.message?.content;
-      if (typeof content !== "string")
-        return { p: null, rationale: null, factors: [] };
+      const content = readCompletionContent(await res.text());
+      if (content === null) return { p: null, rationale: null, factors: [] };
       return parseDetailedForecast(content);
     } catch {
       return { p: null, rationale: null, factors: [] };

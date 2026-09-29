@@ -6,6 +6,8 @@ import {
   createForecastProviderFromEnv,
   parseForecastProbability,
   parseDetailedForecast,
+  extractJsonObject,
+  readCompletionContent,
 } from "@polyroot/intelligence";
 
 function stubFetch(content: unknown): typeof fetch {
@@ -148,5 +150,72 @@ describe("forecast provider (stated reasoning)", () => {
     assert.equal(detailed.p, 0.71);
     assert.equal(detailed.rationale, "Why here.");
     assert.deepEqual(detailed.factors, ["a"]);
+  });
+});
+
+describe("reasoning-model robustness (SSE + wrapped JSON)", () => {
+  it("extractJsonObject finds balanced JSON inside thinking prose", () => {
+    const prose =
+      'Hmm, let me think... {"a": {"b": "x { not json"}, "c": [1,2]} trailing words';
+    assert.equal(
+      extractJsonObject(prose),
+      '{"a": {"b": "x { not json"}, "c": [1,2]}',
+    );
+    assert.equal(extractJsonObject('{"p":0.5}'), '{"p":0.5}');
+    assert.equal(extractJsonObject("no json here"), "no json here");
+  });
+
+  it("parseDetailedForecast reads through thinking prose", () => {
+    const r = parseDetailedForecast(
+      'My analysis: price looks soft. {"p": 0.62, "rationale": "soft book", "factors": ["spread"]} done.',
+    );
+    assert.equal(r.p, 0.62);
+    assert.equal(r.rationale, "soft book");
+    assert.deepEqual(r.factors, ["spread"]);
+  });
+
+  it("readCompletionContent stitches SSE deltas", () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"content":"{\\"p\\":"}}]}',
+      'data: {"choices":[{"delta":{"content":"0.66, \\"rationale\\":\\"ok\\"}"}}]}',
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    assert.equal(
+      readCompletionContent(sse),
+      '{"p":0.66, "rationale":"ok"}',
+    );
+  });
+
+  it("readCompletionContent keeps plain JSON bodies working", () => {
+    const body = JSON.stringify({
+      choices: [{ message: { content: '{"p":0.4}' } }],
+    });
+    assert.equal(readCompletionContent(body), '{"p":0.4}');
+    assert.equal(readCompletionContent(""), null);
+    assert.equal(readCompletionContent("not json"), null);
+  });
+
+  it("forecastDetailed survives an SSE-streaming gateway", async () => {
+    const inner = JSON.stringify({ p: 0.58 });
+    const sse = [
+      "data: " + JSON.stringify({ choices: [{ delta: { content: inner } }] }),
+      "data: [DONE]",
+    ].join("\n");
+    const sseFetch = (async () =>
+      new Response(sse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      })) as typeof fetch;
+    const p = new OpenAICompatibleForecastProvider({
+      ...BASE,
+      fetchImpl: sseFetch,
+    });
+    const detailed = await p.forecastDetailed({
+      market_id: "m",
+      bid: 0.5,
+      ask: 0.55,
+    });
+    assert.equal(detailed.p, 0.58);
   });
 });
