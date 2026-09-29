@@ -2555,6 +2555,9 @@ async function runUpdate(): Promise<void> {
   const { execSync } = await import("node:child_process");
   const home = process.env["HOME"] ?? "/tmp";
   const installDir = process.env["POLYROOT_AGENT_DIR"] || `${home}/.polyroot`;
+  // Launcher already cds here, so this loads the install's own .env —
+  // auto-migrate below then targets the REAL database, not the script default.
+  loadDotEnv();
 
   try {
     console.log(`📥 Pulling latest changes in ${installDir}...`);
