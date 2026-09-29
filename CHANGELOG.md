@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.0] - 2026-09-29
+
+### ✨ Added — the agent sizes and counts by itself (autonomy inside walls)
+- **Portfolio allocator** (`strategy/portfolio-allocator.ts`) — the loop now decides HOW MANY markets per pass (rank by previous-pass score, top-K evaluated, rest deferred with a log line; warmup evaluates all; unknown markets score neutral so nothing starves) and HOW MUCH per trade (Kelly on live equity: cap + session P&L, floored at zero — wins compound, losses shrink, ruin sizes to zero)
+- **Position tracker + portfolio-full gate** — fills accumulate open notional; `resolved_clusters` frees it back; exposure ≥ cap skips the pass until settlements land. Owner walls: `POLYROOT_MAX_CONCURRENT_ORDERS` (default 3), capital cap, loss latch — the agent decides everything beneath them, never above
+
 ## [1.8.0] - 2026-09-29
 
 ### ✨ Added — smart-money contradiction guard (live)

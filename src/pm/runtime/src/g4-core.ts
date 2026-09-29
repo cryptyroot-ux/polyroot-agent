@@ -49,6 +49,14 @@ export interface G4CoreConfig {
   liveLossCapPusd?: number;
   /** Minimum edge after costs for entry. */
   minEdgeAfterCost?: number;
+  /**
+   * Owner wall: max markets evaluated per pass (default
+   * MAX_CONCURRENT_ORDERS). The allocator ranks by previous-pass score
+   * and defers the rest — the agent decides WHICH and HOW MANY up to
+   * this ceiling. <=0 (or unset-with-default) means bounded by the
+   * default, never unbounded.
+   */
+  maxConcurrentMarkets?: number;
   /** Paper simulator configuration. */
   paperConfig?: {
     cancelProbability: number;
@@ -122,6 +130,13 @@ export interface G4CoreDeps {
    * judgement (never blocks on missing data).
    */
   getSmartMoneyFlow?: ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
+  /**
+   * Settlement feed: token ids resolved since the last call (any cadence;
+   * the tracker dedupes). Powers the portfolio-full gate by freeing
+   * settled notional. Absent = positions never settle (conservative:
+   * exposure only grows, gate only tightens).
+   */
+  listSettledTokens?: (() => Promise<string[]>) | undefined;
 }
 
 /**
@@ -508,6 +523,7 @@ export interface CreateG4CoreOptions {
   getFunds?: (() => Promise<StepFunds | undefined>) | undefined;
   modeWatcher?: ModeWatcher;
   getSmartMoneyFlow?: ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
+  listSettledTokens?: (() => Promise<string[]>) | undefined;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -531,6 +547,9 @@ export function createG4Core(options: CreateG4CoreOptions) {
     ...(options.modeWatcher ? { modeWatcher: options.modeWatcher } : {}),
     ...(options.getSmartMoneyFlow
       ? { getSmartMoneyFlow: options.getSmartMoneyFlow }
+      : {}),
+    ...(options.listSettledTokens
+      ? { listSettledTokens: options.listSettledTokens }
       : {}),
   };
   return {

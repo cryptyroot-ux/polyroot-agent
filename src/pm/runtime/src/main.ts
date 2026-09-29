@@ -33,6 +33,7 @@ import { ModeWatcher } from "./mode-watcher.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
 import { PgLiveGuardStore } from "./live-guard-store.js";
+import { PgResolvedClusters } from "./postgres-log.js";
 import { createStepPersistence } from "./observability/index.js";
 import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
 import {
@@ -46,7 +47,7 @@ import {
   createForecastProviderFromEnv,
   type ForecastProvider,
 } from "@polyroot/intelligence";
-import { kellyShares } from "@polyroot/strategy";
+import { kellyShares, equityBankroll } from "@polyroot/strategy";
 import { PgCalibrationService } from "@polyroot/intelligence";
 import type { G4CoreMetrics } from "./g4-core.js";
 
@@ -394,6 +395,16 @@ export async function bootstrapAgent(
   const microLiveCapUsd =
     bounds.capUsd ?? (isLiveMode ? AUTONOMY_BOUNDS.CAPITAL_CAP_USD : undefined);
   const liveGuardStore = new PgLiveGuardStore(pool);
+  // Settlement feed for the portfolio tracker: recently resolved token
+  // ids, so filled positions free their notional back. Fail-open inside.
+  const resolvedClusters = new PgResolvedClusters(pool);
+  // Owner wall for per-pass breadth (default MAX_CONCURRENT_ORDERS = 3):
+  // the agent ranks and defers within it, never above it.
+  const maxConcurrentRaw = Number(process.env["POLYROOT_MAX_CONCURRENT_ORDERS"]);
+  const maxConcurrentMarkets =
+    Number.isFinite(maxConcurrentRaw) && maxConcurrentRaw > 0
+      ? Math.floor(maxConcurrentRaw)
+      : AUTONOMY_BOUNDS.MAX_CONCURRENT_ORDERS;
   // Learned correction service: identity until the resolution sync trains
   // real maps (fail-open by construction — see calibrate()).
   const calibrationService = new PgCalibrationService(pool);
@@ -428,6 +439,7 @@ export async function bootstrapAgent(
     config: {
       mode,
       minEdgeAfterCost: 0.03,
+      maxConcurrentMarkets,
       ...(microLiveCapUsd !== undefined ? { microLiveCapUsd } : {}),
       ...(liveLossCapPusd !== undefined ? { liveLossCapPusd } : {}),
     },
@@ -454,6 +466,20 @@ export async function bootstrapAgent(
     policyHash: "ph_prod_audited_137",
     venueMode: () => venueAdapter.mode,
     modeWatcher,
+    listSettledTokens: async () => {
+      try {
+        const rows = await resolvedClusters.listRecent(100);
+        const out: string[] = [];
+        for (const r of rows) {
+          for (const id of r.marketIds ?? []) {
+            if (typeof id === "string" && id) out.push(id);
+          }
+        }
+        return out;
+      } catch {
+        return [];
+      }
+    },
     ...(smartMoneySync
       ? {
           getSmartMoneyFlow: (tokenId: string) =>
@@ -521,13 +547,17 @@ export async function bootstrapAgent(
     },
     // Fractional-Quarter-Kelly sizing on the touch price, hard-capped at the
     // legacy fixed size: entries can only shrink vs the old behavior, never
-    // grow. Bankroll = owner capital cap (the same basis the loss latch
-    // uses), so a $100 account stakes dollars, not fantasy shares.
+    // grow. Bankroll is LIVE EQUITY (owner cap + realized session P&L,
+    // floored at zero) — the agent compounds wins and shrinks on losses
+    // without owner input; a blown account sizes everything to zero.
     sizeIntent: ({ ask }, p) =>
       kellyShares({
         p,
         price: ask,
-        bankrollUsd: microLiveCapUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD,
+        bankrollUsd: equityBankroll(
+          microLiveCapUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD,
+          metrics.getCounter("totalPnl") ?? 0,
+        ),
         fraction: 0.25,
         minShares: 1,
         maxShares: 100,

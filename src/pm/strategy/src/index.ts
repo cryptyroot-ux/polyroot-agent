@@ -54,6 +54,14 @@ export {
   type MultiOutcomeVerdict,
 } from "./multi-outcome-arb.js";
 
+export {
+  scoreOpportunity,
+  selectMarketsForPass,
+  equityBankroll,
+  PositionTracker,
+  type RankedMarket,
+} from "./portfolio-allocator.js";
+
 export { type ExitEngineConfig, ExitEngine } from "./exit-engine.js";
 
 export {

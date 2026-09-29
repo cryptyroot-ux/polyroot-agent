@@ -18,7 +18,7 @@ import {
   touchDepthNotionalUsd,
   type TokenTouch,
 } from "@polyroot/venue";
-import { kellyFraction, kellyShares, QuoteEngine, evaluateMultiOutcomeArb } from "@polyroot/strategy";
+import { kellyFraction, kellyShares, QuoteEngine, evaluateMultiOutcomeArb, scoreOpportunity, selectMarketsForPass, equityBankroll, PositionTracker } from "@polyroot/strategy";
 import { countComponentFamilies } from "../../../src/pm/intelligence/src/ensemble-pg";
 import { countEnsembleFamilies } from "../../../src/pm/intelligence/src/calibration";
 import { randomUUID } from "crypto";
@@ -486,6 +486,69 @@ describe("smart-money contradiction guard (one-way)", () => {
     );
     assert.equal(res.decision, "NO_TRADE");
     assert.equal(res.reason, "MIN_EDGE_UNMET");
+  });
+});
+
+/* ─── Portfolio allocator: agent decides HOW MANY + HOW MUCH ───────── */
+
+describe("portfolio allocator (autonomy inside owner walls)", () => {
+  it("scoreOpportunity scales edge by conviction, garbage scores -inf", () => {
+    assert.ok(
+      Math.abs(scoreOpportunity(0.08, 0.65) - 0.08 * 0.3) < 1e-9,
+    );
+    assert.equal(scoreOpportunity(0.08, undefined), 0.08 * 0.5);
+    assert.equal(scoreOpportunity(undefined, 0.65), Number.NEGATIVE_INFINITY);
+    assert.equal(scoreOpportunity(NaN, 0.65), Number.NEGATIVE_INFINITY);
+  });
+
+  it("warmup evaluates everything; then top-K by score, rest defer", () => {
+    const ids = ["a", "b", "c", "d"];
+    const warm = selectMarketsForPass(new Map(), ids, 2, 1000);
+    assert.deepEqual(warm.selected, ids);
+    assert.deepEqual(warm.deferred, []);
+    const mem = new Map([
+      ["a", { marketId: "a", score: 0.01, scoredAtMs: 900 }],
+      ["b", { marketId: "b", score: 0.09, scoredAtMs: 900 }],
+      ["c", { marketId: "c", score: 0.05, scoredAtMs: 900 }],
+      ["d", { marketId: "d", score: -1, scoredAtMs: 900 }],
+    ]);
+    const pick = selectMarketsForPass(mem, ids, 2, 1000);
+    assert.deepEqual(pick.selected, ["b", "c"]);
+    assert.deepEqual(pick.deferred, ["a", "d"]);
+  });
+
+  it("stale scores sink but never starve; K<=0 means unbounded", () => {
+    const mem = new Map([
+      ["old", { marketId: "old", score: 0.9, scoredAtMs: 0 }],
+    ]);
+    const pick = selectMarketsForPass(mem, ["old", "new"], 1, 20 * 60_000);
+    assert.deepEqual(pick.selected, ["new"]);
+    assert.deepEqual(pick.deferred, ["old"]);
+    const all = selectMarketsForPass(mem, ["old", "new"], 0, 1000);
+    assert.deepEqual(all.selected, ["old", "new"]);
+  });
+
+  it("equityBankroll compounds wins, floors ruin at zero", () => {
+    assert.equal(equityBankroll(100, 25), 125);
+    assert.equal(equityBankroll(100, -30), 70);
+    assert.equal(equityBankroll(100, -100), 0);
+    assert.equal(equityBankroll(100, -500), 0);
+    assert.equal(equityBankroll(0, 50), 0);
+    assert.equal(equityBankroll(100, NaN), 100);
+  });
+
+  it("PositionTracker frees only settled capital, never negative", () => {
+    const t = new PositionTracker();
+    t.add("tokA", 50);
+    t.add("tokA", 25);
+    t.add("tokB", 10);
+    t.add("", -5);
+    assert.equal(t.total(), 85);
+    assert.equal(t.count(), 2);
+    const r = t.resolve(["tokA", "ghost"]);
+    assert.deepEqual(r, { reclaimedUsd: 75, count: 1 });
+    assert.equal(t.total(), 10);
+    assert.deepEqual(t.resolve([]), { reclaimedUsd: 0, count: 0 });
   });
 });
 
