@@ -1,0 +1,366 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { evaluateEdge, clobTakerFeePerShare } from "@polyroot/control";
+import type { Forecast, MarketSnapshot } from "@polyroot/domain";
+import {
+  classifyRegime,
+  resolveEdgeFloor,
+  flbExtremePremium,
+  expiryEdgePremium,
+  executeG4Step,
+  getDefaultModeConfig,
+} from "@polyroot/runtime";
+import {
+  parseGammaEvents,
+  parseDiscoveryBounds,
+  filterTightSpreadTokens,
+  touchDepthNotionalUsd,
+  type TokenTouch,
+} from "@polyroot/venue";
+import { kellyFraction, kellyShares } from "@polyroot/strategy";
+import { countComponentFamilies } from "../../../src/pm/intelligence/src/ensemble-pg";
+import { countEnsembleFamilies } from "../../../src/pm/intelligence/src/calibration";
+import { randomUUID } from "crypto";
+
+function close(a: number, b: number, eps = 1e-9): boolean {
+  return Math.abs(a - b) < eps;
+}
+
+function makeForecast(over: Partial<Forecast> = {}): Forecast {
+  return {
+    schema_version: "1.1",
+    forecast_id: randomUUID(),
+    market_id: "mkt_1",
+    p_calibrated: 0.7,
+    confidence: 0.8,
+    horizon_sec: 3600,
+    valid_until: new Date("2026-01-01T01:00:00Z"),
+    created_at: new Date("2026-01-01T00:00:00Z"),
+    ...over,
+  };
+}
+
+function makeBook(over: Partial<MarketSnapshot> = {}): MarketSnapshot {
+  return {
+    schema_version: "1.1",
+    event_id: "evt_1",
+    market_id: "mkt_1",
+    question: "Will X happen?",
+    chain_id: 137,
+    collateral: "0xCOLLAT",
+    rules_hash: "rh_1",
+    fee_maker_bps: 0,
+    fee_taker_bps: 0,
+    tick_size: 0.01,
+    min_size: 1,
+    status: "ACTIVE",
+    is_neg_risk: false,
+    venue_mode: "NORMAL",
+    yes_price: 0.4,
+    no_price: 0.6,
+    source_at: new Date("2026-01-01T00:00:00Z"),
+    received_at: new Date("2026-01-01T00:00:00Z"),
+    ...over,
+  };
+}
+
+/* ─── U1: CLOB Θ fee model ─────────────────────────────────────────── */
+
+describe("CLOB taker fee Θ·p·(1−p)", () => {
+  it("peaks at mid-prices and vanishes at extremes", () => {
+    assert.ok(close(clobTakerFeePerShare(0.5, 0.05), 0.0125));
+    assert.ok(close(clobTakerFeePerShare(0.1, 0.05), 0.0045));
+    assert.ok(close(clobTakerFeePerShare(0.9, 0.05), 0.0045));
+    assert.ok(close(clobTakerFeePerShare(0.0, 0.05), 0));
+    assert.ok(close(clobTakerFeePerShare(NaN), 0));
+  });
+
+  it("evaluateEdge prices each side at its own touch when feeTheta set", () => {
+    const res = evaluateEdge(
+      { forecast: makeForecast({ p_calibrated: 0.6 }), book: makeBook({ yes_price: 0.55 }) },
+      { minEdge: 0.03, feeTheta: 0.05 },
+    );
+    // gross 0.05, fee Θ·0.55·0.45 = 0.012375 → net 0.037625 ≥ 0.03
+    assert.equal(res.action, "TRADE");
+    assert.ok(close(res.edge_after_fees, 0.05 - 0.05 * 0.55 * 0.45));
+  });
+
+  it("explicit flat takerFeeBps still wins (backward compatible)", () => {
+    const res = evaluateEdge(
+      { forecast: makeForecast({ p_calibrated: 0.6 }), book: makeBook({ yes_price: 0.55 }) },
+      { minEdge: 0.025, takerFeeBps: 200, feeTheta: 0.05 },
+    );
+    // flat 2% wins over Θ: net ≈ 0.03 ≥ 0.025 → TRADE
+    assert.equal(res.action, "TRADE");
+    assert.ok(Math.abs(res.edge_after_fees - 0.03) < 1e-9);
+  });
+
+  it("legacy books without feeTheta behave exactly as before", () => {
+    const res = evaluateEdge(
+      { forecast: makeForecast(), book: makeBook() },
+      { minEdge: 0.05 },
+    );
+    assert.equal(res.action, "TRADE");
+    assert.ok(close(res.edge_after_fees, 0.3));
+  });
+});
+
+/* ─── Guards: FLB extremes + expiry ────────────────────────────────── */
+
+describe("research-backed edge guards", () => {
+  it("flbExtremePremium charges +2pp under 10¢ / over 90¢ only", () => {
+    assert.equal(flbExtremePremium(0.05), 0.02);
+    assert.equal(flbExtremePremium(0.95), 0.02);
+    assert.equal(flbExtremePremium(0.5), 0);
+    assert.equal(flbExtremePremium(0.1), 0);
+    assert.equal(flbExtremePremium(NaN), 0);
+  });
+
+  it("expiryEdgePremium steps up with distance to resolution", () => {
+    assert.equal(expiryEdgePremium(null), 0);
+    assert.equal(expiryEdgePremium(undefined), 0);
+    assert.equal(expiryEdgePremium(3), 0);
+    assert.equal(expiryEdgePremium(7), 0.005);
+    assert.equal(expiryEdgePremium(30), 0.005);
+    assert.equal(expiryEdgePremium(31), 0.01);
+    assert.equal(expiryEdgePremium(-1), 0);
+  });
+
+  it("resolveEdgeFloor adds the guard premium without touching the base", () => {
+    assert.ok(close(resolveEdgeFloor(0.03, 0.1), 0.08));
+    assert.ok(close(resolveEdgeFloor(0.03, 0.1, 0.02), 0.1));
+    assert.ok(close(resolveEdgeFloor(0.03, 0.1, NaN), 0.08));
+  });
+});
+
+/* ─── U4: regime enforcement in the live step ──────────────────────── */
+
+describe("executeG4Step enforces book regime (no longer display-only)", () => {
+  function core() {
+    return {
+      config: getDefaultModeConfig("SHADOW", { minEdgeAfterCost: 0.03 }),
+      deps: {
+        venueMode: () => "NORMAL",
+        forecast: async () => 0.65,
+        sizeIntent: () => {
+          throw new Error("must not reach sizing on untradeable books");
+        },
+        now: () => new Date(),
+      },
+    };
+  }
+
+  it("DUST books abstain before sizing", async () => {
+    assert.equal(classifyRegime(0.005, 0.015), "DUST");
+    const res = await executeG4Step(
+      { market_id: "dust", bid: 0.005, ask: 0.015, forecastOverride: 0.65 },
+      core() as never,
+      { cancelProbability: 0 } as never,
+    );
+    assert.equal(res.decision, "NO_TRADE");
+    assert.ok((res.reason ?? "").includes("DUST"));
+  });
+
+  it("TIGHT_CONSENSUS books abstain before sizing", async () => {
+    assert.equal(classifyRegime(0.5, 0.52), "TIGHT_CONSENSUS");
+    const res = await executeG4Step(
+      { market_id: "tight", bid: 0.5, ask: 0.52, forecastOverride: 0.65 },
+      core() as never,
+      { cancelProbability: 0 } as never,
+    );
+    assert.equal(res.decision, "NO_TRADE");
+    assert.ok((res.reason ?? "").includes("TIGHT_CONSENSUS"));
+  });
+});
+
+/* ─── U3/U5: discovery expiry + depth + churn ──────────────────────── */
+
+describe("discovery: expiry, depth and wash guards", () => {
+  it("parseGammaEvents captures endDate (market, then event fallback)", () => {
+    const out = parseGammaEvents([
+      {
+        endDate: "2026-12-31T00:00:00Z",
+        markets: [
+          {
+            question: "Q1",
+            slug: "q1",
+            clobTokenIds: '["1","2"]',
+            volume24hr: "20000",
+            endDate: "2026-06-01T00:00:00Z",
+          },
+          {
+            question: "Q2",
+            slug: "q2",
+            clobTokenIds: '["3","4"]',
+            volume24hr: "20000",
+          },
+        ],
+      },
+    ]);
+    assert.equal(out.length, 2);
+    assert.equal(out[0]?.endDateMs, Date.parse("2026-06-01T00:00:00Z"));
+    assert.equal(out[1]?.endDateMs, Date.parse("2026-12-31T00:00:00Z"));
+  });
+
+  it("parseDiscoveryBounds gains safe defaults for the new guardrails", () => {
+    const b = parseDiscoveryBounds({});
+    assert.equal(b.minHoursToExpiry, 2);
+    assert.equal(b.minTouchDepthUsd, 25);
+    assert.equal(b.maxChurnRatio, 2000);
+    const off = parseDiscoveryBounds({
+      POLYROOT_DISCOVERY_MIN_HOURS_TO_EXPIRY: "0",
+      POLYROOT_DISCOVERY_MIN_TOUCH_DEPTH_USD: "0",
+      POLYROOT_DISCOVERY_MAX_CHURN_RATIO: "0",
+    });
+    assert.equal(off.minHoursToExpiry, 0);
+    assert.equal(off.minTouchDepthUsd, 0);
+    assert.equal(off.maxChurnRatio, 0);
+    const bad = parseDiscoveryBounds({
+      POLYROOT_DISCOVERY_MIN_HOURS_TO_EXPIRY: "nope",
+    });
+    assert.equal(bad.minHoursToExpiry, 2);
+  });
+
+  it("touchDepthNotionalUsd values touch depth, null on missing sizes", () => {
+    assert.ok(
+      close(
+        touchDepthNotionalUsd({
+          tokenId: "t",
+          bid: 0.5,
+          ask: 0.55,
+          bidSizeShares: 100,
+          askSizeShares: 200,
+        }) ?? -1,
+        0.5 * 100 + 0.55 * 200,
+      ),
+    );
+    assert.equal(
+      touchDepthNotionalUsd({ tokenId: "t", bid: 0.5, ask: 0.55 }),
+      null,
+    );
+  });
+
+  const deepTouch = (id: string): TokenTouch => ({
+    tokenId: id,
+    bid: 0.5,
+    ask: 0.55,
+    bidSizeShares: 10_000,
+    askSizeShares: 10_000,
+  });
+
+  it("rejects near-expiry gambles and thin/washy books", async () => {
+    const now = Date.parse("2026-01-01T00:00:00Z");
+    const mk = (q: string, endDateMs?: number, volume24h = 50_000) => ({
+      question: q,
+      slug: q,
+      yesTokenId: `${q}-Y`,
+      noTokenId: `${q}-N`,
+      volume24h,
+      ...(endDateMs === undefined ? {} : { endDateMs }),
+    });
+    // expiring in 30min < 2h default → dropped without touching the book
+    let hits = 0;
+    const counting = async (id: string) => {
+      hits += 1;
+      return deepTouch(id);
+    };
+    const out = await filterTightSpreadTokens(
+      [mk("soon", now + 30 * 60_000)],
+      0.1,
+      counting,
+      { nowMs: now },
+    );
+    assert.equal(out.length, 0);
+    assert.equal(hits, 0);
+
+    // $10 touch depth on $50k volume → churn 5000 > 2000 → dropped
+    const thin: TokenTouch = {
+      tokenId: "thin-Y",
+      bid: 0.5,
+      ask: 0.55,
+      bidSizeShares: 10,
+      askSizeShares: 10,
+    };
+    const out2 = await filterTightSpreadTokens(
+      [mk("washy", now + 30 * 24 * 3_600_000)],
+      0.1,
+      async (id) => (id.endsWith("-Y") ? thin : deepTouch(id)),
+      { nowMs: now },
+    );
+    assert.ok(!out2.flatMap((m) => m.tokenIds).includes("washy-Y"));
+    assert.ok(out2.flatMap((m) => m.tokenIds).includes("washy-N"));
+  });
+
+  it("price-only touches keep the legacy spread-only verdict", async () => {
+    const out = await filterTightSpreadTokens(
+      [
+        {
+          question: "legacy",
+          slug: "legacy",
+          yesTokenId: "L-Y",
+          noTokenId: "L-N",
+          volume24h: 50_000,
+        },
+      ],
+      0.1,
+      async (id) => ({ tokenId: id, bid: 0.5, ask: 0.55 }),
+    );
+    assert.deepEqual(out.flatMap((m) => m.tokenIds).sort(), ["L-N", "L-Y"]);
+  });
+});
+
+/* ─── U6: ensemble family counts ───────────────────────────────────── */
+
+describe("ensemble PG stores count real families", () => {
+  it("counts distinct component names (both stores agree)", () => {
+    const two = [
+      { component: "llm-a", p_raw: 0.6 },
+      { component: "llm-a", p_raw: 0.7 },
+      { component: "smart-money", p_raw: 0.5 },
+    ];
+    assert.equal(countComponentFamilies(two), 2);
+    assert.equal(countEnsembleFamilies(two), 2);
+    assert.equal(countComponentFamilies(JSON.stringify(two)), 2);
+    assert.equal(countComponentFamilies([]), 1);
+    assert.equal(countEnsembleFamilies("garbage{"), 1);
+    assert.equal(countEnsembleFamilies(null), 1);
+  });
+});
+
+/* ─── U7: fractional-Kelly sizing ──────────────────────────────────── */
+
+describe("fractional-Kelly sizing", () => {
+  it("even odds: full Kelly 20%, quarter Kelly 5%", () => {
+    assert.ok(close(kellyFraction(0.6, 0.5, 1), 0.2));
+    assert.ok(close(kellyFraction(0.6, 0.5), 0.05));
+  });
+
+  it("never bets without edge or on garbage", () => {
+    assert.equal(kellyFraction(0.5, 0.5), 0);
+    assert.equal(kellyFraction(0.4, 0.5), 0);
+    assert.equal(kellyFraction(NaN, 0.5), 0);
+    assert.equal(kellyFraction(0.6, 1.5), 0);
+  });
+
+  it("kellyShares converts stake at touch, capped at legacy size", () => {
+    // p=0.65, q=0.55: f = 0.10/0.45 × 0.25 ≈ 5.55% of $100 = $5.55 → 10 shares
+    assert.equal(
+      kellyShares({ p: 0.65, price: 0.55, bankrollUsd: 100 }),
+      10,
+    );
+    // whale bankroll still caps at the legacy 100 (may only shrink)
+    assert.equal(
+      kellyShares({ p: 0.9, price: 0.5, bankrollUsd: 1_000_000 }),
+      100,
+    );
+    // dust edge stakes nothing
+    assert.equal(
+      kellyShares({ p: 0.505, price: 0.5, bankrollUsd: 100 }),
+      0,
+    );
+    assert.equal(
+      kellyShares({ p: 0.65, price: 0.55, bankrollUsd: 0 }),
+      0,
+    );
+  });
+});

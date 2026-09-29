@@ -171,6 +171,94 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
   });
 });
 
+describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE ladder", () => {
+  it("PAPER path skips caps and writes RUNTIME_MODE=PAPER", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
+    const { code, out } = await runOnboardLikeHuman(home, [
+      "",               // provider: OpenAI (default)
+      "",               // model: gpt-4o-mini (default)
+      "sk-test-key-3",  // API key
+      "y",              // reachability check: continue anyway
+      "",               // wallet: create new (default)
+      "test-pass-123",  // vault password
+      "test-pass-123",  // repeat vault password
+      "2",              // mode: PAPER
+      "n",              // demo trade offer (never asked without DB)
+    ]);
+    assert.equal(code, 0);
+    const env = readFileSync(join(home, ".polyroot", ".env"), "utf8");
+    assert.ok(env.includes("RUNTIME_MODE=PAPER"));
+    assert.ok(!out.includes("files.pango.fun"));
+  });
+
+  it("MICRO_LIVE path requires typed confirmation and writes caps", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
+    const { code, out } = await runOnboardLikeHuman(home, [
+      "",               // provider: OpenAI (default)
+      "",               // model: gpt-4o-mini (default)
+      "sk-test-key-4",  // API key
+      "y",              // reachability check: continue anyway
+      "",               // wallet: create new (default)
+      "test-pass-123",  // vault password
+      "test-pass-123",  // repeat vault password
+      "3",              // mode: MICRO_LIVE
+      "MICRO_LIVE",     // typed confirmation (real money)
+      "100",            // capital cap
+      "500",            // loss cap bps
+      "n",              // demo trade offer (never asked without DB)
+    ], [
+      "Choose AI provider",
+      "Select model",
+      "Paste your",
+      "Continue anyway?",
+      "Wallet (Enter = create new):",
+      "Create a vault password",
+      "Repeat the vault password",
+      "Choose mode (Enter = SHADOW):",
+      "Type MICRO_LIVE to continue",
+      "Capital cap in USD",
+      "Daily loss cap in bps",
+    ]);
+    assert.equal(code, 0);
+    const env = readFileSync(join(home, ".polyroot", ".env"), "utf8");
+    assert.ok(env.includes("RUNTIME_MODE=MICRO_LIVE"));
+    assert.ok(env.includes("POLYROOT_MICRO_LIVE_CAP_USD=100"));
+    assert.ok(!out.includes("files.pango.fun"));
+  });
+
+  it("MICRO_LIVE without typed confirmation falls back to SHADOW", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
+    const { code } = await runOnboardLikeHuman(home, [
+      "",               // provider: OpenAI (default)
+      "",               // model: gpt-4o-mini (default)
+      "sk-test-key-5",  // API key
+      "y",              // reachability check: continue anyway
+      "",               // wallet: create new (default)
+      "test-pass-123",  // vault password
+      "test-pass-123",  // repeat vault password
+      "3",              // mode: MICRO_LIVE
+      "nope",           // wrong confirmation → SHADOW
+      "10000",          // capital cap (SHADOW still asks)
+      "500",            // loss cap bps
+      "n",              // demo trade offer (never asked without DB)
+    ], [
+      "Choose AI provider",
+      "Select model",
+      "Paste your",
+      "Continue anyway?",
+      "Wallet (Enter = create new):",
+      "Create a vault password",
+      "Repeat the vault password",
+      "Choose mode (Enter = SHADOW):",
+      "Type MICRO_LIVE to continue",
+      "Capital cap in USD",
+      "Daily loss cap in bps",
+    ]);
+    assert.equal(code, 0);
+    const env = readFileSync(join(home, ".polyroot", ".env"), "utf8");
+    assert.ok(env.includes("RUNTIME_MODE=SHADOW"));
+  });
+});
 describe("onboarding finish is resilient without a database", () => {
   it("still exits 0 and tells the user the one next command", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));

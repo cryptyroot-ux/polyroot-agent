@@ -89,6 +89,9 @@ describe("market discovery (pick by name)", () => {
       minVolume24h: 10_000,
       maxMarkets: 5,
       maxSpread: 0.1,
+      minHoursToExpiry: 2,
+      minTouchDepthUsd: 25,
+      maxChurnRatio: 2000,
     });
     assert.deepEqual(
       parseDiscoveryBounds({
@@ -96,7 +99,14 @@ describe("market discovery (pick by name)", () => {
         POLYROOT_DISCOVERY_MAX_MARKETS: "999",
         POLYROOT_DISCOVERY_MAX_SPREAD: "99",
       }),
-      { minVolume24h: 10_000, maxMarkets: 20, maxSpread: 0.5 },
+      {
+        minVolume24h: 10_000,
+        maxMarkets: 20,
+        maxSpread: 0.5,
+        minHoursToExpiry: 2,
+        minTouchDepthUsd: 25,
+        maxChurnRatio: 2000,
+      },
     );
   });
 

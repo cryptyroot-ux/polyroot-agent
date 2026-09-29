@@ -120,6 +120,15 @@ link_binary() {
   ok "Binary linked: ~/.local/bin/polyroot"
 }
 
+install_systemd() {
+  log "Installing 24/7 systemd service (best-effort)..."
+  # Never fail the whole install when systemd is unavailable (containers,
+  # WSL, macOS): install-systemd.sh exits 0 with a manual-start note there.
+  bash "${INSTALL_DIR}/scripts/install-systemd.sh" \
+    --home "${INSTALL_DIR}" --user "$(whoami)" || warn "systemd install skipped"
+  ok "systemd step done (see note above if skipped)"
+}
+
 print_next_steps() {
   echo
   echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
@@ -172,6 +181,7 @@ main() {
   install_deps
   build
   link_binary
+  install_systemd
   print_next_steps
 }
 

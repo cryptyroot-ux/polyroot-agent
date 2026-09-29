@@ -1,0 +1,41 @@
+# PolyRoot Agent — systemd unit template (24/7 autonomous operation).
+#
+# Rendered by scripts/install-systemd.sh — never hand-edit the installed copy
+# at /etc/systemd/system/polyroot.service; re-render instead so fresh installs
+# and `polyroot update` stay in sync with this file.
+#
+# Placeholders (substituted at install time):
+#   {{POLYROOT_USER}}  OS user the agent runs as (owns the install dir)
+#   {{POLYROOT_HOME}}  install dir, e.g. ~/.polyroot
+#   {{NODE_BIN}}       node binary, e.g. /usr/bin/node
+#
+# Design notes:
+# - ExecStart runs the TRADING LOOP (`cli.js run`), not the bare interactive
+#   console. Bare `cli.js` opens a REPL console and never trades.
+# - No EnvironmentFile on purpose: the CLI loads its own .env from the install
+#   dir (600 perms), so secrets never pass through systemd / `systemctl show`.
+# - No Requires= on distro-specific postgres units: the agent is fail-closed
+#   (doctor + DB gates refuse without a database), so a hard dependency would
+#   only turn a clear error into an opaque unit failure.
+# - Restart=always: a 24/7 agent must come back after crashes AND clean exits.
+[Unit]
+Description=PolyRoot Autonomous Trading Agent (24/7)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{POLYROOT_USER}}
+WorkingDirectory={{POLYROOT_HOME}}
+ExecStart={{NODE_BIN}} {{POLYROOT_HOME}}/src/pm/runtime/dist/cli.js run
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=polyroot
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

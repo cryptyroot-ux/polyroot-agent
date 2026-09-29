@@ -9,7 +9,8 @@ function runCli(...args: string[]): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ["--import", "tsx", CLI, ...args], {
       cwd: process.cwd(),
-      env: { ...process.env },
+      // Hermetic: force the nohup branch regardless of host supervisor state.
+      env: { ...process.env, POLYROOT_NO_SYSTEMD: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";

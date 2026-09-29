@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-09-29
+
+### ✨ Added — 24/7 systemd supervisor (automatic)
+- **`scripts/polyroot.service.template`** — unit runs the trading loop (`cli.js run`, never the bare console) with `Restart=always`, journal logging, `WantedBy=multi-user.target`; zero secrets, zero hardcoded paths, no brittle `Requires=` on distro postgres units
+- **`scripts/install-systemd.sh`** — renders the template (`--home/--user/--node`, `--print` for inspection, `SYSTEMD_DIR` override for tests); real installs do `daemon-reload` + `reset-failed` (clears stale crash-loops) + `enable`, and only auto-start when `.env` exists (never boot-loop an un-onboarded box); skips gracefully without PID-1 systemd
+- **`install.sh` wiring** — every fresh install gets the service best-effort; `polyroot restart` now prints `systemctl restart polyroot` when the unit is loaded (nohup remains the fallback)
+
+### 🔧 Fixed
+- Replaces ad-hoc units pointing at wrong paths/entrypoints (`dist/control/src/index.js`) that crash-looped tens of thousands of times
+
+### 📈 Strategy upgrades — research-backed (audit P0/P1)
+- **CLOB Θ fee model** — taker fee now `Θ·p·(1−p)` per share (Θ=0.05, CFTC filing 2026) instead of flat 200bps: mid-price books price their true cost; explicit flat overrides still win (backward compatible)
+- **Regime enforcement** — `DUST`/`TIGHT_CONSENSUS` books now abstain in `executeG4Step` (classifier was display-only); taker flow can never clear cost on ≤2¢ spreads. Spread comparison hardened against float dust (0.52−0.50)
+- **Favorite-longshot guard** — +2pp edge premium under 10¢ / over 90¢ (measured ~19.3¢/$ longshot loss on Polymarket, Cardozo & Rivero-Wildemauwe 2026)
+- **Expiry guards** — Gamma `endDate` plumbed through discovery; near-expiry gambles rejected (`POLYROOT_DISCOVERY_MIN_HOURS_TO_EXPIRY`, default 2h) + distant-expiry edge premium (+0.5pp 7–30d, +1pp >30d, Page 2013)
+- **Wash/depth filter** — touch sizes from the CLOB book feed depth-notional + volume/depth churn gates (`POLYROOT_DISCOVERY_MIN_TOUCH_DEPTH_USD` $25, `POLYROOT_DISCOVERY_MAX_CHURN_RATIO` 2000); price-only touches keep legacy spread verdict
+- **Fractional-Kelly sizing** — quarter-Kelly on the touch price, hard-capped at the legacy 100 shares (entries can only shrink, never grow); $100 bankroll stakes dollars
+- **Ensemble honesty** — both PG stores count real distinct families instead of hardcoded 1
+- **Latent fix (found by the suite)** — `parseArgs` SHADOW default had silently disabled `RUNTIME_MODE` validation; explicit `--mode` now wins, set-but-invalid env throws
+
 ## [1.4.0] - 2026-09-29
 
 ### ✨ Added — Comprehensive AI Provider Onboarding

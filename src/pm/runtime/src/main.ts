@@ -43,6 +43,7 @@ import {
   createForecastProviderFromEnv,
   type ForecastProvider,
 } from "@polyroot/intelligence";
+import { kellyShares } from "@polyroot/strategy";
 import type { G4CoreMetrics } from "./g4-core.js";
 
 /**
@@ -464,7 +465,19 @@ export async function bootstrapAgent(
         return null;
       }
     },
-    sizeIntent: () => 100, // Example size in shares
+    // Fractional-Quarter-Kelly sizing on the touch price, hard-capped at the
+    // legacy fixed size: entries can only shrink vs the old behavior, never
+    // grow. Bankroll = owner capital cap (the same basis the loss latch
+    // uses), so a $100 account stakes dollars, not fantasy shares.
+    sizeIntent: ({ ask }, p) =>
+      kellyShares({
+        p,
+        price: ask,
+        bankrollUsd: microLiveCapUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD,
+        fraction: 0.25,
+        minShares: 1,
+        maxShares: 100,
+      }),
   });
 
   return {

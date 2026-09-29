@@ -6,8 +6,8 @@ autonomy** architecture: the AI proposes intents only, while a separate
 deterministic **Executor** signs and submits orders. The AI never holds private
 keys.
 
-> **Status: v1.4-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
-> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 739 passing tests (727 contract + 12 property).
+> **Status: v1.5-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
+> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 767 passing tests (755 contract + 12 property).
 > Default onboarding mode is `SHADOW`. Live trading requires explicit Autonomy Charter commissioning.
 
 ---
@@ -221,6 +221,29 @@ POLYROOT_METRICS_OWNER_KEY=your-owner-key-here
 # WALLET_ACCOUNT=0xYOUR_PROXY_ACCOUNT_HERE
 # WALLET_FUNDER=0xYOUR_FUNDER_HERE
 ```
+
+### 6. Run 24/7 as a systemd service (automatic)
+
+The one-line installer (`scripts/install.sh`) already renders and enables
+`polyroot.service` — no manual step needed on a systemd host. It runs the
+trading loop (`cli.js run`) with `Restart=always`, logs to the journal:
+
+```bash
+sudo systemctl status polyroot        # is the 24/7 loop alive?
+sudo journalctl -u polyroot -f        # live logs
+sudo systemctl restart polyroot       # restart (also via `polyroot restart`)
+sudo systemctl stop polyroot          # pause trading (mode/latch stay in DB)
+```
+
+Notes:
+- The unit is rendered from `scripts/polyroot.service.template` — never
+  hand-edit `/etc/systemd/system/polyroot.service`; re-run
+  `bash ~/.polyroot/scripts/install-systemd.sh` instead.
+- No secrets in the unit: the CLI loads `~/.polyroot/.env` (600) itself.
+- No hard `Requires=` on distro postgres units: the agent is fail-closed
+  and refuses clearly without a database.
+- Containers/WSL/macOS (no PID-1 systemd): the installer skips gracefully —
+  use `polyroot run` under tmux/screen there.
 
 ### 8. Commission Autonomy Charter (Required for LIVE Mode)
 

@@ -213,6 +213,7 @@ function parseMode(raw: string | undefined, source: string): CLIConfig["mode"] {
 
 export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   let mode: CLIConfig["mode"] = "SHADOW";
+  let modeFromFlag = false;
   let databaseUrl = "";
   let kmsKeyId = "";
   let once = false;
@@ -247,6 +248,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
       process.exit(0);
     } else if (a === "--mode") {
       mode = parseMode(argv[++i], "--mode");
+      modeFromFlag = true;
     } else if (a === "--db" || a === "--database-url") {
       databaseUrl = argv[++i] ?? "";
     } else if (a === "--kms-key") {
@@ -264,7 +266,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   );
   if (!kmsKeyId) kmsKeyId = getEnv("KMS_KEY_ID") ?? "";
   const envMode = getEnv("RUNTIME_MODE");
-  if (mode === "PAPER" && envMode) mode = parseMode(envMode, "RUNTIME_MODE");
+  // Explicit --mode wins; otherwise a set RUNTIME_MODE is validated
+  // (invalid values throw instead of silently running the default).
+  if (!modeFromFlag && envMode) mode = parseMode(envMode, "RUNTIME_MODE");
 
   if (!databaseUrl)
     throw new Error("DATABASE_URL required (--db or DATABASE_URL env)");
@@ -292,8 +296,8 @@ interface OnboardingConfig {
   walletType: "create" | "import";
   privateKey?: string;
   passphrase: string;
-  mode: "SHADOW" | "LIVE";
-  /** Owner-set capital cap in USD (LIVE only; PAPER ignores it). */
+  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+  /** Owner-set capital cap in USD (MICRO_LIVE/LIVE enforce it; PAPER ignores it). */
   capitalUsd: number;
   /** Owner-set daily loss latch in basis points (500 = 5%). */
   lossBps: number;
@@ -884,40 +888,59 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   chmodSync(KEYSTORE_PATH, 0o600);
   console.log(`🔐 Keystore saved to ${KEYSTORE_PATH} (encrypted, 600 perms)`);
 
-  // 3. Mode selection — SHADOW = live data, simulated fills (100% safe).
+  // 3. Mode selection — full PAPER → SHADOW → MICRO_LIVE → LIVE ladder.
+  // SHADOW stays the default: live data, simulated fills, $0 risk.
   console.log("\n🚀 Step 3/3: Choose Mode");
   console.log(
-    "   SHADOW = live data, simulated fills ($0 risk). LIVE = real money.",
+    "   PAPER = practice, mock data, $0 risk. SHADOW = live data, sim fills, $0 risk.",
+  );
+  console.log(
+    "   MICRO_LIVE = small real money (needs API keys + loss cap). LIVE = full real money.",
   );
   const modeChoice = await askChoice(
     "Choose mode (Enter = SHADOW):",
     [
       "SHADOW — Live data, simulated fills, $0 risk (recommended)",
+      "PAPER — Safe simulation, mock data, $0 risk",
+      "MICRO_LIVE — Small real money (requires capital, API keys, loss cap)",
       "LIVE — Real trading on Polymarket (requires capital, API keys)",
     ],
     0,
   );
-  let mode: "SHADOW" | "LIVE" = "SHADOW";
+  let mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" = "SHADOW";
   let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
   let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
 
-  // Both SHADOW and LIVE need capital/loss caps since SHADOW simulates with real data
-  const needsCapitalConfig = modeChoice.startsWith("SHADOW") || modeChoice.startsWith("LIVE");
+  // SHADOW, MICRO_LIVE and LIVE need capital/loss caps (SHADOW simulates with
+  // real data; PAPER ignores caps and runs the mock fixture).
+  const needsCapitalConfig =
+    modeChoice.startsWith("SHADOW") ||
+    modeChoice.startsWith("MICRO") ||
+    modeChoice.startsWith("LIVE");
   if (needsCapitalConfig) {
     const isLive = modeChoice.startsWith("LIVE");
-    if (isLive) {
-      mode = "LIVE";
+    const isMicro = modeChoice.startsWith("MICRO");
+    if (isLive || isMicro) {
+      const label = isLive ? "LIVE" : "MICRO_LIVE";
+      mode = label;
       console.log(
-        "\nLIVE uses REAL MONEY. The daily loss cap shuts the system",
+        `\n${label} uses REAL MONEY. The daily loss cap shuts the system`,
         "down automatically when reached (needs your manual reset).",
       );
+      if (isMicro) {
+        console.log(
+          "MICRO_LIVE also needs: Polymarket API keys + 3 distinct wallet",
+          "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
+        );
+      }
       const confirm = await askText(
-        "Type LIVE to continue (anything else stays SHADOW)",
+        `Type ${label} to continue (anything else stays SHADOW)`,
       );
-      if (confirm.trim() !== "LIVE") {
+      if (confirm.trim() !== label) {
+        mode = "SHADOW";
         console.log("Staying on SHADOW.");
       } else {
-        mode = "LIVE";
+        mode = label;
       }
     } else {
       mode = "SHADOW";
@@ -946,7 +969,11 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       `\n✅ Your limits: capital $${capitalUsd}, stop-loss $${lossCap}/day.`,
     );
   } else {
-    console.log("Staying on SHADOW. Change later with: polyroot setup");
+    mode = "PAPER";
+    console.log(
+      "PAPER selected: safe simulation on the mock fixture, caps ignored.",
+      "Change later with: polyroot setup",
+    );
   }
 
   return {
@@ -1563,6 +1590,29 @@ async function restartBackgroundAgent(): Promise<void> {
   }
 
   const logFile = `${polyrootHome}/paper.log`;
+  // Prefer the 24/7 supervisor when it owns this machine: the unit runs
+  // `cli.js run` (trading loop) with Restart=always. nohup is the fallback
+  // for containers/WSL/macOS without a PID-1 systemd.
+  // POLYROOT_NO_SYSTEMD=1 forces the fallback (hermetic tests, manual runs).
+  let systemdLoaded = false;
+  if (process.env["POLYROOT_NO_SYSTEMD"] !== "1") {
+    try {
+      const show = execSync("systemctl show polyroot --property=LoadState 2>/dev/null", {
+        encoding: "utf8",
+      });
+      systemdLoaded = show.trim() === "LoadState=loaded";
+    } catch {
+      systemdLoaded = false;
+    }
+  }
+  if (systemdLoaded) {
+    console.log("\n📋 systemd owns the 24/7 loop on this machine. Run:");
+    console.log("   sudo systemctl restart polyroot");
+    console.log("\n📝 Logs: sudo journalctl -u polyroot -f");
+    console.log("🏥 Health: curl http://127.0.0.1:9090/healthz");
+    console.log("🔍 Status: sudo systemctl status polyroot");
+    return;
+  }
   console.log("\n📋 To start the agent in background, run:");
   console.log(
     `   cd "${polyrootHome}" && setsid nohup polyroot run >> "${logFile}" 2>&1 &`,
@@ -1570,7 +1620,7 @@ async function restartBackgroundAgent(): Promise<void> {
   console.log(`\n📝 Logs: tail -f ${logFile}`);
   console.log(`🏥 Health: curl http://127.0.0.1:9090/healthz`);
   console.log(
-    "\n💡 Tip: For production, use systemd or tmux/screen instead of nohup.",
+    "\n💡 Tip: For 24/7 production, install the supervisor: bash ~/.polyroot/scripts/install-systemd.sh",
   );
 }
 
@@ -1841,7 +1891,7 @@ async function runSetupFlow(): Promise<void> {
     if (universe.length > 0) {
       console.log(`   Markets: ${universe.join(", ")}`);
     }
-    console.log(formatNextSteps(mode as "SHADOW" | "LIVE"));
+    console.log(formatNextSteps(mode as "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE"));
     process.loadEnvFile(ENV_PATH as string);
     closeSharedSession();
   } catch (err) {

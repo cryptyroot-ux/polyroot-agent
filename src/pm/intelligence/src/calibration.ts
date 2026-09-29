@@ -74,7 +74,7 @@ export class PgEnsembleStore {
 
   async getEnsemble(version: string): Promise<EnsembleOutcome | null> {
     const res = await this.pool.query(
-      `SELECT p_yes, version FROM ensemble_versions WHERE version = $1`,
+      `SELECT p_yes, version, components FROM ensemble_versions WHERE version = $1`,
       [version],
     );
     if (res.rows.length === 0) return null;
@@ -82,7 +82,33 @@ export class PgEnsembleStore {
       ok: true,
       p_yes: Number(res.rows[0].p_yes),
       version,
-      effectiveFamilyCount: 1,
+      effectiveFamilyCount: countEnsembleFamilies(res.rows[0].components),
     };
   }
+}
+
+/**
+ * Distinct `component` names in a stored ensemble (mirrors
+ * ensemble-pg.countComponentFamilies — kept local so the calibration
+ * service has no cross-module read coupling). Garbage/empty counts 1:
+ * the stored verdict itself, never 0.
+ */
+export function countEnsembleFamilies(raw: unknown): number {
+  const list =
+    typeof raw === "string"
+      ? (() => {
+          try {
+            return JSON.parse(raw) as unknown;
+          } catch {
+            return null;
+          }
+        })()
+      : raw;
+  if (!Array.isArray(list)) return 1;
+  const families = new Set<string>();
+  for (const c of list) {
+    const name = (c as { component?: unknown } | null)?.component;
+    if (typeof name === "string" && name.length > 0) families.add(name);
+  }
+  return Math.max(families.size, 1);
 }

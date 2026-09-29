@@ -137,6 +137,11 @@ export interface G4CoreInput {
   currentMarketExposureUsd?: number;
   /** Current portfolio exposure in USD. */
   currentPortfolioExposureUsd?: number;
+  /**
+   * Days until market resolution, when known (discovery endDate).
+   * Feeds the expiry edge premium; absent = no premium (never blocks).
+   */
+  daysToExpiry?: number | null;
 }
 
 export interface G4CoreResult {
@@ -181,7 +186,10 @@ export type MarketRegime =
  */
 export function classifyRegime(bid: number, ask: number): MarketRegime {
   const mid = (bid + ask) / 2;
-  const spread = Math.abs(ask - bid);
+  // Tick size is 1¢, so round the spread to 4dp: raw float subtraction turns
+  // an exact 2¢ book (0.52−0.50) into 0.020000000000000004 and silently
+  // misses the TIGHT_CONSENSUS gate that exists to block it.
+  const spread = Math.round(Math.abs(ask - bid) * 10000) / 10000;
   if (mid <= 0.02 || mid >= 0.98) return "DUST";
   if (spread <= 0.02) return "TIGHT_CONSENSUS";
   if (Math.abs(mid - 0.5) < 0.1) return "CONTESTED";
@@ -190,14 +198,53 @@ export function classifyRegime(bid: number, ask: number): MarketRegime {
 
 /**
  * Adverse-selection edge floor: base floor plus half the spread, capped at
- * +5pp. Wide spreads mean the book knows something you do not, so demand
- * more edge. Pure and unit-tested.
+ * +5pp, plus an optional guard premium in the same units. Wide spreads mean
+ * the book knows something you do not, so demand more edge. The guard
+ * premium carries research-backed surcharges (favorite-longshot extremes,
+ * distant expiries) without changing the base formula. Pure and unit-tested.
  */
-export function resolveEdgeFloor(baseMinEdge: number, spread: number): number {
+export function resolveEdgeFloor(
+  baseMinEdge: number,
+  spread: number,
+  guardPremium = 0,
+): number {
   const base =
     Number.isFinite(baseMinEdge) && baseMinEdge > 0 ? baseMinEdge : 0.03;
   const addon = Math.min(Math.max(spread, 0) * 0.5, 0.05);
-  return Math.round((base + addon) * 10000) / 10000;
+  const guard =
+    Number.isFinite(guardPremium) && guardPremium > 0 ? guardPremium : 0;
+  return Math.round((base + addon + guard) * 10000) / 10000;
+}
+
+/**
+ * Favorite-longshot guard premium (fraction units, add to the edge floor).
+ *
+ * Measured on Polymarket (588M trades, Cardozo & Rivero-Wildemauwe 2026):
+ * buys below 10¢ lose ~19.3¢ per dollar — longshots are systematically
+ * overpriced, favorites underpriced. A flat edge floor underprices that
+ * adverse selection, so demand +2pp extra edge at the extremes.
+ * Bounds-checked: mid-prices pay no premium.
+ */
+export function flbExtremePremium(touchPrice: number): number {
+  if (!Number.isFinite(touchPrice)) return 0;
+  if (touchPrice < 0.1 || touchPrice > 0.9) return 0.02;
+  return 0;
+}
+
+/**
+ * Expiry guard premium (fraction units). Prediction-market prices are
+ * well-calibrated near expiry but biased toward 0.50 for distant events
+ * (Page 2013, Economic Journal) — the same favorite-longshot direction.
+ * Demand a larger edge the farther the resolution: +0 under 7 days,
+ * +0.5pp for 7–30 days, +1pp beyond 30 days. Unknown expiry pays nothing
+ * (discovery already rejects near-expiry gambles separately).
+ */
+export function expiryEdgePremium(daysToExpiry: number | null | undefined): number {
+  if (daysToExpiry === null || daysToExpiry === undefined) return 0;
+  if (!Number.isFinite(daysToExpiry) || daysToExpiry < 0) return 0;
+  if (daysToExpiry > 30) return 0.01;
+  if (daysToExpiry >= 7) return 0.005;
+  return 0;
 }
 
 /** Funds snapshot for the operator display block. */
@@ -578,6 +625,22 @@ export async function executeG4Step(
       bookAsk: ask,
     };
   }
+  // 2b. Regime enforcement — the classifier used to be display-only, so
+  // DUST and TIGHT_CONSENSUS books could still reach sizing. A taker-only
+  // flow can never clear cost on a ≤2¢ spread, and dust extremes carry no
+  //fillable edge. CONTESTED/NORMAL proceed (fees peak at mid-prices, which
+  // the Θ fee model below prices exactly).
+  const regime = classifyRegime(bid, ask);
+  if (regime === "DUST" || regime === "TIGHT_CONSENSUS") {
+    return {
+      market_id,
+      decision: "NO_TRADE",
+      reason: `book regime ${regime} (untradeable as taker)`,
+      ...(p !== null ? { p } : {}),
+      bookBid: bid,
+      bookAsk: ask,
+    };
+  }
   // 3. Edge evaluation — side-aware. The quote is a single token's book,
   // so only that token's side is evaluable: BUY the quoted token at its
   // ask. The old code fed the YES ask in as the NO price, fabricating
@@ -624,7 +687,14 @@ export async function executeG4Step(
       minEdge: resolveEdgeFloor(
         config.minEdgeAfterCost ?? 0.03,
         Math.abs(ask - bid),
+        // FLB extreme guard (+2pp under 10¢ / over 90¢, measured 19.3¢/$
+        // longshot loss on Polymarket) plus expiry premium. Fail-safe
+        // direction only: both can only raise the bar, never lower it.
+        flbExtremePremium(ask) + expiryEdgePremium(input.daysToExpiry),
       ),
+      // CLOB taker formula Θ·p·(1−p), Θ=0.05 (CFTC filing 2026) — wins over
+      // the legacy flat 200bps fixture below, which stays as fallback.
+      feeTheta: 0.05,
     },
   );
   if (edge.action === "NO_TRADE") {
