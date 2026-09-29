@@ -116,6 +116,12 @@ export interface G4CoreDeps {
    * (entries halt, fail-closed). Absent = fixed boot mode (tests, --once).
    */
   modeWatcher?: ModeWatcher;
+  /**
+   * Smart-money flow lookup (in-memory cache fed by the watchlist sync).
+   * Powers the contradiction guard only; absent = no smart-money
+   * judgement (never blocks on missing data).
+   */
+  getSmartMoneyFlow?: ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
 }
 
 /**
@@ -254,6 +260,50 @@ export function expiryEdgePremium(daysToExpiry: number | null | undefined): numb
   if (daysToExpiry > 30) return 0.01;
   if (daysToExpiry >= 7) return 0.005;
   return 0;
+}
+
+/** Net-flow snapshot for one token, as served by the smart-money cache. */
+export interface SmartMoneyFlow {
+  netFlowUsd: number;
+  buyUsd: number;
+  sellUsd: number;
+  wallets: number;
+  updatedAtMs: number;
+}
+
+/**
+ * Smart-money contradiction premium (fraction units, add to the edge floor).
+ *
+ * Entries here are BUY-only, so only OPPOSING flow matters: watched wallets
+ * net SELLING the token we'd buy, with ≥2 corroborating wallets, ≥$1,000
+ * net size, inside 30min freshness → +2pp. Everything else (aligned flow,
+ * thin/anecdotal/stale/absent data) pays 0: aligned flow never lowers any
+ * bar — photocopied conviction is not edge. One-way, fail-safe direction.
+ */
+export function smartMoneyGuardPremium(
+  flow: SmartMoneyFlow | null | undefined,
+  nowMs = Date.now(),
+): { premium: number; note: string | null } {
+  if (!flow) return { premium: 0, note: null };
+  if (!Number.isFinite(flow.netFlowUsd) || flow.netFlowUsd >= 0) {
+    return { premium: 0, note: null };
+  }
+  if (!Number.isFinite(flow.wallets) || flow.wallets < 2) {
+    return { premium: 0, note: null };
+  }
+  if (
+    !Number.isFinite(flow.updatedAtMs) ||
+    nowMs - flow.updatedAtMs > 30 * 60_000
+  ) {
+    return { premium: 0, note: null };
+  }
+  if (Math.abs(flow.netFlowUsd) < 1000) {
+    return { premium: 0, note: null };
+  }
+  return {
+    premium: 0.02,
+    note: `smart-money contra: ${flow.wallets} wallets net -$${Math.round(Math.abs(flow.netFlowUsd))}`,
+  };
 }
 
 /** Funds snapshot for the operator display block. */
@@ -457,6 +507,7 @@ export interface CreateG4CoreOptions {
   getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
   getFunds?: (() => Promise<StepFunds | undefined>) | undefined;
   modeWatcher?: ModeWatcher;
+  getSmartMoneyFlow?: ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -478,6 +529,9 @@ export function createG4Core(options: CreateG4CoreOptions) {
     ...(options.getReasoning ? { getReasoning: options.getReasoning } : {}),
     ...(options.getFunds ? { getFunds: options.getFunds } : {}),
     ...(options.modeWatcher ? { modeWatcher: options.modeWatcher } : {}),
+    ...(options.getSmartMoneyFlow
+      ? { getSmartMoneyFlow: options.getSmartMoneyFlow }
+      : {}),
   };
   return {
     config: options.config,
@@ -658,6 +712,13 @@ export async function executeG4Step(
   // +90% SELL edges (avg SELL p was 0.09 in production). SELL requires
   // inventory, which no path tracks — entries are BUY-only by construction.
   const evalSide = input.side === "NO" ? "NO" : "YES";
+  // Smart-money contradiction (one-way guard): watched wallets net SELLING
+  // the token we'd BUY → demand +2pp more edge. Aligned/weak/stale/absent
+  // flow changes nothing — photocopied conviction is not edge.
+  const smGuard = smartMoneyGuardPremium(
+    deps.getSmartMoneyFlow?.(market_id),
+    deps.now().getTime(),
+  );
   const edge = evaluateEdge(
     {
       forecast: {
@@ -671,7 +732,7 @@ export async function executeG4Step(
         schema_version: "1.1",
         evidence_ids: [],
         counterevidence_ids: [],
-        assumptions: [],
+        assumptions: smGuard.note ? [smGuard.note] : [],
         invalidators: [],
       },
       book: {
@@ -699,9 +760,12 @@ export async function executeG4Step(
         config.minEdgeAfterCost ?? 0.03,
         Math.abs(ask - bid),
         // FLB extreme guard (+2pp under 10¢ / over 90¢, measured 19.3¢/$
-        // longshot loss on Polymarket) plus expiry premium. Fail-safe
-        // direction only: both can only raise the bar, never lower it.
-        flbExtremePremium(ask) + expiryEdgePremium(input.daysToExpiry),
+        // longshot loss on Polymarket) plus expiry premium, plus the
+        // smart-money contradiction premium. Fail-safe direction only:
+        // every term can only raise the bar, never lower it.
+        flbExtremePremium(ask) +
+          expiryEdgePremium(input.daysToExpiry) +
+          smGuard.premium,
       ),
       // CLOB taker formula Θ·p·(1−p), Θ=0.05 (CFTC filing 2026) — wins over
       // the legacy flat 200bps fixture below, which stays as fallback.

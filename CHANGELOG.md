@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.0] - 2026-09-29
+
+### ✨ Added — smart-money contradiction guard (live)
+- **Watchlist flow feed** (`venue/smart-money-feed.ts`) — reads public Data API activity for owner-curated wallets (max 20, `POLYROOT_SMART_WALLETS`; empty disables), reduced to per-token net flows with distinct-wallet corroboration and lookback expiry
+- **One-way contradiction guard** — strong/fresh/corroborated opposing flow adds +2pp to the edge floor; aligned/thin/stale flow changes nothing (photocopied conviction is not edge). Recorded in lineage assumptions
+- **Background sync** (15min, first tick at boot) owned by the agent lifecycle, fail-open
+
+### ✨ Added — arb observation base + maker primitive
+- **Arb scan job** (`venue/arb-scan.ts`, migration `0023_arb_observations`) — groups active events, reads touches (bounded), evaluates baskets, persists VALID verdicts as research evidence. Observation only: non-atomic legs are real-money risk, entries stay unwired pending shadow validation
+- **Maker quoter** (`QuoteEngine.makerQuote`) — post-only quotes that improve-or-join without ever crossing (1-tick spreads join = safe direction). Primitive validated in tests; live rollout pending shadow A/B fill measurement
+
 ## [1.7.0] - 2026-09-29
 
 ### ✨ Added — the learning loop closes (resolutions → calibration)

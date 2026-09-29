@@ -24,8 +24,67 @@ export interface AdjustedQuote {
   reason?: string;
 }
 
+export interface MakerQuote {
+  /** Resting limit price (never crosses the touch). */
+  price: number;
+  valid: boolean;
+  reason:
+    | "IMPROVE_BID"
+    | "JOIN_BID"
+    | "IMPROVE_ASK"
+    | "JOIN_ASK"
+    | "CROSSED_BOOK"
+    | "BAD_INPUT";
+}
+
 export class QuoteEngine {
   constructor(private readonly config: QuoteEngineConfig) {}
+
+  /**
+   * Post-only (maker) quote inside the spread: improves the touch by one
+   * tick when the spread allows, otherwise joins the touch. Never crosses —
+   * a crossing "maker" order executes as a taker and pays taker fees, which
+   * is exactly the cost this quoter exists to avoid. Maker fee is $0
+   * (+rebates on some categories), so no fee is subtracted here.
+   *
+   * Research primitive for now: validated in unit tests, live rollout
+   * pending a shadow A/B that measures maker fill rates before risking
+   * real queue position. NOT wired into any entry path.
+   */
+  makerQuote(
+    side: "BUY" | "SELL",
+    book: { bid?: number; ask?: number },
+    tickSize = 0.01,
+  ): MakerQuote {
+    const bad = (reason: MakerQuote["reason"]): MakerQuote => ({
+      price: NaN,
+      valid: false,
+      reason,
+    });
+    if (side !== "BUY" && side !== "SELL") return bad("BAD_INPUT");
+    const { bid, ask } = book;
+    if (
+      !Number.isFinite(bid) ||
+      !Number.isFinite(ask) ||
+      (bid as number) <= 0 ||
+      (ask as number) >= 1 ||
+      !Number.isFinite(tickSize) ||
+      tickSize <= 0
+    ) {
+      return bad("BAD_INPUT");
+    }
+    const b = bid as number;
+    const a = ask as number;
+    if (a <= b) return bad("CROSSED_BOOK");
+    if (side === "BUY") {
+      const improved = b + tickSize;
+      if (improved < a) return { price: improved, valid: true, reason: "IMPROVE_BID" };
+      return { price: b, valid: true, reason: "JOIN_BID" };
+    }
+    const improved = a - tickSize;
+    if (improved > b) return { price: improved, valid: true, reason: "IMPROVE_ASK" };
+    return { price: a, valid: true, reason: "JOIN_ASK" };
+  }
 
   /**
    * Adjust the quote based on current order book state.

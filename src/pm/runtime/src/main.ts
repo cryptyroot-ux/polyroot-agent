@@ -37,6 +37,8 @@ import { createStepPersistence } from "./observability/index.js";
 import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
 import {
   resolveMarketUniverseWithSides,
+  parseWatchlist,
+  startSmartMoneySync,
   type MarketSide,
   type MarketUniverseWithSides,
 } from "@polyroot/venue";
@@ -407,6 +409,21 @@ export async function bootstrapAgent(
     onDegrade: (reason) =>
       console.log(`⛔ ModeWatcher degraded: ${reason}`),
   });
+  // Owner-curated smart-money watchlist (empty = disabled). Flow cache
+  // feeds the contradiction guard only; a dead feed changes nothing.
+  const smartWallets = parseWatchlist(process.env["POLYROOT_SMART_WALLETS"]);
+  const smartMoneySync =
+    smartWallets.length > 0
+      ? startSmartMoneySync({
+          wallets: smartWallets,
+          onUpdate: (tokens, wallets) =>
+            console.log(
+              `🐋 Smart-money watch: ${tokens} tokens across ${wallets} wallets`,
+            ),
+          onError: (e) =>
+            console.log(`⚠️  Smart-money sync skipped: ${e.message}`),
+        })
+      : null;
   const pipeline = createG4Pipeline({
     config: {
       mode,
@@ -437,6 +454,12 @@ export async function bootstrapAgent(
     policyHash: "ph_prod_audited_137",
     venueMode: () => venueAdapter.mode,
     modeWatcher,
+    ...(smartMoneySync
+      ? {
+          getSmartMoneyFlow: (tokenId: string) =>
+            smartMoneySync.getFlow(tokenId) ?? undefined,
+        }
+      : {}),
     leaseEpoch: () => 1,
     now: () => new Date(),
     ...(marketSource ? { marketSource } : {}),
@@ -518,6 +541,7 @@ export async function bootstrapAgent(
     executor,
     pipeline,
     modeWatcher,
+    smartMoneySync,
     metrics,
     reservationManager,
     stopReservationExpiry,

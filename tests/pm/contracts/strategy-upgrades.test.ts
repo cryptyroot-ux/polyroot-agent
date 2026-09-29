@@ -7,6 +7,7 @@ import {
   resolveEdgeFloor,
   flbExtremePremium,
   expiryEdgePremium,
+  smartMoneyGuardPremium,
   executeG4Step,
   getDefaultModeConfig,
 } from "@polyroot/runtime";
@@ -397,7 +398,96 @@ describe("QuoteEngine prices the intent's own token side", () => {
   });
 });
 
-/* ─── Multi-outcome sum≠1 arbitrage ─────────────────────────────────── */
+/* ─── Maker quoter (post-only primitive) ───────────────────────────── */
+
+describe("maker quoter never crosses the touch", () => {
+  const q = (side: "BUY" | "SELL", bid: number, ask: number) =>
+    new QuoteEngine({
+      minEdgeAfterCost: 0.03,
+      maxSlippageAbs: 0.5,
+      makerFeeBps: 0,
+      takerFeeBps: 200,
+    }).makerQuote(side, { bid, ask });
+
+  it("improves by one tick when the spread allows", () => {
+    const b = q("BUY", 0.5, 0.55);
+    assert.equal(b.valid, true);
+    assert.ok(Math.abs(b.price - 0.51) < 1e-9);
+    assert.equal(b.reason, "IMPROVE_BID");
+    const s = q("SELL", 0.5, 0.55);
+    assert.equal(s.valid, true);
+    assert.ok(Math.abs(s.price - 0.54) < 1e-9);
+    assert.equal(s.reason, "IMPROVE_ASK");
+  });
+
+  it("joins the touch on a 1-tick spread (safe direction)", () => {
+    const b = q("BUY", 0.5, 0.51);
+    assert.equal(b.valid, true);
+    assert.ok(Math.abs(b.price - 0.5) < 1e-9);
+    assert.equal(b.reason, "JOIN_BID");
+  });
+
+  it("refuses crossed books and garbage", () => {
+    assert.equal(q("BUY", 0.55, 0.5).reason, "CROSSED_BOOK");
+    assert.equal(q("BUY", NaN, 0.5).reason, "BAD_INPUT");
+  });
+});
+
+/* ─── Smart-money contradiction guard ──────────────────────────────── */
+
+describe("smart-money contradiction guard (one-way)", () => {
+  const flow = (over = {}) => ({
+    netFlowUsd: -5000,
+    buyUsd: 0,
+    sellUsd: 5000,
+    wallets: 3,
+    updatedAtMs: Date.now(),
+    ...over,
+  });
+
+  it("charges +2pp on strong, fresh, corroborated opposing flow", () => {
+    const r = smartMoneyGuardPremium(flow());
+    assert.equal(r.premium, 0.02);
+    assert.ok((r.note ?? "").includes("3 wallets"));
+  });
+
+  it("pays nothing for aligned, thin, small, stale or missing flow", () => {
+    assert.equal(smartMoneyGuardPremium({ ...flow(), netFlowUsd: 5000 }).premium, 0);
+    assert.equal(smartMoneyGuardPremium({ ...flow(), wallets: 1 }).premium, 0);
+    assert.equal(smartMoneyGuardPremium({ ...flow(), netFlowUsd: -500 }).premium, 0);
+    assert.equal(
+      smartMoneyGuardPremium({ ...flow(), updatedAtMs: Date.now() - 31 * 60_000 }).premium,
+      0,
+    );
+    assert.equal(smartMoneyGuardPremium(null).premium, 0);
+    assert.equal(smartMoneyGuardPremium(undefined).premium, 0);
+  });
+
+  it("opposing flow blocks a marginal trade in executeG4Step", async () => {
+    // book 0.45/0.55 (spread 10¢ → floor 8¢), p=0.65 → net ≈8.76¢ TRADE
+    // clean, but +2pp contradiction premium floors it at 10¢ → NO_TRADE.
+    const deps = {
+      venueMode: () => "NORMAL",
+      forecast: async () => 0.65,
+      sizeIntent: () => {
+        throw new Error("must not reach sizing when blocked");
+      },
+      now: () => new Date(),
+      getSmartMoneyFlow: () => flow(),
+    };
+    const core = {
+      config: getDefaultModeConfig("SHADOW", { minEdgeAfterCost: 0.03 }),
+      deps,
+    };
+    const res = await executeG4Step(
+      { market_id: "m1", bid: 0.45, ask: 0.55, forecastOverride: 0.65 },
+      core as never,
+      { cancelProbability: 0 } as never,
+    );
+    assert.equal(res.decision, "NO_TRADE");
+    assert.equal(res.reason, "MIN_EDGE_UNMET");
+  });
+});
 
 describe("multi-outcome arbitrage detector", () => {
   it("BUY_ALL_YES when YES prices sum under $1 after fees", () => {

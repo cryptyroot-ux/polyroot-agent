@@ -1990,6 +1990,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
 
   let stopping = false;
   let stopResolutionSync: (() => void) | null = null;
+  let stopArbScan: (() => void) | null = null;
   const shutdown = (signal: string): void => {
     if (stopping) return;
     stopping = true;
@@ -1998,6 +1999,16 @@ export async function startAgent(config: CLIConfig): Promise<void> {
       stopResolutionSync?.();
     } catch (err: unknown) {
       console.error("Resolution sync stop error:", err);
+    }
+    try {
+      stopArbScan?.();
+    } catch (err: unknown) {
+      console.error("Arb scan stop error:", err);
+    }
+    try {
+      agent.smartMoneySync?.stop();
+    } catch (err: unknown) {
+      console.error("Smart-money sync stop error:", err);
     }
     try {
       agent.stopReservationExpiry();
@@ -2066,12 +2077,44 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     }
   }
 
+  // Arb observation (research evidence only — never fills): scan active
+  // events for sum≠1 baskets and log what it finds. Disable with
+  // POLYROOT_ARB_SCAN=0.
+  if (process.env["POLYROOT_ARB_SCAN"] !== "0") {
+    try {
+      const { startArbScan } = await import("@polyroot/venue");
+      const arbMs = Number(process.env["POLYROOT_ARB_SCAN_MS"]);
+      const handle = startArbScan({
+        pool: agent.pool,
+        ...(Number.isFinite(arbMs) && arbMs > 0 ? { intervalMs: arbMs } : {}),
+        onTick: (s) =>
+          console.log(
+            `🔭 Arb scan: ${s.eventsScanned} events, ${s.tokensRead} touches, ${s.observations} observation(s)`,
+          ),
+        onError: (e) => console.log(`⚠️  Arb scan skipped: ${e.message}`),
+      });
+      stopArbScan = handle.stop;
+    } catch (err) {
+      console.log(`⚠️  Arb scan unavailable: ${(err as Error).message}`);
+    }
+  }
+
   await pipeline.runContinuous();
   // Resolved without a signal (e.g. stop() called externally):
   // flush step writes, then close the pool so the process can exit cleanly.
   if (!stopping) {
     try {
       stopResolutionSync?.();
+    } catch {
+      // never block shutdown on timer cleanup
+    }
+    try {
+      stopArbScan?.();
+    } catch {
+      // never block shutdown on timer cleanup
+    }
+    try {
+      agent.smartMoneySync?.stop();
     } catch {
       // never block shutdown on timer cleanup
     }
