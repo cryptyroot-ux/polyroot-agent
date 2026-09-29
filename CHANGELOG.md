@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.3] - 2026-09-30
+
+### 🔧 Fixed
+- **`polyroot explain` shows the last 5 decisions by default** (was 1 — operators saw a single row and assumed the agent was idle). `--last N` override and 20-cap unchanged
+- Timestamps are UTC (`…Z`); WIB = UTC+7. A row stamped `22:52Z` is 05:52 WIB — fresh, not stale
+
 ## [1.11.2] - 2026-09-30
 
 ### 🔧 Fixed (critical — the brain was silently dead)
