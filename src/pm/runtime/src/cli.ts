@@ -2512,11 +2512,11 @@ async function runExplainCLI(args: string[]): Promise<void> {
     process.exit(1);
   }
   const lIdx = args.indexOf("--last");
-  const lastRaw = lIdx >= 0 ? Number(args[lIdx + 1]) : 1;
+  const lastRaw = lIdx >= 0 ? Number(args[lIdx + 1]) : 5;
   const last =
     Number.isFinite(lastRaw) && lastRaw > 0
       ? Math.min(Math.floor(lastRaw), 20)
-      : 1;
+      : 5;
   const asJson = args.includes("--json");
   const pool = new Pool({ connectionString: dbUrl });
   try {
