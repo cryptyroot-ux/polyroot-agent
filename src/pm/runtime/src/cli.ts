@@ -702,6 +702,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     "Choose AI provider (Enter = default):",
     [
       "OpenAI (GPT-4o, GPT-4o-mini, GPT-4-turbo)",
+      "OpenAI (ChatGPT login via Codex OAuth — your Plus/Pro subscription, no API key)",
       "Qwen (Qwen Cloud / DashScope, Coding Plan, Token Plan & Qwen CLI OAuth)",
       "xAI Grok (Direct API or SuperGrok / Premium+ OAuth)",
       "Xiaomi MiMo (MiMo-V2.5 and V2 models: pro, omni, flash)",
@@ -734,7 +735,6 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       "Ramp Router (router.com) — routes each request to the cheapest model that clears you",
       "Upstage (Solar API)",
       "Ollama (runs on this machine)",
-      "OpenAI (ChatGPT login via Codex OAuth — your Plus/Pro subscription, no API key)",
     ],
     0,
   );

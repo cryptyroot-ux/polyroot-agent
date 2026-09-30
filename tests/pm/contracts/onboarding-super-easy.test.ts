@@ -145,7 +145,7 @@ describe("super-easy onboarding E2E (ChatGPT login via Codex OAuth)", () => {
     const { code, out } = await runOnboardLikeHuman(
       home,
       [
-        "34",               // provider: OpenAI (ChatGPT login via Codex OAuth)
+        "2",                // provider: OpenAI (ChatGPT login via Codex OAuth)
         "",                 // backend base URL (default)
         "",                 // model (default)
         "",                 // wallet: create new (default)
@@ -182,7 +182,7 @@ describe("super-easy onboarding E2E (ChatGPT login via Codex OAuth)", () => {
 describe("super-easy onboarding E2E (custom gateway path)", () => {  it("writes openai provider + custom base URL so the brain stays live", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(home, [
-      "27",                       // provider: custom (direct API)
+      "28",                       // provider: custom (direct API)
       "https://gateway.example/v1", // gateway base URL (valid first try, no retry)
       "gpt-4o-mini",              // model name
       "sk-custom-1",              // gateway API key
