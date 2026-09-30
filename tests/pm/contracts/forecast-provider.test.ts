@@ -8,6 +8,7 @@ import {
   parseDetailedForecast,
   extractJsonObject,
   readCompletionContent,
+  fetchOpenAIModels,
 } from "@polyroot/intelligence";
 
 function stubFetch(content: unknown): typeof fetch {
@@ -307,5 +308,21 @@ describe("Responses wire protocol (Codex backend)", () => {
     } finally {
       process.env = prev;
     }
+  });
+});
+
+describe("OpenAI model catalog discovery", () => {
+  it("lists live ids, deduped; throws when refused", async () => {
+    const okFetch = (async () =>
+      new Response(
+        JSON.stringify({ data: [{ id: "gpt-4o" }, { id: "gpt-4o" }, { id: "" }] }),
+        { status: 200 },
+      )) as typeof fetch;
+    assert.deepEqual(await fetchOpenAIModels("https://x.example", "k", okFetch), [
+      "gpt-4o",
+    ]);
+    const badFetch = (async () =>
+      new Response("nope", { status: 401 })) as typeof fetch;
+    await assert.rejects(fetchOpenAIModels("https://x.example", "k", badFetch));
   });
 });

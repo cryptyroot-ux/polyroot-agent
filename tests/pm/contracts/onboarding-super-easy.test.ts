@@ -44,8 +44,8 @@ function runOnboardLikeHuman(
     child.stderr.resume();
     const waitFor: string[] = markers ?? [
       "Choose AI provider",
-      "Select model",
       "Paste your",
+      "Select model",
       "Continue anyway?",
       "Wallet (Enter = create new):",
       "Create a vault password",
@@ -102,8 +102,8 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(home, [
       "",               // provider: OpenAI (default)
-      "",               // model: gpt-4o-mini (default)
-      "sk-test-key-1",  // API key
+      "sk-test-key-1",  // API key (asked first, then live model catalog)
+      "",               // model: curated fallback default (fake key, offline)
       "y",              // reachability check: continue anyway (fake key never passes the ping)
       "",               // wallet: create new (default)
       "test-pass-123",  // vault password
@@ -159,7 +159,7 @@ describe("super-easy onboarding E2E (ChatGPT login via Codex OAuth)", () => {
       [
         "Choose AI provider",
         "Codex backend base URL",
-        "Codex model slug",
+        "Select Codex model",
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
@@ -224,8 +224,8 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(home, [
       "",               // provider: OpenAI (default)
-      "",               // model: gpt-4o-mini (default)
-      "sk-test-key-3",  // API key
+      "sk-test-key-3",  // API key (asked first, then live model catalog)
+      "",               // model: curated fallback default (fake key, offline)
       "y",              // reachability check: continue anyway
       "",               // wallet: create new (default)
       "test-pass-123",  // vault password
@@ -243,8 +243,8 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(home, [
       "",               // provider: OpenAI (default)
-      "",               // model: gpt-4o-mini (default)
-      "sk-test-key-4",  // API key
+      "sk-test-key-4",  // API key (asked first, then live model catalog)
+      "",               // model: curated fallback default (fake key, offline)
       "y",              // reachability check: continue anyway
       "",               // wallet: create new (default)
       "test-pass-123",  // vault password
@@ -256,8 +256,8 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
       "n",              // demo trade offer (never asked without DB)
     ], [
       "Choose AI provider",
-      "Select model",
       "Paste your",
+      "Select model",
       "Continue anyway?",
       "Wallet (Enter = create new):",
       "Create a vault password",
@@ -278,8 +278,8 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code } = await runOnboardLikeHuman(home, [
       "",               // provider: OpenAI (default)
-      "",               // model: gpt-4o-mini (default)
-      "sk-test-key-5",  // API key
+      "sk-test-key-5",  // API key (asked first, then live model catalog)
+      "",               // model: curated fallback default (fake key, offline)
       "y",              // reachability check: continue anyway
       "",               // wallet: create new (default)
       "test-pass-123",  // vault password
@@ -291,8 +291,8 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
       "n",              // demo trade offer (never asked without DB)
     ], [
       "Choose AI provider",
-      "Select model",
       "Paste your",
+      "Select model",
       "Continue anyway?",
       "Wallet (Enter = create new):",
       "Create a vault password",
@@ -314,8 +314,8 @@ describe("onboarding finish is resilient without a database", () => {
     // even where localhost:5432 is up. writeEnv respects ambient DATABASE_URL.
     const { code, out } = await runOnboardLikeHuman(home, [
       "",               // provider: OpenAI (default)
-      "",               // model: gpt-4o-mini (default)
-      "sk-test-key-2",  // API key
+      "sk-test-key-2",  // API key (asked first, then live model catalog)
+      "",               // model: curated fallback default (fake key, offline)
       "y",              // reachability check: continue anyway (fake key never passes the ping)
       "",               // wallet: create new (default)
       "test-pass-123",  // vault password

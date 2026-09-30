@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.12.0] - 2026-09-30
 
 ### ✨ Added — ChatGPT subscription login (Codex OAuth, no API key)
+- **Provider #2 `OpenAI (ChatGPT login via Codex OAuth)`** — spends the owner's ChatGPT Plus/Pro/Team subscription instead of metered credit. Reuses the Codex CLI login read-only, refreshes short-lived tokens automatically (persisted back for `codex` too), speaks the Codex Responses backend
+- **Hermes-aligned model discovery** — live per-account catalog from `{base}/models` with a curated fallback of only backend-accepted slugs (dead `-pro`/retired slugs never reach the picker); **same pattern applied to OpenAI API keys** (option #1 renamed `OpenAI API key`, key asked first, models auto-listed)
+- Onboarding asks credentials before catalog in both paths; `.env` writes `POLYROOT_FORECAST_PROVIDER=codex` with no API key line
+
+## [1.12.0] - 2026-09-30
+
+### ✨ Added — ChatGPT subscription login (Codex OAuth, no API key)
 - **New provider `OpenAI (ChatGPT login via Codex OAuth)` at menu #2** — spends the owner's ChatGPT Plus/Pro/Team subscription instead of metered API credit. Reuses the Codex CLI login read-only (`~/.codex/auth.json`), refreshes short-lived tokens automatically (persisted back for `codex` too), speaks the Codex Responses backend (`/responses`) with Bearer + account headers
 - **Honest boundaries**: API-key-shaped Codex logins are rerouted (not misfired as OAuth); missing/expired logins print exact `codex login` / `--device-auth` guidance; unofficial-for-third-party status documented in code
 - **Onboarding**: login detection + status display, model slug + backend URL prompts (both overridable), reachability probe with continue-anyway, `.env` writes `POLYROOT_FORECAST_PROVIDER=codex` and never an API key

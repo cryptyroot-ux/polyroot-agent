@@ -248,6 +248,47 @@ export function readCompletionContent(
 }
 
 
+/**
+ * Live model catalog for any OpenAI-compatible endpoint: GET {base}/models
+ * with the owner's key. Returns deduplicated model ids (possibly empty —
+ * caller falls back to its curated list). Throws on transport/HTTP failure
+ * so the caller can distinguish "offline" from "empty catalog".
+ */
+export async function fetchOpenAIModels(
+  baseUrl: string,
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 15_000,
+): Promise<string[]> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(
+      `${baseUrl.replace(/\/+$/, "")}/models`,
+      {
+        headers: { authorization: `Bearer ${apiKey}` },
+        signal: ctrl.signal,
+      },
+    );
+    if (!res.ok) throw new Error(`model catalog HTTP ${res.status}`);
+    const data = (await res.json()) as {
+      data?: Array<{ id?: unknown }>;
+    };
+    const ids = Array.isArray(data.data)
+      ? data.data
+          .map((m) => (typeof m?.id === "string" ? m.id : ""))
+          .filter((id) => id.length > 0)
+      : [];
+    return [...new Set(ids)];
+  } catch (err) {
+    throw new Error(
+      `model catalog unreachable (${(err as Error).message ?? err})`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class OpenAICompatibleForecastProvider implements ForecastProvider {
   readonly name = "openai-compatible";
   private readonly baseUrl: string;
@@ -277,6 +318,7 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
   }
 
   /**
+
 /** Full reply: probability plus the model's stated reasoning (nullable). */
   async forecastDetailed(input: ForecastInput): Promise<DetailedForecast> {
     const controller = new AbortController();

@@ -284,6 +284,66 @@ export function codexHeaders(
 }
 
 /**
+ * Curated offline fallback (Hermes-aligned): ONLY slugs the ChatGPT Codex
+ * OAuth backend actually accepts. Public-API "-pro" variants and retired
+ * gpt-5.x-codex slugs return HTTP 400 there ("not supported when using
+ * Codex with a ChatGPT account") — listing them leaks dead picker choices.
+ * Research-preview gpt-5.3-codex-spark stays: Pro-only via this backend.
+ */
+export const DEFAULT_CODEX_MODELS: string[] = [
+  "gpt-6-sol",
+  "gpt-6-luna",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  "gpt-5.3-codex-spark",
+];
+
+/**
+ * Live Codex model catalog: GET {base}/models with the credential's own
+ * headers (the backend scopes the catalog per account — ChatGPT-Account-ID
+ * included, else it masquerades as empty). Accepts both `{models:[{slug}]}`
+ * and OpenAI-style `{data:[{id}]}`. Returns [] when nothing usable comes
+ * back; throws on transport/HTTP failure. Caller falls back to
+ * DEFAULT_CODEX_MODELS — never to free text that invites dead slugs.
+ */
+export async function fetchCodexModels(
+  baseUrl: string,
+  creds: CodexOAuthCredentials,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 15_000,
+): Promise<string[]> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(
+      `${baseUrl.replace(/\/+$/, "")}/models`,
+      { headers: codexHeaders(creds), signal: ctrl.signal },
+    );
+    if (!res.ok) throw new Error(`Codex catalog HTTP ${res.status}`);
+    const data = (await res.json()) as {
+      models?: Array<{ slug?: unknown }>;
+      data?: Array<{ id?: unknown }>;
+    };
+    const ids = Array.isArray(data.models)
+      ? data.models.map((m) => (typeof m?.slug === "string" ? m.slug : ""))
+      : Array.isArray(data.data)
+        ? data.data.map((m) => (typeof m?.id === "string" ? m.id : ""))
+        : [];
+    return [...new Set(ids.filter((id) => id.length > 0))];
+  } catch (err) {
+    throw new Error(
+      `Codex catalog unreachable (${(err as Error).message ?? err})`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Cheap connectivity probe: list Codex models (no inference cost).
  * True = reachable + authorized. False = anything else (caller decides:
  * warn + continue-anyway, never block setup on it).

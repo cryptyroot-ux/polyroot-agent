@@ -13,6 +13,8 @@ import {
   jwtExpiryMs,
   isCodexTokenExpired,
   accountIdFromIdToken,
+  fetchCodexModels,
+  DEFAULT_CODEX_MODELS,
 } from "@polyroot/intelligence";
 
 function jwt(exp: number): string {
@@ -172,5 +174,49 @@ describe("codex-auth (ChatGPT login)", () => {
       await pingCodexBackend("https://x.example", creds, badFetch),
       false,
     );
+  });
+});
+
+describe("codex model catalog (Hermes-aligned discovery)", () => {
+  it("curated fallback lists only backend-accepted slugs", () => {
+    assert.ok(DEFAULT_CODEX_MODELS.length >= 5);
+    assert.ok(!DEFAULT_CODEX_MODELS.some((m: string) => /-pro$/.test(m)));
+    assert.ok(
+      !DEFAULT_CODEX_MODELS.some((m: string) => /gpt-5\.[12]-codex/.test(m)),
+    );
+  });
+
+  it("reads the live {models:[{slug}]} shape", async () => {
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          models: [
+            { slug: "gpt-6-sol", supported_in_api: true },
+            { slug: "gpt-6-sol" },
+            { slug: "" },
+          ],
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+    const creds = { kind: "oauth" as const, accessToken: "t" };
+    assert.deepEqual(
+      await fetchCodexModels("https://x.example", creds, fetchImpl),
+      ["gpt-6-sol"],
+    );
+  });
+
+  it("accepts OpenAI-style {data:[{id}]} too, throws when refused", async () => {
+    const dataFetch = (async () =>
+      new Response(JSON.stringify({ data: [{ id: "m1" }, { id: "" }] }), {
+        status: 200,
+      })) as typeof fetch;
+    const creds = { kind: "oauth" as const, accessToken: "t" };
+    assert.deepEqual(
+      await fetchCodexModels("https://x.example", creds, dataFetch),
+      ["m1"],
+    );
+    const badFetch = (async () =>
+      new Response("nope", { status: 403 })) as typeof fetch;
+    await assert.rejects(fetchCodexModels("https://x.example", creds, badFetch));
   });
 });

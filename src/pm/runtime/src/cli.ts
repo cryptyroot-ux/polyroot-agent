@@ -509,7 +509,36 @@ async function askRequiredSecret(message: string): Promise<string> {
 }
 
 /** Best-effort reachability ping for a user's own gateway. Warning-only: never blocks setup. */
-async function pingModelsEndpoint(
+
+/**
+ * Model picker with live discovery: ask the endpoint for its catalog first
+ * (authenticated, so private/fine-tuned models appear too), fall back to
+ * the curated list, then to free text. All three prompts contain
+ * "Select model" so automation keeps working whichever path is taken.
+ */
+async function pickOpenAIModel(
+  provider: string,
+  baseUrl: string,
+  apiKey: string,
+  fallbackModels: string[],
+  fallbackDefault: string | undefined,
+): Promise<string> {
+  try {
+    const { fetchOpenAIModels } = await import("@polyroot/intelligence");
+    const live = await fetchOpenAIModels(baseUrl, apiKey);
+    if (live.length > 0) {
+      console.log(`\n📋 ${live.length} models found on your endpoint.`);
+      return await askChoice("Select model:", live, 0);
+    }
+  } catch {
+    // offline / dead key here — the curated list (or free text) covers it,
+    // and the reachability check below reports plainly.
+  }
+  if (fallbackModels.length > 0) {
+    return await askChoice(`Select model for ${provider}:`, fallbackModels, 0);
+  }
+  return await askText("Model name", { defaultValue: fallbackDefault });
+}async function pingModelsEndpoint(
   baseUrl: string,
   apiKey: string,
 ): Promise<boolean> {
@@ -701,7 +730,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   const provider = await askChoice(
     "Choose AI provider (Enter = default):",
     [
-      "OpenAI (GPT-4o, GPT-4o-mini, GPT-4-turbo)",
+      "OpenAI API key (models auto-detected from your endpoint)",
       "OpenAI (ChatGPT login via Codex OAuth — your Plus/Pro subscription, no API key)",
       "Qwen (Qwen Cloud / DashScope, Coding Plan, Token Plan & Qwen CLI OAuth)",
       "xAI Grok (Direct API or SuperGrok / Premium+ OAuth)",
@@ -930,35 +959,29 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     });
     apiKey = "ollama";
   } else if (specialHandling === "codex") {
-    // ChatGPT subscription login: reuse the Codex CLI credentials
+    // ChatGPT subscription login (Hermes order: credentials FIRST, because
+    // the model catalog is per-account). Reuses the Codex CLI credentials
     // (~/.codex/auth.json), refreshed automatically. No API key involved.
-    const { loadCodexAuth, pingCodexBackend, codexAuthFilePath } =
-      await import("@polyroot/intelligence");
+    const {
+      loadCodexAuth,
+      pingCodexBackend,
+      codexAuthFilePath,
+      fetchCodexModels,
+      DEFAULT_CODEX_MODELS,
+    } = await import("@polyroot/intelligence");
     forecastProvider = "codex";
     isCodexProvider = true;
     baseUrl = await askText("Codex backend base URL", {
       defaultValue: "https://chatgpt.com/backend-api/codex",
     });
-    model = await askText("Codex model slug (any model your plan includes)", {
-      defaultValue: "gpt-5.6-sol",
-    });
-    apiKey = "";
-    let loggedIn = false;
+    let creds: Awaited<ReturnType<typeof loadCodexAuth>> | null = null;
     try {
-      const creds = await loadCodexAuth();
-      loggedIn = true;
+      creds = await loadCodexAuth();
       console.log(
         "✅ ChatGPT login found" +
           (creds.accountId ? ` (account …${creds.accountId.slice(-6)})` : "") +
           " — token refreshes automatically.",
       );
-      const ok = await pingCodexBackend(baseUrl, creds);
-      if (!ok) {
-        console.log(
-          "⚠️  Codex backend did not answer the model list — subscription",
-          "may lack Codex access, or the network blocks chatgpt.com.",
-        );
-      }
     } catch (err) {
       console.log(`\n⚠️  ${(err as Error).message}`);
       console.log(
@@ -967,6 +990,35 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           "   Headless/VPS: `codex login --device-auth`, then copy the code.\n" +
           "   (If Codex CLI is not installed: npm i -g codex)",
       );
+    }
+    // Model catalog: live per-account discovery, curated fallback with
+    // only slugs this backend accepts (dead slugs never reach the picker).
+    let catalog: string[] = [];
+    if (creds) {
+      try {
+        catalog = await fetchCodexModels(baseUrl, creds);
+        if (catalog.length > 0) {
+          console.log(`\n📋 ${catalog.length} Codex models on your plan.`);
+        }
+      } catch {
+        // offline / unauthorized here — the ping below reports it plainly
+      }
+    }
+    if (catalog.length === 0) {
+      console.log("Using the curated Codex catalog (offline fallback).");
+      catalog = [...DEFAULT_CODEX_MODELS];
+    }
+    model = await askChoice("Select Codex model:", catalog, 0);
+    apiKey = "";
+    const loggedIn = creds !== null;
+    if (loggedIn && creds) {
+      const ok = await pingCodexBackend(baseUrl, creds);
+      if (!ok) {
+        console.log(
+          "⚠️  Codex backend did not answer the model list — subscription",
+          "may lack Codex access, or the network blocks chatgpt.com.",
+        );
+      }
     }
     if (!loggedIn) {
       const goOn = await askText("Continue setup without a login? (y/n)", {
@@ -1029,19 +1081,20 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       model = await askText("Model name (example: gpt-4o-mini)");
       apiKey = await askRequiredSecret("Paste your gateway API key");
     } else if (specialHandling === undefined) {
-      // Standard OpenAI-compatible providers
+      // Standard OpenAI-compatible providers: authenticate FIRST, then let
+      // the endpoint itself list its models (Hermes-style live discovery).
+      // Dead keys / offline hosts fall back to the curated list, never to
+      // a blind guess.
       if (config.baseUrl) {
-        if (config.models && config.models.length > 0) {
-          model = await askChoice(
-            `Select model for ${provider}:`,
-            config.models,
-            0,
-          );
-        } else {
-          model = await askText("Model name", { defaultValue: config.defaultModel });
-        }
         baseUrl = config.baseUrl;
         apiKey = await askRequiredSecret(`Paste your ${provider} API key`);
+        model = await pickOpenAIModel(
+          provider,
+          baseUrl,
+          apiKey,
+          config.models ?? [],
+          config.defaultModel,
+        );
       } else {
         // Fallback for unknown providers
         baseUrl = await askText(
