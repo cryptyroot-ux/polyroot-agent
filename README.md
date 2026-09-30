@@ -27,6 +27,13 @@
 > Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 848 passing tests (836 contract + 12 property).
 > Default onboarding mode is `SHADOW`. Live trading requires explicit Autonomy Charter commissioning.
 
+> [!CAUTION]
+> **Trading involves substantial risk of loss. Nothing here is financial advice.**
+> PolyRoot makes no profit claims, publishes no win rates, and guarantees no
+> returns. Never trade money you cannot afford to lose. Live modes are
+> opt-in, disabled by default, and gated behind explicit owner configuration
+> plus a passing `doctor --live` check.
+
 ---
 
 ## What it is
@@ -36,6 +43,15 @@ Polymarket order book, feeds evidence into an LLM that proposes trading
 intents, and routes those intents through a risk-gated, deterministic executor.
 Separation of **reasoning** (AI) from **execution** (code) is the core safety
 property that distinguishes PolyRoot from "ChatGPT-trades-my-wallet" bots.
+
+**What PolyRoot is NOT:** not a profit machine, not a signal service, not
+financial advice. There are no backtest curves, no P&L screenshots and no
+return promises anywhere in this repo — any such claim about a trading bot
+is a red flag, including from us if we ever made one.
+
+**Privacy:** the agent collects no telemetry. No prompts, keys, trades or
+system stats leave your machine except the API calls you configure yourself
+(your AI provider, Polymarket, your RPC endpoint).
 
 ## Architecture overview
 
@@ -238,6 +254,13 @@ POLYROOT_METRICS_OWNER_KEY=your-owner-key-here
 # WALLET_ACCOUNT=0xYOUR_PROXY_ACCOUNT_HERE
 # WALLET_FUNDER=0xYOUR_FUNDER_HERE
 ```
+
+> [!WARNING]
+> **Wallet hygiene for live modes:** use a dedicated deposit wallet that holds
+> only what you can afford to lose — never your main holdings. Keys stay
+> encrypted in `~/.polyroot/keystore.json` (600) on your own machine and are
+> never transmitted anywhere; the agent needs no withdrawal privileges
+> beyond what Polymarket trading itself requires.
 
 ### 6. Run 24/7 as a systemd service (automatic)
 
