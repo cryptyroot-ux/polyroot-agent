@@ -52,6 +52,7 @@ export {
 } from "./main.js";
 export {
   parseArgs,
+  printHelp,
   startAgent,
   main,
   assertRuntimeEnv,

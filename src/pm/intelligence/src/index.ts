@@ -751,6 +751,7 @@ export class PgCatalystBus {
 
 export * from "./catalyst-gate.js";
 export * from "./forecast-provider.js";
+export * from "./codex-auth.js";
 export {
   PgCalibrationService,
   PgEnsembleStore,

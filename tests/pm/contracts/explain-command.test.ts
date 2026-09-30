@@ -1,16 +1,27 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { mkdirSync, writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { explainLastDecision } from "@polyroot/runtime";
 
 const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
 
+/** Hermetic HOME with a stub .env: CLI spawn tests must never depend on
+ *  ambient machine state (~/.polyroot/.env existing or not). */
+function testHome(): string {
+  const home = mkdtempSync(join(tmpdir(), "polyroot-cli-"));
+  mkdirSync(join(home, ".polyroot"), { recursive: true });
+  writeFileSync(join(home, ".polyroot", ".env"), "RUNTIME_MODE=SHADOW\n");
+  return home;
+}
+
 function runCli(...args: string[]): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ["--import", "tsx", CLI, ...args], {
       cwd: process.cwd(),
-      env: { ...process.env },
+      env: { ...process.env, HOME: testHome() },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.11.5] - 2026-09-30
 
+### 🔧 Fixed (root-caused, not masked)
+- **`--help` works before setup and never truncates** — two stacked bugs: (1) on machines without `~/.polyroot/.env` the flag fell into first-run onboarding instead of printing help (the suite never caught it because the dev machine happened to have an install); (2) `console.log` + `process.exit(0)` can cut piped stdout under load. Help is now extracted to `printHelp()`, intercepted first in `main()`, and written with one synchronous fd write
+- **Hermetic CLI spawn tests** — restart/explain harnesses now use temp HOME + stub `.env`, so the suite is green with or without an ambient install (proven: full 850 green on a box with no `~/.polyroot`)
+
+## [1.11.5] - 2026-09-30
+
 ### ✨ Changed
 - **New GitHub landing**: centered banner with badges, tagline and quick links; upstream fork branding removed from all user-facing surfaces (README, package description). Provenance + MIT attribution stay intact where they belong: `LICENSE`, `Blueprint_v1.1.md`, `docs/implementation/`, spec pack
 

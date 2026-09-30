@@ -9,6 +9,7 @@
  */
 
 import { normalizeOpenAICompatible, joinApiPath } from "./api-url.js";
+import { DEFAULT_CODEX_BASE_URL } from "./codex-auth.js";
 
 /** Market snapshot handed to a forecast provider. */
 export interface ForecastInput {
@@ -33,6 +34,16 @@ export interface OpenAICompatibleProviderConfig {
   model: string;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  /**
+   * Wire protocol: "chat" (default, /chat/completions) or "responses"
+   * (/responses — Codex backend and Responses-API gateways).
+   */
+  requestStyle?: "chat" | "responses";
+  /**
+   * Dynamic auth headers (Codex OAuth: fresh Bearer + account per call).
+   * When set, `apiKey` may be a placeholder — it is never sent.
+   */
+  authHeaders?: () => Promise<Record<string, string>>;
 }
 
 const FORECAST_SYSTEM_PROMPT =
@@ -157,10 +168,13 @@ export function extractJsonObject(text: string): string {
 }
 
 /**
- * Read a chat-completions body in EITHER shape: a JSON object
- * (`choices[0].message.content`) or an SSE stream (`data:` chunks with
- * `delta.content`, which several gateways emit even when `stream` was not
- * requested). Returns the stitched assistant text, or null when unusable.
+ * Read a completion body in ANY shape this repo speaks:
+ * - chat JSON: `choices[0].message.content`
+ * - chat SSE: `data:` chunks with `choices[0].delta.content`
+ * - Responses JSON: `output_text`, or `output[]` message items with
+ *   `output_text` content parts (reasoning items skipped)
+ * - Responses SSE: `response.output_text.delta` events carrying `delta`
+ * Returns the stitched assistant text, or null when unusable.
  * Pure over the body text — unit-tested without network.
  */
 export function readCompletionContent(
@@ -172,9 +186,35 @@ export function readCompletionContent(
     try {
       const data = JSON.parse(text) as {
         choices?: Array<{ message?: { content?: unknown } }>;
+        output_text?: unknown;
+        output?: Array<{
+          type?: unknown;
+          content?: Array<{ type?: unknown; text?: unknown }>;
+        }>;
       };
-      const content = data.choices?.[0]?.message?.content;
-      return typeof content === "string" && content.trim() ? content : null;
+      const chat = data.choices?.[0]?.message?.content;
+      if (typeof chat === "string" && chat.trim()) return chat;
+      if (typeof data.output_text === "string" && data.output_text.trim()) {
+        return data.output_text;
+      }
+      if (Array.isArray(data.output)) {
+        let stitched = "";
+        for (const item of data.output) {
+          if (item?.type !== "message" || !Array.isArray(item.content)) {
+            continue;
+          }
+          for (const part of item.content) {
+            if (
+              part?.type === "output_text" &&
+              typeof part.text === "string"
+            ) {
+              stitched += part.text;
+            }
+          }
+        }
+        if (stitched.trim()) return stitched;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -187,13 +227,18 @@ export function readCompletionContent(
     if (!payload || payload === "[DONE]") continue;
     try {
       const chunk = JSON.parse(payload) as {
+        type?: unknown;
+        delta?: unknown;
         choices?: Array<{
           delta?: { content?: unknown };
           message?: { content?: unknown };
         }>;
       };
       const c = chunk.choices?.[0];
-      const piece = c?.delta?.content ?? c?.message?.content;
+      const piece =
+        (typeof chunk.delta === "string" ? chunk.delta : undefined) ??
+        c?.delta?.content ??
+        c?.message?.content;
       if (typeof piece === "string") stitched += piece;
     } catch {
       // one malformed chunk never poisons the rest
@@ -210,15 +255,21 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
   private readonly model: string;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly requestStyle: "chat" | "responses";
+  private readonly authHeaders?: () => Promise<Record<string, string>>;
 
   constructor(config: OpenAICompatibleProviderConfig) {
-    if (!config.apiKey) throw new Error("FORECAST_CONFIG: apiKey required");
+    if (!config.apiKey && !config.authHeaders) {
+      throw new Error("FORECAST_CONFIG: apiKey or authHeaders required");
+    }
     if (!config.model) throw new Error("FORECAST_CONFIG: model required");
     this.baseUrl = normalizeOpenAICompatible(config.baseUrl);
     this.apiKey = config.apiKey;
     this.model = config.model;
     this.timeoutMs = config.timeoutMs ?? 15000;
     this.fetchImpl = config.fetchImpl ?? fetch;
+    this.requestStyle = config.requestStyle ?? "chat";
+    if (config.authHeaders) this.authHeaders = config.authHeaders;
   }
 
   async forecast(input: ForecastInput): Promise<number | null> {
@@ -232,22 +283,38 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const user = buildForecastUserPrompt(input);
+      const headers: Record<string, string> = this.authHeaders
+        ? await this.authHeaders()
+        : { authorization: `Bearer ${this.apiKey}` };
+      headers["content-type"] = "application/json";
+      const isResponses = this.requestStyle === "responses";
       const res = await this.fetchImpl(
-        joinApiPath(this.baseUrl, "chat/completions"),
+        joinApiPath(
+          this.baseUrl,
+          isResponses ? "responses" : "chat/completions",
+        ),
         {
           method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${this.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: this.model,
-            messages: [
-              { role: "system", content: FORECAST_SYSTEM_PROMPT },
-              { role: "user", content: user },
-            ],
-            temperature: 0,
-          }),
+          headers,
+          body: JSON.stringify(
+            isResponses
+              ? {
+                  model: this.model,
+                  store: false,
+                  input: [
+                    { role: "system", content: FORECAST_SYSTEM_PROMPT },
+                    { role: "user", content: user },
+                  ],
+                }
+              : {
+                  model: this.model,
+                  messages: [
+                    { role: "system", content: FORECAST_SYSTEM_PROMPT },
+                    { role: "user", content: user },
+                  ],
+                  temperature: 0,
+                },
+          ),
           signal: controller.signal,
         },
       );
@@ -272,9 +339,30 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
 export function createForecastProviderFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): ForecastProvider | null {
-  if (
-    (env["POLYROOT_FORECAST_PROVIDER"] ?? "none").toLowerCase() !== "openai"
-  ) {
+  const provider = (env["POLYROOT_FORECAST_PROVIDER"] ?? "none").toLowerCase();
+  if (provider === "codex") {
+    // ChatGPT subscription login (Codex OAuth): no API key. Token is
+    // resolved fresh per call (read + refresh-on-expiry), so a 24/7 loop
+    // survives the ~1h access-token lifetime without restarts.
+    const model = env["POLYROOT_FORECAST_MODEL"] ?? "";
+    if (!model) {
+      throw new Error(
+        "FORECAST_CONFIG: POLYROOT_FORECAST_MODEL required when POLYROOT_FORECAST_PROVIDER=codex",
+      );
+    }
+    const baseUrl = env["POLYROOT_CODEX_BASE_URL"] ?? DEFAULT_CODEX_BASE_URL;
+    return new OpenAICompatibleForecastProvider({
+      baseUrl,
+      apiKey: "codex-oauth",
+      model,
+      requestStyle: "responses",
+      authHeaders: async () => {
+        const { loadCodexAuth, codexHeaders } = await import("./codex-auth.js");
+        return codexHeaders(await loadCodexAuth());
+      },
+    });
+  }
+  if (provider !== "openai") {
     return null;
   }
   const apiKey = env["OPENAI_API_KEY"] ?? "";

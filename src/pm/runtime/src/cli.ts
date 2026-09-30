@@ -2,6 +2,7 @@ import {
   existsSync,
   readFileSync,
   writeFileSync,
+  writeSync,
   chmodSync,
   mkdirSync,
 } from "node:fs";
@@ -258,6 +259,44 @@ function parseMode(raw: string | undefined, source: string): CLIConfig["mode"] {
   return raw as CLIConfig["mode"];
 }
 
+/**
+ * Full --help text, written with a single synchronous fd write at the call
+ * site: console.log + process.exit() can truncate piped stdout, which flakes
+ * --help assertions under parallel load. Exported for main()'s early
+ * intercept (help must work before first-run onboarding exists).
+ */
+export function printHelp(): void {
+  const helpThemeBold = theme().bold;
+  const text =
+    banner("PolyRoot Agent", "Autonomous AI trading for Polymarket") +
+    "\n" +
+    helpThemeBold("commands:") + "\n" +
+    "  polyroot                 Open the interactive console\n" +
+    "  polyroot run             Start the agent (mode from settings)\n" +
+    "  polyroot onboard         First-time setup (new users)\n" +
+    "  polyroot setup           Change mode, capital, loss cap, markets\n" +
+    "  polyroot shadow-fund --amount <usd>  Credit SHADOW play bankroll\n" +
+    "  polyroot markets         Browse popular markets by name\n" +
+    "  polyroot logs [--follow] Watch agent log files\n" +
+    "  polyroot status          Show current configuration\n" +
+    "  polyroot explain [--last N] Explain the latest AI decision chain\n" +
+    "  polyroot halt [--cancel-orders] Emergency stop + exit\n" +
+    "  polyroot health [--watch]    Real-time system health\n" +
+    "  polyroot insight [--market]  Market opportunities + heatmap\n" +
+    "  polyroot backup [--encrypt]  Export state (keystore, config, data)\n" +
+    "  polyroot restore --from DIR  Verify (and --apply) a backup\n" +
+    "  polyroot doctor          Basic health check\n" +
+    "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
+    "  polyroot wallet verify   Check wallet with no network\n" +
+    "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
+    "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
+    "  polyroot mode            Show current runtime mode\n" +
+    "  polyroot run --once      Run once then stop (test)\n" +
+    "  polyroot restart         Stop the background agent, print how to start it";
+  writeSync(1, `${text}\n`);
+}
+
+
 export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   let mode: CLIConfig["mode"] = "SHADOW";
   let modeFromFlag = false;
@@ -268,33 +307,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
-      const helpThemeBold = theme().bold;
-      console.log(banner("PolyRoot Agent", "Autonomous AI trading for Polymarket"));
-      console.log(
-        helpThemeBold("commands:") + "\n" +
-          "  polyroot                 Open the interactive console\n" +
-          "  polyroot run             Start the agent (mode from settings)\n" +
-          "  polyroot onboard         First-time setup (new users)\n" +
-          "  polyroot setup           Change mode, capital, loss cap, markets\n" +
-          "  polyroot shadow-fund --amount <usd>  Credit SHADOW play bankroll\n" +
-          "  polyroot markets         Browse popular markets by name\n" +
-          "  polyroot logs [--follow] Watch agent log files\n" +
-          "  polyroot status          Show current configuration\n" +
-          "  polyroot explain [--last N] Explain the latest AI decision chain\n" +
-          "  polyroot halt [--cancel-orders] Emergency stop + exit\n" +
-          "  polyroot health [--watch]    Real-time system health\n" +
-          "  polyroot insight [--market]  Market opportunities + heatmap\n" +
-          "  polyroot backup [--encrypt]  Export state (keystore, config, data)\n" +
-          "  polyroot restore --from DIR  Verify (and --apply) a backup\n" +
-          "  polyroot doctor          Basic health check\n" +
-          "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
-          "  polyroot wallet verify   Check wallet with no network\n" +
-          "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
-          "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
-          "  polyroot mode            Show current runtime mode\n" +
-          "  polyroot run --once      Run once then stop (test)\n" +
-          "  polyroot restart         Stop the background agent, print how to start it",
-      );
+      printHelp();
       process.exit(0);
     } else if (a === "--mode") {
       mode = parseMode(argv[++i], "--mode");
@@ -343,6 +356,8 @@ interface OnboardingConfig {
   model: string;
   apiKey: string;
   baseUrl?: string;
+  /** Brain wire protocol: "openai" (/chat/completions) or "codex" (Codex Responses backend via ChatGPT OAuth). */
+  forecastProvider: string;
   walletType: "create" | "import";
   privateKey?: string;
   passphrase: string;
@@ -719,6 +734,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       "Ramp Router (router.com) — routes each request to the cheapest model that clears you",
       "Upstage (Solar API)",
       "Ollama (runs on this machine)",
+      "OpenAI (ChatGPT login via Codex OAuth — your Plus/Pro subscription, no API key)",
     ],
     0,
   );
@@ -726,6 +742,10 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let model = "";
   let baseUrl = "";
   let apiKey = "";
+  // Brain wiring: "openai" speaks /chat/completions with a static key;
+  // "codex" speaks the Codex Responses backend with per-call OAuth headers.
+  let forecastProvider = "openai";
+  let isCodexProvider = false;
 
   // Provider configurations
   const providerConfig: Record<string, {
@@ -733,7 +753,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     defaultModel?: string;
     models?: string[];
     apiKeyRequired?: boolean;
-    specialHandling?: 'ollama' | 'vertex' | 'bedrock' | 'custom' | 'copilot' | 'azure';
+    specialHandling?: 'ollama' | 'vertex' | 'bedrock' | 'custom' | 'copilot' | 'azure' | 'codex';
   }> = {
     "OpenAI": {
       baseUrl: "https://api.openai.com/v1",
@@ -888,6 +908,9 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     "Ollama": {
       specialHandling: "ollama",
     },
+    "OpenAI (ChatGPT login via Codex OAuth": {
+      specialHandling: "codex",
+    },
   };
 
   // Labels shown in the menu carry descriptions in parentheses; config keys
@@ -906,6 +929,55 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       defaultValue: "http://localhost:11434/v1",
     });
     apiKey = "ollama";
+  } else if (specialHandling === "codex") {
+    // ChatGPT subscription login: reuse the Codex CLI credentials
+    // (~/.codex/auth.json), refreshed automatically. No API key involved.
+    const { loadCodexAuth, pingCodexBackend, codexAuthFilePath } =
+      await import("@polyroot/intelligence");
+    forecastProvider = "codex";
+    isCodexProvider = true;
+    baseUrl = await askText("Codex backend base URL", {
+      defaultValue: "https://chatgpt.com/backend-api/codex",
+    });
+    model = await askText("Codex model slug (any model your plan includes)", {
+      defaultValue: "gpt-5.6-sol",
+    });
+    apiKey = "";
+    let loggedIn = false;
+    try {
+      const creds = await loadCodexAuth();
+      loggedIn = true;
+      console.log(
+        "✅ ChatGPT login found" +
+          (creds.accountId ? ` (account …${creds.accountId.slice(-6)})` : "") +
+          " — token refreshes automatically.",
+      );
+      const ok = await pingCodexBackend(baseUrl, creds);
+      if (!ok) {
+        console.log(
+          "⚠️  Codex backend did not answer the model list — subscription",
+          "may lack Codex access, or the network blocks chatgpt.com.",
+        );
+      }
+    } catch (err) {
+      console.log(`\n⚠️  ${(err as Error).message}`);
+      console.log(
+        `   Looked for: ${codexAuthFilePath()}\n` +
+          "   Sign in on any machine with a browser: `codex login`\n" +
+          "   Headless/VPS: `codex login --device-auth`, then copy the code.\n" +
+          "   (If Codex CLI is not installed: npm i -g codex)",
+      );
+    }
+    if (!loggedIn) {
+      const goOn = await askText("Continue setup without a login? (y/n)", {
+        defaultValue: "y",
+      });
+      if (!goOn.trim().toLowerCase().startsWith("y")) {
+        throw new Error(
+          "Setup stopped — run `codex login`, then `polyroot onboard` again",
+        );
+      }
+    }
   } else if (specialHandling === "copilot") {
     console.log("GitHub Copilot ACP uses stdio transport. Spawning copilot --acp --stdio...");
     model = "copilot";
@@ -994,13 +1066,13 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   if (!model.trim()) {
     throw new Error("Model name is required");
   }
-  if (!apiKey.trim()) {
+  if (!isCodexProvider && !apiKey.trim()) {
     throw new Error(
       "API key is required (Ollama on this machine uses any placeholder)",
     );
   }
 
-  if (!provider.startsWith("Ollama")) {
+  if (!isCodexProvider && !provider.startsWith("Ollama")) {
     const reachable = await pingModelsEndpoint(baseUrl, apiKey);
     if (!reachable) {
       console.log(
@@ -1167,6 +1239,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     model,
     apiKey,
     baseUrl,
+    forecastProvider,
     walletType: walletChoice.startsWith("Create") ? "create" : "import",
     privateKey,
     passphrase,
@@ -1210,13 +1283,22 @@ function writeEnv(config: OnboardingConfig): void {
     `WALLET_ADDRESS=${deriveAddressFromPrivateKey(config.privateKey!)}`,
     `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
     `RPC_URL=https://polygon-rpc.com`,
-    // Every provider choice speaks the OpenAI-compatible protocol
-    // (OpenAI, any custom gateway, Ollama on this machine), so the brain
-    // always runs with POLYROOT_FORECAST_PROVIDER=openai + OPENAI_BASE_URL.
-    `POLYROOT_FORECAST_PROVIDER=openai`,
+    // The brain wire protocol follows the provider choice: most speak
+    // OpenAI-compatible /chat/completions with a static key, while the
+    // ChatGPT-login path speaks the Codex Responses backend with per-call
+    // OAuth headers (no API key is written for it — there is none).
+    `POLYROOT_FORECAST_PROVIDER=${config.forecastProvider}`,
     `POLYROOT_FORECAST_MODEL=${config.model}`,
-    `OPENAI_API_KEY=${config.apiKey}`,
-    ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
+    ...(config.forecastProvider === "codex"
+      ? [
+          `# ChatGPT subscription login (Codex OAuth, refreshed automatically).`,
+          `# Sign in: \`codex login\` (browser) or \`codex login --device-auth\` (headless).`,
+          `POLYROOT_CODEX_BASE_URL=${config.baseUrl}`,
+        ]
+      : [
+          `OPENAI_API_KEY=${config.apiKey}`,
+          ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
+        ]),
     "",
     "# Market discovery: the agent finds liquid markets itself by default.",
     "# Change to manual curation any time via `polyroot setup`.",
@@ -1867,7 +1949,7 @@ async function restartBackgroundAgent(): Promise<void> {
 
   const { execSync } = await import("node:child_process");
   try {
-    execSync("pkill -f 'node.*cli\\.js' 2>/dev/null || true", {
+    execSync("pkill -f 'node.*/dist/cli\\.js' 2>/dev/null || true", {
       stdio: "ignore",
     });
     await new Promise((r) => setTimeout(r, 1500));
@@ -2660,7 +2742,7 @@ async function runHaltCLI(args: string[]): Promise<void> {
         killLocalAgents: async () => {
           const { execSync } = await import("node:child_process");
           try {
-            execSync("pkill -f 'node.*cli\\.js' 2>/dev/null || true", {
+            execSync("pkill -f 'node.*/dist/cli\\.js' 2>/dev/null || true", {
               stdio: "ignore",
             });
           } catch {
@@ -3420,6 +3502,12 @@ export async function main(
   argv: string[] = process.argv.slice(2),
 ): Promise<void> {
   loadDotEnv();
+  // Help works everywhere, first run or not: fresh users type --help
+  // BEFORE any .env exists, and must never land in onboarding instead.
+  if (argv.includes("--help") || argv.includes("-h")) {
+    printHelp();
+    process.exit(0);
+  }
   if (argv[0] === "wallet" && argv[1] === "verify") {
     const result = runWalletVerify();
     for (const c of result.checks) {

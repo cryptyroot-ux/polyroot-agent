@@ -219,3 +219,93 @@ describe("reasoning-model robustness (SSE + wrapped JSON)", () => {
     assert.equal(detailed.p, 0.58);
   });
 });
+
+describe("Responses wire protocol (Codex backend)", () => {
+  it("reads output_text and message output parts", () => {
+    assert.equal(
+      readCompletionContent(JSON.stringify({ output_text: "p halfway" })),
+      "p halfway",
+    );
+    const body = JSON.stringify({
+      output: [
+        { type: "reasoning", summary: [] },
+        {
+          type: "message",
+          content: [{ type: "output_text", text: '{"p":0.44}' }],
+        },
+      ],
+    });
+    assert.equal(
+      readCompletionContent(body),
+      '{"p":0.44}',
+    );
+  });
+
+  it("stitches response.output_text.delta SSE events", () => {
+    const inner = JSON.stringify({ p: 0.5 });
+    const sse = [
+      "event: response.output_text.delta",
+      "data: " + JSON.stringify({ type: "response.output_text.delta", delta: inner }),
+      "event: response.completed",
+      "data: " + JSON.stringify({ type: "response.completed" }),
+      "",
+    ].join("\n");
+    assert.equal(readCompletionContent(sse), inner);
+  });
+
+  it("provider speaks /responses with per-call OAuth headers", async () => {
+    let seenUrl = "";
+    let seenHeaders: Record<string, string> = {};
+    let seenBody = "";
+    const stub = (async (url: unknown, opts: unknown) => {
+      seenUrl = String(url);
+      seenHeaders = (opts as { headers: Record<string, string> }).headers;
+      seenBody = (opts as { body: string }).body;
+      return new Response(
+        JSON.stringify({ output_text: '{"p":0.61,"rationale":"r","factors":[]}' }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    const p = new OpenAICompatibleForecastProvider({
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiKey: "unused-placeholder",
+      model: "m-codex",
+      requestStyle: "responses",
+      authHeaders: async () => ({
+        authorization: "Bearer tok123",
+        "ChatGPT-Account-ID": "acc1",
+      }),
+      fetchImpl: stub,
+    });
+    const d = await p.forecastDetailed({ market_id: "m", bid: 0.5, ask: 0.55 });
+    assert.equal(d.p, 0.61);
+    assert.ok(seenUrl.endsWith("/responses"));
+    assert.equal(seenHeaders["authorization"], "Bearer tok123");
+    assert.equal(seenHeaders["ChatGPT-Account-ID"], "acc1");
+    assert.ok(!("temperature" in JSON.parse(seenBody)));
+  });
+
+  it("createForecastProviderFromEnv builds the codex branch", () => {
+    const prev = { ...process.env };
+    try {
+      process.env["POLYROOT_FORECAST_PROVIDER"] = "codex";
+      process.env["POLYROOT_FORECAST_MODEL"] = "m-codex";
+      delete process.env["POLYROOT_CODEX_BASE_URL"];
+      const p = createForecastProviderFromEnv(process.env);
+      assert.ok(p !== null);
+      assert.equal(
+        createForecastProviderFromEnv({ POLYROOT_FORECAST_PROVIDER: "none" }),
+        null,
+      );
+      assert.throws(
+        () =>
+          createForecastProviderFromEnv({
+            POLYROOT_FORECAST_PROVIDER: "codex",
+          }),
+        /POLYROOT_FORECAST_MODEL/,
+      );
+    } finally {
+      process.env = prev;
+    }
+  });
+});

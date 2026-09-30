@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync, statSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -130,8 +130,56 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
   });
 });
 
-describe("super-easy onboarding E2E (custom gateway path)", () => {
-  it("writes openai provider + custom base URL so the brain stays live", async () => {
+describe("super-easy onboarding E2E (ChatGPT login via Codex OAuth)", () => {
+  it("writes codex provider with no API key when a login exists", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
+    // Fake Codex login in the temp HOME (far-future expiry, no refresh).
+    const b64 = (o: unknown) =>
+      Buffer.from(JSON.stringify(o)).toString("base64url");
+    const access = `${b64({ alg: "none" })}.${b64({ exp: 4102444800 })}.sig`;
+    mkdirSync(join(home, ".codex"), { recursive: true });
+    writeFileSync(
+      join(home, ".codex", "auth.json"),
+      JSON.stringify({ tokens: { access_token: access, account_id: "acc1" } }),
+    );
+    const { code, out } = await runOnboardLikeHuman(
+      home,
+      [
+        "34",               // provider: OpenAI (ChatGPT login via Codex OAuth)
+        "",                 // backend base URL (default)
+        "",                 // model (default)
+        "",                 // wallet: create new (default)
+        "test-pass-123",    // vault password
+        "test-pass-123",    // repeat vault password
+        "1",                // mode: SHADOW (default)
+        "10000",            // capital cap
+        "500",              // loss cap bps
+        "n",                // demo trade offer (never asked without DB)
+      ],
+      [
+        "Choose AI provider",
+        "Codex backend base URL",
+        "Codex model slug",
+        "Wallet (Enter = create new):",
+        "Create a vault password",
+        "Repeat the vault password",
+        "Choose mode (Enter = SHADOW):",
+        "Capital cap in USD",
+        "Daily loss cap in bps",
+      ],
+    );
+    assert.equal(code, 0);
+    const envPath = join(home, ".polyroot", ".env");
+    assert.equal(existsSync(envPath), true);
+    const env = readFileSync(envPath, "utf8");
+    assert.ok(env.includes("POLYROOT_FORECAST_PROVIDER=codex"));
+    assert.ok(env.includes("POLYROOT_CODEX_BASE_URL="));
+    assert.ok(!env.includes("OPENAI_API_KEY="));
+    assert.ok(!out.includes("files.pango.fun"));
+  });
+});
+
+describe("super-easy onboarding E2E (custom gateway path)", () => {  it("writes openai provider + custom base URL so the brain stays live", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(home, [
       "27",                       // provider: custom (direct API)
