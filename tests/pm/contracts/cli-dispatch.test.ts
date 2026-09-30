@@ -137,3 +137,71 @@ describe("console run refusal stays at the prompt", () => {
     }
   });
 });
+
+describe("telegram setup wizard (dry-run, no network needed)", () => {
+  it("rejects bad token shape, fails gracefully offline, aborts clean", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-dispatch-"));
+    // Paced stdin (a line every 800ms): the shared readline session races
+    // pre-ended pipes on back-to-back prompts, so upfront writes flake —
+    // humans type after each prompt appears, and so does this harness.
+    const lines = [
+      "bad-token",
+      "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh",
+      "n",
+    ];
+    const out = await new Promise<string>((resolve) => {
+      const child = spawn(
+        process.execPath,
+        ["--import", "tsx", CLI, "telegram", "setup"],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env, HOME: home },
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      );
+      let text = "";
+      child.stdout.on("data", (d: Buffer) => {
+        text += d.toString();
+      });
+      child.stderr.on("data", (d: Buffer) => {
+        text += d.toString();
+      });
+      child.stdout.resume();
+      child.stderr.resume();
+      let i = 0;
+      const feeder = setInterval(() => {
+        if (i < lines.length) {
+          try {
+            child.stdin.write(`${lines[i++] as string}\n`);
+          } catch {
+            clearInterval(feeder);
+          }
+        } else {
+          clearInterval(feeder);
+          try {
+            child.stdin.end();
+          } catch {
+            // already closed
+          }
+        }
+      }, 800);
+      const killer = setTimeout(() => {
+        clearInterval(feeder);
+        child.kill("SIGKILL");
+        resolve(`TIMEOUT:${text}`);
+      }, 45_000);
+      child.on("close", (code) => {
+        clearTimeout(killer);
+        clearInterval(feeder);
+        resolve(`CODE:${code ?? 1}\n${text}`);
+      });
+    });
+    assert.ok(out.startsWith("CODE:0"), out.slice(0, 200));
+    assert.ok(out.includes("bukan format token"));
+    assert.ok(
+      out.includes("Gagal verifikasi") || out.includes("Terhubung sebagai"),
+    );
+    assert.ok(out.includes("Setup dibatalkan"));
+    assert.ok(!out.includes("TELEGRAM_BOT_TOKEN=123"));
+  });
+});

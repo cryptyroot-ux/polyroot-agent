@@ -312,3 +312,38 @@ describe("telegram router tiers", () => {
     assert.ok(String(audit.rows[0]?.["result"] ?? "").includes("ok"));
   });
 });
+
+describe("telegram setup wizard helpers", () => {
+  it("isValidBotTokenFormat accepts BotFather shape only", async () => {
+    const { isValidBotTokenFormat } = await import("@polyroot/runtime");
+    assert.equal(isValidBotTokenFormat("123456:ABCdefGHIjklMNOpqrSTUvwxYZ123456789"), true);
+    assert.equal(isValidBotTokenFormat("abc:short"), false);
+    assert.equal(isValidBotTokenFormat("not-a-token"), false);
+    assert.equal(isValidBotTokenFormat(""), false);
+    assert.equal(isValidBotTokenFormat("  123456:ABCdefGHIjklMNOpqrSTUvwxYZ123456789  "), true);
+  });
+
+  it("detectOwnerFromUpdates finds the first human DM", async () => {
+    const { detectOwnerFromUpdates } = await import("@polyroot/runtime");
+    const dm = (userId: number, username: string, chatType = "private") => ({
+      update_id: 1,
+      message: {
+        message_id: 1,
+        from: { id: userId, username },
+        chat: { id: userId, type: chatType },
+        text: "halo",
+      },
+    });
+    assert.deepEqual(detectOwnerFromUpdates([dm(111, "alice")]), {
+      userId: "111",
+      username: "alice",
+    });
+    assert.equal(
+      detectOwnerFromUpdates([{ ...dm(111, "alice"), message: { ...dm(111, "alice").message, chat: { id: 1, type: "supergroup" } } }]),
+      null,
+    );
+    assert.equal(detectOwnerFromUpdates([dm(222, "SomeBot")]), null);
+    assert.equal(detectOwnerFromUpdates([]), null);
+    assert.equal(detectOwnerFromUpdates([{ update_id: 1 }]), null);
+  });
+});

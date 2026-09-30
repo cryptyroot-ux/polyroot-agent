@@ -295,6 +295,7 @@ export function printHelp(): void {
     "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
     "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
           "  polyroot mode            Show current runtime mode\n" +
+          "  polyroot telegram setup          Wizard: hubungkan bot Telegram (tanpa edit file)\n" +
           "  polyroot telegram <approve|list|revoke|allow|status>  Pairing management\n" +
     "  polyroot run --once      Run once then stop (test)\n" +
     "  polyroot restart         Stop the background agent, print how to start it";
@@ -3037,6 +3038,12 @@ function writeEnvKey(key: string, value: string): void {
  */
 async function runTelegramCLI(args: string[]): Promise<void> {
   loadDotEnv();
+  // Setup writes config, needs no database — route it before the DB gate
+  // so a fresh box can onboard Telegram first.
+  if ((args[0] ?? "").toLowerCase() === "setup") {
+    await runTelegramSetup();
+    return;
+  }
   const dbUrl = process.env["DATABASE_URL"] ?? "";
   if (!dbUrl) {
     console.error("❌ DATABASE_URL required (set in ~/.polyroot/.env).");
@@ -3110,15 +3117,183 @@ async function runTelegramCLI(args: string[]): Promise<void> {
       } catch {
         console.log("Audit 24h: (tabel belum migrate — jalankan migrate:latest)");
       }
+    } else if (sub === "setup") {
+      await runTelegramSetup();
+      return;
     } else {
       console.error(
-        "Usage: polyroot telegram <approve CODE|list|revoke ID|allow ID|status>",
+        "Usage: polyroot telegram <setup|approve CODE|list|revoke ID|allow ID|status>",
       );
       process.exit(1);
     }
   } finally {
     await pool.end().catch(() => undefined);
   }
+}
+
+/**
+ * `polyroot telegram setup` — guided Telegram onboarding for operators who
+ * never touch config files (Hermes-style: detect, don't dictate).
+ * 1. BotFather walkthrough → paste token → verified via getMe.
+ * 2. Owner auto-detect: DM the bot anything, we read YOUR numeric ID
+ *    (fallback: manual entry). Usernames are never accepted.
+ * 3. Writes .env, offers immediate restart. Zero file editing by hand.
+ */
+async function runTelegramSetup(): Promise<void> {
+  const tg = await import("./telegram.js");
+  console.log(banner("Telegram Setup — kendali dari HP", "3 langkah, ~2 menit, tanpa edit file"));
+  console.log("Langkah 1/3: buat bot");
+  console.log("  1. Buka Telegram → cari @BotFather → kirim /newbot");
+  console.log("  2. Nama tampilan bebas, username harus berakhiran 'bot'");
+  console.log("  3. BotFather membalas TOKEN — salin token itu.\n");
+
+  let token = "";
+  let botUsername = "";
+  for (;;) {
+    const raw = await askRequiredSecret("Tempel token bot dari BotFather");
+    token = raw.trim();
+    if (!tg.isValidBotTokenFormat(token)) {
+      console.log("  Itu bukan format token (harusnya 123456:ABC-... 35+ karakter). Coba lagi.");
+      continue;
+    }
+    try {
+      const api = tg.createBotApi(token, undefined, 12_000);
+      const me = (await api.call("getMe")) as { username?: unknown };
+      botUsername = typeof me.username === "string" ? me.username : "";
+      console.log(`✅ Terhubung sebagai @${botUsername || "?"}. Token valid.`);
+      break;
+    } catch (err) {
+      console.log(`\n⚠️  Gagal verifikasi: ${(err as Error).message}`);
+      const retry = await askText("Coba token lain? (Y/n)", { defaultValue: "y" });
+      if (!retry.trim().toLowerCase().startsWith("y")) {
+        console.log("Setup dibatalkan, tidak ada yang berubah.");
+        return;
+      }
+    }
+  }
+
+  console.log("\nLangkah 2/3: kenali pemilik (tanpa cari ID manual)");
+  console.log(`  Buka Telegram → cari @${botUsername || "bot Anda"} → kirim "halo".`);
+  console.log("  Saya deteksi ID numerik Anda otomatis (username DITOLAK — bisa didaur ulang).");
+  const api = tg.createBotApi(token);
+  let frontier = 0;
+  try {
+    const seen = (await api.call("getUpdates", { timeout: 0 })) as Array<{ update_id?: unknown }>;
+    for (const u of Array.isArray(seen) ? seen : []) {
+      if (typeof u?.update_id === "number" && u.update_id >= frontier) {
+        frontier = u.update_id + 1;
+      }
+    }
+  } catch {
+    // frontier stays 0 — detection just considers everything
+  }
+  const spin = startSpinner("Menunggu pesan Anda di Telegram… (90 dtk)");
+  let detected: { userId: string; username: string } | null = null;
+  const deadline = Date.now() + 90_000;
+  try {
+    while (Date.now() < deadline && !detected) {
+      try {
+        const updates = (await api.call("getUpdates", {
+          offset: frontier,
+          timeout: 10,
+        })) as Parameters<typeof tg.detectOwnerFromUpdates>[0];
+        for (const u of Array.isArray(updates) ? updates : []) {
+          if (
+            typeof (u as { update_id?: unknown }).update_id === "number" &&
+            ((u as { update_id?: number }).update_id as number) >= frontier
+          ) {
+            frontier = ((u as { update_id?: number }).update_id as number) + 1;
+          }
+        }
+        detected = tg.detectOwnerFromUpdates(
+          Array.isArray(updates) ? updates : [],
+        );
+      } catch {
+        // transient network blip — keep waiting until deadline
+      }
+    }
+  } finally {
+    spin.stop();
+  }
+  let ownerId = "";
+  if (detected) {
+    console.log(`\n✅ Terdeteksi: ${detected.username} (ID ${detected.userId})`);
+    const mine = await askText("Ini Anda? (Y/n)", { defaultValue: "y" });
+    if (mine.trim().toLowerCase().startsWith("y")) {
+      ownerId = detected.userId;
+    }
+  } else {
+    console.log("\n⏰ Waktu habis — tidak ada pesan masuk.");
+  }
+  while (!ownerId) {
+    const manual = await askText(
+      "Ketik ID numerik Anda manual (cek via @userinfobot), kosong = batal",
+    );
+    if (!manual.trim()) {
+      console.log("Setup dibatalkan, tidak ada yang berubah.");
+      return;
+    }
+    const normalized = tg.normalizeTelegramId(manual);
+    if (!normalized) {
+      console.log("  Harus angka murni (contoh 123456789) — username ditolak.");
+      continue;
+    }
+    ownerId = normalized;
+  }
+
+  console.log("\nLangkah 3/3: simpan konfigurasi");
+  loadDotEnv();
+  const prevOwners = (process.env["TELEGRAM_OWNER_IDS"] ?? "")
+    .split(",")
+    .map((s) => tg.normalizeTelegramId(s))
+    .filter((s): s is string => s !== null);
+  const owners = [...new Set([...prevOwners, ownerId])];
+  const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
+  writeFileSync(
+    ENV_PATH,
+    upsertEnvLines(existing, [
+      `TELEGRAM_BOT_TOKEN=${token}`,
+      `TELEGRAM_OWNER_IDS=${owners.join(",")}`,
+    ]) + "\n",
+    { mode: 0o600 },
+  );
+  console.log("✅ Tersimpan (token disembunyikan, tidak pernah di-log).");
+  console.log(`   Owner: ${owners.join(", ")}`);
+  console.log("\nKirim /status ke bot untuk test. Perintah: status explain insight health halt(mode turun) YA-konfirmasi.");
+
+  const loaded = await (async () => {
+    try {
+      const { execSync } = await import("node:child_process");
+      const show = execSync(
+        "systemctl show polyroot --property=LoadState 2>/dev/null",
+        { encoding: "utf8" },
+      ) as string;
+      return /^LoadState=loaded$/m.test(show);
+    } catch {
+      return false;
+    }
+  })();
+  if (loaded) {
+    const restart = await askText("Restart service sekarang agar aktif? (Y/n)", {
+      defaultValue: "y",
+    });
+    if (restart.trim().toLowerCase().startsWith("y")) {
+      try {
+        const { execFile } = await import("node:child_process");
+        await new Promise<void>((resolve, reject) => {
+          execFile("systemctl", ["restart", "polyroot"], (err) =>
+            err ? reject(err) : resolve(),
+          );
+        });
+        console.log("✅ Service di-restart. Kirim /status ke bot.");
+      } catch (err) {
+        console.log(`⚠️  Restart gagal: ${(err as Error).message} — jalankan: sudo systemctl restart polyroot`);
+      }
+    }
+  } else {
+    console.log("Jalankan loop dulu (polyroot run / systemd), Telegram ikut aktif otomatis bila token terpasang.");
+  }
+  closeSharedSession();
 }
 
 async function runModeCommand(targetMode?: string): Promise<void> {

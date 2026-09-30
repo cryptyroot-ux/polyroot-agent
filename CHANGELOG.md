@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.0] - 2026-09-30
+
+### ✨ Added — guided Telegram setup (zero file editing)
+- **`polyroot telegram setup` wizard** (Hermes-style: detect, don't dictate) — BotFather walkthrough → paste token → verified live via `getMe` (wrong tokens re-ask, offline fails gracefully) → owner auto-detect by DMing the bot anything (numeric ID only, usernames refused) with manual-entry fallback → writes `.env` (600) → offers immediate service restart
+- No `.env` hand-editing anywhere in the flow; token never printed or logged
+
 ## [1.13.0] - 2026-09-30
 
 ### ✨ Added — Telegram remote (read-first control)

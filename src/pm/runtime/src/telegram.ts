@@ -422,7 +422,31 @@ export async function captureOutput(fn: () => Promise<void>): Promise<string> {
   return out.trimEnd() || "(tidak ada output)";
 }
 
-/* ─── update polling ──────────────────────────────────────────────── */
+/* ─── setup wizard helpers (pure, unit-tested) ─────────────────────── */
+
+/** BotFather token shape: digits, colon, 35+ secret chars. */
+export function isValidBotTokenFormat(token: string): boolean {
+  return /^\d+:[A-Za-z0-9_-]{30,}$/.test(token.trim());
+}
+
+/**
+ * Owner auto-detect: first human sender in fresh updates (Hermes-style —
+ * the operator just DMs the bot "halo" instead of looking up numeric IDs).
+ * Bots' own messages and non-message updates are skipped. Null = nobody
+ * new yet (caller keeps waiting or falls back to manual entry).
+ */
+export function detectOwnerFromUpdates(
+  updates: TelegramUpdate[],
+): { userId: string; username: string } | null {
+  for (const u of updates) {
+    const m = extractInbound(u);
+    if (!m) continue;
+    if (m.chatType !== "private") continue;
+    if (/bot$/i.test(m.username)) continue;
+    return { userId: m.userId, username: m.username || "(tanpa nama)" };
+  }
+  return null;
+}
 
 export interface InboundMessage {
   updateId: number;
