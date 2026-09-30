@@ -8,7 +8,7 @@
  * to avoid spam (max 1 message per 2s per phase, 30/min total).
  */
 
-import { type BotApi, createBotApi, redactSecrets } from "./telegram.js";
+import { createBotApi, redactSecrets } from "./telegram.js";
 
 export type StreamPhase = "research" | "forecasting" | "risk" | "execution" | "system";
 
@@ -211,9 +211,10 @@ function formatExecution(e: ExecutionEvent): string {
 }
 
 function formatSystem(e: SystemEvent): string {
-  const emoji = SEVERITY_EMOJIS[e.severity];
+  const sev = SEVERITY_EMOJIS[e.severity] ?? SEVERITY_EMOJIS.info;
   const lines = [
     `**Type:** ${e.type.toUpperCase().replace("_", " ")}`,
+    `**Severity:** ${sev} ${e.severity}`,
     `**Message:** ${e.message}`,
   ];
   if (e.details) {
@@ -318,7 +319,3 @@ export class NullStreamEmitter implements StreamEmitter {
 export function createNullStreamEmitter(): StreamEmitter {
   return new NullStreamEmitter();
 }
-
-export { createStreamingObservability } from "./streaming-observability.js";
-export { createIntelligenceStreamHooks } from "./streaming-observability.js";
-export type { StreamingObservabilityConfig, IntelligenceStreamHooks } from "./streaming-observability.js";

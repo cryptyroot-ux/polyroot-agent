@@ -37,7 +37,7 @@ import type {
 } from "./telegram.js";
 import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 import { bootstrapAgent, buildWalletIdentity } from "./main.js";
-import { createTelegramStreamEmitter, createStreamingObservability, type StreamEmitter, createNullStreamEmitter } from "./telegram-stream.js";
+import { createTelegramStreamEmitter, type StreamEmitter, createNullStreamEmitter } from "./telegram-stream.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
 import {

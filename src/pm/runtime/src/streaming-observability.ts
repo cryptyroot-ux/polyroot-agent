@@ -15,12 +15,10 @@ import {
 import { type VenueMode } from "@polyroot/domain";
 import {
   type StreamEmitter,
-  type StreamEvent,
   type ResearchEvent,
   type ForecastingEvent,
   type RiskEvent,
   type ExecutionEvent,
-  type SystemEvent,
 } from "./telegram-stream.js";
 
 export interface StreamingObservabilityConfig {
