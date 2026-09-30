@@ -37,7 +37,6 @@ import type {
 } from "./telegram.js";
 import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 import { bootstrapAgent, buildWalletIdentity } from "./main.js";
-import { createTelegramStreamEmitter, type StreamEmitter, createNullStreamEmitter } from "./telegram-stream.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
 import {
@@ -2388,20 +2387,6 @@ import {
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
   const isLive = config.mode === "MICRO_LIVE" || config.mode === "LIVE";
-
-  // Create Telegram streaming emitter if token and owner ID are available
-  let streamEmitter: StreamEmitter;
-  const tgToken = process.env["TELEGRAM_BOT_TOKEN"]?.trim();
-  const tgOwnerId = process.env["TELEGRAM_OWNER_IDS"]?.split(",")[0]?.trim();
-  if (tgToken && tgOwnerId) {
-    streamEmitter = createTelegramStreamEmitter(tgToken, tgOwnerId);
-    console.log(`📡 Telegram streaming enabled for owner ${tgOwnerId}`);
-  } else {
-    streamEmitter = createNullStreamEmitter();
-    if (!tgToken) console.log("⚠️  Telegram streaming disabled: TELEGRAM_BOT_TOKEN not set");
-    if (!tgOwnerId) console.log("⚠️  Telegram streaming disabled: TELEGRAM_OWNER_IDS not set");
-  }
-
   const agent = await bootstrapAgent(
     config.databaseUrl,
     config.mode,
@@ -2411,11 +2396,10 @@ export async function startAgent(config: CLIConfig): Promise<void> {
           // Authenticated secure client (reads live books; submission of
           // domain SignedOrders stays refused until CLOB translation lands).
           venueAdapter: await buildLiveVenueAdapter(),
-          streamEmitter,
         }
       : config.mode === "SHADOW"
-        ? { venueAdapter: buildPublicVenueAdapter(), streamEmitter }
-        : { streamEmitter },
+        ? { venueAdapter: buildPublicVenueAdapter() }
+        : {},
   );
   const pipeline = agent.pipeline as unknown as {
     runContinuous: () => Promise<void>;

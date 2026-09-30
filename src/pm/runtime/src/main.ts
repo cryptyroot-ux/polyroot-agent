@@ -36,7 +36,6 @@ import { PgLiveGuardStore } from "./live-guard-store.js";
 import { PgResolvedClusters } from "./postgres-log.js";
 import { createStepPersistence } from "./observability/index.js";
 import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
-import { createStreamingObservability } from "./streaming-observability.js";
 import {
   resolveMarketUniverseWithSides,
   parseWatchlist,
@@ -49,7 +48,6 @@ import {
   type ForecastProvider,
 } from "@polyroot/intelligence";
 import { kellyShares, equityBankroll } from "@polyroot/strategy";
-import { type StreamEmitter } from "./telegram-stream.js";
 import { PgCalibrationService } from "@polyroot/intelligence";
 import type { G4CoreMetrics } from "./g4-core.js";
 
@@ -154,11 +152,6 @@ export interface BootstrapAgentOptions {
    * When omitted, a mock venue adapter is used (PAPER/SHADOW-only).
    */
   venueAdapter?: VenueAdapter;
-  /**
-   * Optional Telegram streaming emitter for real-time AI cycle updates.
-   * When provided, connects to the G4 pipeline observability hooks.
-   */
-  streamEmitter?: StreamEmitter;
 }
 
 export async function bootstrapAgent(
@@ -442,36 +435,6 @@ export async function bootstrapAgent(
             console.log(`⚠️  Smart-money sync skipped: ${e.message}`),
         })
       : null;
-  // Durable per-step persistence (snapshots, forecasts, decision logs).
-  // Passive observer only: fire-and-forget, never blocks or breaks trading.
-  const stepPersistence = createStepPersistence({
-    pool,
-    mode,
-    model: process.env["POLYROOT_FORECAST_MODEL"],
-    baseMinEdge: 0.03,
-    getReasoning: (marketId: string) => lastReasoning.get(marketId),
-  });
-  // Telegram streaming observability — real-time AI cycle to owner DM.
-  // Composed (not spread): every hook fans out to metrics + persistence +
-  // streaming with isolated try/catch, so a slow/dead Telegram layer can
-  // never break the loop or swallow the durable step write.
-  const streamHooks = opts.streamEmitter
-    ? createStreamingObservability({
-        emitter: opts.streamEmitter,
-        modelLineage: process.env["POLYROOT_FORECAST_MODEL"] ?? "unknown",
-        getFunds,
-        getReasoning: (marketId: string) => lastReasoning.get(marketId),
-        minEdgeThreshold: 0.03,
-      })
-    : null;
-  const safe = (fn: () => unknown): void => {
-    try {
-      const r = fn() as unknown;
-      if (r instanceof Promise) r.catch(() => undefined);
-    } catch {
-      // observer failure is never a trading failure
-    }
-  };
   const pipeline = createG4Pipeline({
     config: {
       mode,
@@ -481,26 +444,16 @@ export async function bootstrapAgent(
       ...(liveLossCapPusd !== undefined ? { liveLossCapPusd } : {}),
     },
     observability: {
-      emitMetrics: (m) => {
-        safe(() => recordG4Metrics(metrics, m));
-        safe(() => streamHooks?.emitMetrics?.(m));
-      },
-      emitStepStart: (input, stepMode) => {
-        safe(() => streamHooks?.emitStepStart?.(input, stepMode));
-      },
-      emitStepComplete: (input, result) => {
-        safe(() => stepPersistence.emitStepComplete(input, result));
-        safe(() => streamHooks?.emitStepComplete?.(input, result));
-      },
-      emitFinancialGate: (gate, gateMode, venue) => {
-        safe(() => streamHooks?.emitFinancialGate?.(gate, gateMode, venue));
-      },
-      emitError: (error, context) => {
-        safe(() => streamHooks?.emitError?.(error, context));
-      },
-      emitModeTransition: (from, to, reason) => {
-        safe(() => streamHooks?.emitModeTransition?.(from, to, reason));
-      },
+      emitMetrics: (m) => recordG4Metrics(metrics, m),
+      // Durable per-step persistence (snapshots, forecasts, decision logs).
+      // Passive observer only: fire-and-forget, never blocks or breaks trading.
+      ...createStepPersistence({
+        pool,
+        mode,
+        model: process.env["POLYROOT_FORECAST_MODEL"],
+        baseMinEdge: 0.03,
+        getReasoning: (marketId: string) => lastReasoning.get(marketId),
+      }),
     },
     kernel,
     signer,
