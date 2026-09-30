@@ -205,3 +205,32 @@ describe("telegram setup wizard (dry-run, no network needed)", () => {
     assert.ok(!out.includes("TELEGRAM_BOT_TOKEN=123"));
   });
 });
+
+describe("onboarding preserves unmanaged env keys", () => {
+  it("mergeEnvPreserving keeps TELEGRAM_* and custom keys, replaces managed", async () => {
+    const { mergeEnvPreserving } = await import("@polyroot/runtime");
+    const existing = [
+      "DATABASE_URL=postgresql://old/db",
+      "TELEGRAM_BOT_TOKEN=123:ABC",
+      "TELEGRAM_OWNER_IDS=111",
+      "MY_CUSTOM_RPC=https://x.example",
+      "# a stale comment",
+      "",
+    ].join("\n");
+    const out = mergeEnvPreserving(existing, [
+      "DATABASE_URL=postgresql://new/db",
+      "RUNTIME_MODE=SHADOW",
+    ]);
+    assert.ok(out.includes("DATABASE_URL=postgresql://new/db"));
+    assert.ok(out.includes("TELEGRAM_BOT_TOKEN=123:ABC"));
+    assert.ok(out.includes("TELEGRAM_OWNER_IDS=111"));
+    assert.ok(out.includes("MY_CUSTOM_RPC=https://x.example"));
+    assert.ok(!out.includes("a stale comment"));
+    assert.ok(!out.includes("DATABASE_URL=postgresql://old/db"));
+  });
+
+  it("empty existing file yields the fresh body untouched", async () => {
+    const { mergeEnvPreserving } = await import("@polyroot/runtime");
+    assert.equal(mergeEnvPreserving("", ["A=1", "", "B=2"]), "A=1\n\nB=2");
+  });
+});

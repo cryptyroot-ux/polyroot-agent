@@ -1407,7 +1407,8 @@ function writeEnv(config: OnboardingConfig): void {
     "# WALLET_ACCOUNT=",
     "# WALLET_FUNDER=",
   ];
-  writeFileSync(ENV_PATH, lines.join("\n"), { mode: 0o600 });
+  const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
+  writeFileSync(ENV_PATH, mergeEnvPreserving(existing, lines), { mode: 0o600 });
   chmodSync(ENV_PATH, 0o600);
   console.log(`\n✅ Configuration saved to ${ENV_PATH} (600 perms)`);
 }
@@ -3053,6 +3054,28 @@ export function buildTelegramHandlers(
 }
 
 /** Rewrite one .env key in place (never prints values). */
+/**
+ * Merge a fresh generated env body with an existing file, preserving keys
+ * the generator does not manage (TELEGRAM_BOT_TOKEN, custom RPC, ...).
+ * Without this, re-running onboarding wipes integrations configured
+ * afterwards (e.g. `polyroot telegram setup`). Pure and unit-tested.
+ */
+export function mergeEnvPreserving(existing: string, freshLines: string[]): string {
+  const fresh = freshLines.join("\n");
+  const managed = new Set(
+    freshLines
+      .map((l) => l.split("=")[0]?.trim() ?? "")
+      .filter((k) => k !== "" && !k.startsWith("#")),
+  );
+  const kept = existing.split("\n").filter((l) => {
+    const t = l.trim();
+    if (!t || t.startsWith("#")) return false;
+    const k = t.split("=")[0]?.trim() ?? "";
+    return k !== "" && !managed.has(k);
+  });
+  if (kept.length === 0) return fresh;
+  return `${fresh}\n\n# Preserved from previous configuration (untouched by onboarding):\n${kept.join("\n")}`;
+}
 function writeEnvKey(key: string, value: string): void {
   loadDotEnv();
   const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";

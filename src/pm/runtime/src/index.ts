@@ -62,6 +62,7 @@ export {
   suggestCommand,
   normalizeConsoleLine,
   digitBufferTarget,
+  mergeEnvPreserving,
   loadDotEnv,
   runWalletVerify,
   runGuardReset,

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.2] - 2026-09-30
+
+### 🔧 Fixed
+- **Onboarding preserves unmanaged `.env` keys** — re-running onboarding no longer wipes integrations configured afterwards (Telegram token/owners, custom RPC). Managed keys are rewritten, everything else is carried over under a marked section
+
 ## [1.14.1] - 2026-09-30
 
 ### 🔧 Fixed (critical — found via a real exposed-key incident)
