@@ -32,6 +32,11 @@ import { createG4Pipeline } from "./g4-pipeline.js";
 import { ModeWatcher } from "./mode-watcher.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
+import {
+  getTelegramEmitter,
+  type TelegramStreamEmitter,
+  type AgentStreamEventType,
+} from "@polyroot/observability";
 import { PgLiveGuardStore } from "./live-guard-store.js";
 import { PgResolvedClusters } from "./postgres-log.js";
 import { createStepPersistence } from "./observability/index.js";
@@ -332,8 +337,7 @@ export async function bootstrapAgent(
             if (snap.yes_price === undefined || snap.no_price === undefined) {
               return null;
             }
-            const side: MarketSide =
-              marketSides[marketId] ?? "UNKNOWN";
+            const side: MarketSide = marketSides[marketId] ?? "UNKNOWN";
             return { bid: snap.yes_price, ask: snap.no_price, side };
           },
         };
@@ -346,7 +350,11 @@ export async function bootstrapAgent(
   // from the shared metrics. Best-effort: null bankroll hides that line.
   const toUsd = (raw: unknown): number | null => {
     const n =
-      typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
+      typeof raw === "string"
+        ? Number(raw)
+        : typeof raw === "number"
+          ? raw
+          : NaN;
     return Number.isFinite(n) ? Math.round((n / 1e6) * 100) / 100 : null;
   };
   const getFunds = async (): Promise<{
@@ -367,7 +375,11 @@ export async function bootstrapAgent(
     } catch {
       // display-only: stay null
     }
-    return { bankrollUsd, lockedUsd, sessionPnlUsd: metrics.getCounter("totalPnl") };
+    return {
+      bankrollUsd,
+      lockedUsd,
+      sessionPnlUsd: metrics.getCounter("totalPnl"),
+    };
   };
 
   // Live enforcement inputs (fail-closed): an explicit owner loss cap is
@@ -400,7 +412,9 @@ export async function bootstrapAgent(
   const resolvedClusters = new PgResolvedClusters(pool);
   // Owner wall for per-pass breadth (default MAX_CONCURRENT_ORDERS = 3):
   // the agent ranks and defers within it, never above it.
-  const maxConcurrentRaw = Number(process.env["POLYROOT_MAX_CONCURRENT_ORDERS"]);
+  const maxConcurrentRaw = Number(
+    process.env["POLYROOT_MAX_CONCURRENT_ORDERS"],
+  );
   const maxConcurrentMarkets =
     Number.isFinite(maxConcurrentRaw) && maxConcurrentRaw > 0
       ? Math.floor(maxConcurrentRaw)
@@ -417,8 +431,7 @@ export async function bootstrapAgent(
     initialMode: mode,
     onModeChange: (from, to, reason) =>
       console.log(`🔄 ModeWatcher: ${from} -> ${to} (${reason})`),
-    onDegrade: (reason) =>
-      console.log(`⛔ ModeWatcher degraded: ${reason}`),
+    onDegrade: (reason) => console.log(`⛔ ModeWatcher degraded: ${reason}`),
   });
   // Owner-curated smart-money watchlist (empty = disabled). Flow cache
   // feeds the contradiction guard only; a dead feed changes nothing.
@@ -435,6 +448,48 @@ export async function bootstrapAgent(
             console.log(`⚠️  Smart-money sync skipped: ${e.message}`),
         })
       : null;
+  // 9b. Telegram agent stream (PM-OBS-01): the same observability fan-out
+  // that feeds Metrics also pushes the agent's live reasoning to Telegram.
+  // Fire-and-forget by construction — a slow or failing Bot API never blocks
+  // the trading loop. Disabled unless TELEGRAM_BOT_TOKEN is present.
+  // Hooks are composed explicitly (never spread): persistence and metrics
+  // keep running even if streaming is disabled or throws.
+  const stepPersistence = createStepPersistence({
+    pool,
+    mode,
+    model: process.env["POLYROOT_FORECAST_MODEL"],
+    baseMinEdge: 0.03,
+    getReasoning: (marketId: string) => lastReasoning.get(marketId),
+  });
+  const telegramStream: TelegramStreamEmitter = getTelegramEmitter();
+  const emitStream = (
+    type: AgentStreamEventType,
+    message: string,
+    marketId?: string,
+    metadata?: Record<string, unknown>,
+  ): void => {
+    void telegramStream
+      .emit({
+        eventId: `${type.toLowerCase()}-${Date.now()}`,
+        timestamp: new Date(),
+        type,
+        ...(marketId ? { marketId } : {}),
+        message,
+        ...(metadata ? { metadata } : {}),
+      })
+      .catch(() => false);
+  };
+  if (telegramStream.isEnabled()) {
+    console.log("[telegram] agent stream ON");
+  }
+  const safeObserve = (fn: () => unknown): void => {
+    try {
+      const r = fn() as unknown;
+      if (r instanceof Promise) r.catch(() => undefined);
+    } catch {
+      // observer failure is never a trading failure
+    }
+  };
   const pipeline = createG4Pipeline({
     config: {
       mode,
@@ -444,16 +499,59 @@ export async function bootstrapAgent(
       ...(liveLossCapPusd !== undefined ? { liveLossCapPusd } : {}),
     },
     observability: {
-      emitMetrics: (m) => recordG4Metrics(metrics, m),
-      // Durable per-step persistence (snapshots, forecasts, decision logs).
-      // Passive observer only: fire-and-forget, never blocks or breaks trading.
-      ...createStepPersistence({
-        pool,
-        mode,
-        model: process.env["POLYROOT_FORECAST_MODEL"],
-        baseMinEdge: 0.03,
-        getReasoning: (marketId: string) => lastReasoning.get(marketId),
-      }),
+      emitMetrics: (m) => {
+        safeObserve(() => recordG4Metrics(metrics, m));
+      },
+      emitStepStart: (input, stepMode) =>
+        emitStream(
+          "UNIVERSE_SCAN",
+          `Memulai evaluasi market [Mode: ${stepMode}]`,
+          input.market_id,
+        ),
+      emitStepComplete: (input, result) => {
+        safeObserve(() => stepPersistence.emitStepComplete(input, result));
+        const isExecuted =
+          result.decision !== "NO_TRADE" && result.fill?.status === "FILLED";
+        const eventType = isExecuted
+          ? "ORDER_FILL"
+          : result.decision === "NO_TRADE"
+            ? "NO_TRADE"
+            : "ORDER_SUBMIT";
+        emitStream(
+          eventType,
+          isExecuted
+            ? `✅ Eksekusi Berhasil: Order terisi penuh di market.`
+            : `⚠️ Selesai dengan status [${result.decision}]. Alasan: ${result.reason ?? "Tidak ada keterangan"}`,
+          input.market_id,
+          {
+            decision: result.decision,
+            reason: result.reason,
+            fillStatus: result.fill?.status,
+            fillPrice: result.fill?.fillPrice,
+            filledSize: result.fill?.filledSize,
+            edge: result.edge,
+          },
+        );
+      },
+      emitFinancialGate: (gate, gateMode, venue) =>
+        emitStream(
+          "RISK_GATE",
+          `Risk Gate Evaluasi: [${gate}] (Mode: ${gateMode}, Venue: ${venue})`,
+        ),
+      emitError: (error, context) =>
+        emitStream(
+          "ERROR",
+          `Error terdeteksi di Agent Loop: ${error.message}`,
+          undefined,
+          {
+            context: String(context),
+          },
+        ),
+      emitModeTransition: (from, to, reason) =>
+        emitStream(
+          "RESEARCH_INGEST",
+          `Mode Transition: ${from} ➡️ ${to} | Alasan: ${reason}`,
+        ),
     },
     kernel,
     signer,
