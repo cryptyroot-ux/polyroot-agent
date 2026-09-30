@@ -76,6 +76,29 @@ function mdEscape(value: string): string {
   return value.replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
 }
 
+/** Max Bot API sends per rolling minute; overflow is dropped, never queued. */
+const STREAM_MAX_PER_MINUTE = 30;
+
+/**
+ * Scrub credential-shaped material from ANY outbound text. Market titles and
+ * metadata are untrusted input — a hostile value must never exfiltrate a key
+ * into the owner's chat history (or any screenshot of it).
+ */
+function redactSecrets(text: string): string {
+  let out = text;
+  out = out.replace(/0x[0-9a-fA-F]{64}/g, "0x…[redacted]");
+  out = out.replace(/sk-[A-Za-z0-9_-]{8,}/g, "sk-…[redacted]");
+  out = out.replace(
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    "[redacted-block]",
+  );
+  out = out.replace(
+    /(["']?(?:api[_-]?key|secret|passphrase|mnemonic)["']?\s*[:=]\s*)\S+/gi,
+    "$1[redacted]",
+  );
+  return out;
+}
+
 /** Render a metadata value as a single-line, human-readable cell. */
 function renderValue(value: unknown): string | null {
   if (value === undefined || value === null) return null;
@@ -96,6 +119,10 @@ export class TelegramStreamEmitter {
   private readonly parseMode: "Markdown" | "HTML";
   /** Consecutive failures; used to back off without ever throwing. */
   private failureStreak = 0;
+  /** Rolling send timestamps for the per-minute rate cap. */
+  private readonly sentAt: number[] = [];
+  /** Last time a throttle drop was logged (log at most once per minute). */
+  private throttledLoggedAt = 0;
 
   constructor(botToken?: string, chatId?: string) {
     this.botToken = botToken || process.env["TELEGRAM_BOT_TOKEN"] || "";
@@ -131,11 +158,11 @@ export class TelegramStreamEmitter {
     );
 
     if (event.title) {
-      lines.push(`<i>${this.esc(event.title)}</i>`);
+      lines.push(`<i>${this.esc(redactSecrets(event.title))}</i>`);
     }
 
     lines.push("");
-    lines.push(this.esc(event.message));
+    lines.push(this.esc(redactSecrets(event.message)));
 
     // Structured footer: one label/value line per field, never a JSON blob.
     if (event.metadata) {
@@ -144,7 +171,9 @@ export class TelegramStreamEmitter {
         const rendered = renderValue(raw);
         if (rendered === null) continue;
         const label = FIELD_LABELS[key] ?? key;
-        fields.push(`• <b>${this.esc(label)}</b>: ${this.esc(rendered)}`);
+        fields.push(
+          `• <b>${this.esc(label)}</b>: ${this.esc(redactSecrets(rendered))}`,
+        );
       }
       if (fields.length > 0) {
         lines.push("");
@@ -158,7 +187,7 @@ export class TelegramStreamEmitter {
           ? `${event.marketId.slice(0, 8)}…${event.marketId.slice(-6)}`
           : event.marketId;
       lines.push("");
-      lines.push(`<code>${this.esc(short)}</code>`);
+      lines.push(`<code>${this.esc(redactSecrets(short))}</code>`);
     }
 
     return lines.join("\n");
@@ -175,6 +204,26 @@ export class TelegramStreamEmitter {
       );
       return false;
     }
+
+    // Rate cap: a hot loop must never flood the owner's chat. Overflow is
+    // dropped (never queued — a stale backlog is worse than a gap).
+    const now = Date.now();
+    while (
+      this.sentAt.length > 0 &&
+      (this.sentAt[0] as number) <= now - 60000
+    ) {
+      this.sentAt.shift();
+    }
+    if (this.sentAt.length >= STREAM_MAX_PER_MINUTE) {
+      if (now - this.throttledLoggedAt > 60000) {
+        this.throttledLoggedAt = now;
+        console.log(
+          `[agent-stream] throttled: dropped ${event.type} (cap ${STREAM_MAX_PER_MINUTE}/min)`,
+        );
+      }
+      return false;
+    }
+    this.sentAt.push(now);
 
     const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
     try {
