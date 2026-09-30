@@ -1,8 +1,8 @@
 {
   "name": "polyroot",
-  "version": "1.11.4",
+  "version": "1.11.5",
   "private": true,
-  "description": "PolyRoot Agent — autonomous AI trading agent for Polymarket (fork of CloddsBot, controlled autonomy)",
+  "description": "PolyRoot Agent — autonomous AI trading agent for Polymarket (controlled autonomy: AI proposes, deterministic executor disposes)",
   "repository": {
     "type": "git",
     "url": "https://github.com/cryptyroot-ux/polyroot-agent"

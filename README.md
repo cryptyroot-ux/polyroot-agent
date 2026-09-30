@@ -1,12 +1,29 @@
-# PolyRoot Agent
+<p align="center">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT license" />
+  <img src="https://img.shields.io/badge/version-v1.11.5--stable-blue?style=for-the-badge" alt="version" />
+  <img src="https://img.shields.io/badge/tests-848%2B12-passing-success?style=for-the-badge" alt="tests" />
+  <img src="https://img.shields.io/badge/node-%3E%3D24-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="node" />
+</p>
 
-**Autonomous AI trading agent for Polymarket** — a fork of
-[CloddsBot](https://github.com/alsk1992/CloddsBot) built with a **controlled
-autonomy** architecture: the AI proposes intents only, while a separate
-deterministic **Executor** signs and submits orders. The AI never holds private
-keys.
+<h1 align="center">◈ PolyRoot Agent</h1>
 
-> **Status: v1.11.4-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
+<p align="center">
+  <strong>Autonomous AI trading for Polymarket — with the AI nowhere near your keys.</strong><br />
+  The AI proposes trading intents only; a separate deterministic <strong>Executor</strong><br />
+  signs and submits orders through risk gates it cannot override.
+</p>
+
+<p align="center">
+  <a href="#-install-in-one-line-recommended-for-operators">Quickstart</a> ·
+  <a href="#-what-it-is">What it is</a> ·
+  <a href="#-production-installation">Production</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="#-license">License</a>
+</p>
+
+---
+
+> **Status: v1.11.5-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
 > Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 848 passing tests (836 contract + 12 property).
 > Default onboarding mode is `SHADOW`. Live trading requires explicit Autonomy Charter commissioning.
 
@@ -336,7 +353,7 @@ See [`docs/PUBLIC_API.md`](docs/PUBLIC_API.md) for full API reference, runtime m
 
 ## License
 
-MIT License with upstream CloddsBot attribution. See [`LICENSE`](LICENSE).
+MIT License — see [`LICENSE`](LICENSE) (includes upstream provenance notice).
 
 ---
 

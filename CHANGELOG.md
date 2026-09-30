@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.5] - 2026-09-30
+
+### ✨ Changed
+- **New GitHub landing**: centered banner with badges, tagline and quick links; upstream fork branding removed from all user-facing surfaces (README, package description). Provenance + MIT attribution stay intact where they belong: `LICENSE`, `Blueprint_v1.1.md`, `docs/implementation/`, spec pack
+
 ## [1.11.4] - 2026-09-30
 
 ### 🔧 Fixed (found in a live operator session)
