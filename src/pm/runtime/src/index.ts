@@ -61,6 +61,7 @@ export {
   refreshSupervisorUnit,
   suggestCommand,
   normalizeConsoleLine,
+  digitBufferTarget,
   loadDotEnv,
   runWalletVerify,
   runGuardReset,

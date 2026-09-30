@@ -606,6 +606,20 @@ async function askChoice(
  * Suspends the shared readline while raw mode owns stdin; restores it in
  * `finally`. Returns null when a TTY menu is impossible (caller falls back).
  */
+/**
+ * Resolve a buffered digit sequence to an option index (pure, unit-tested).
+ * Fast "28" targets #28; a lone "2" (after the 800ms idle reset upstream)
+ * targets #2. Out-of-range or malformed buffers select nothing — the
+ * cursor simply stays where it is.
+ */
+export function digitBufferTarget(
+  buffer: string,
+  optionCount: number,
+): number | null {
+  if (!/^[1-9][0-9]*$/.test(buffer)) return null;
+  const idx = Number.parseInt(buffer, 10) - 1;
+  return idx < optionCount ? idx : null;
+}
 async function askChoiceArrows(
   message: string,
   options: string[],
@@ -620,6 +634,10 @@ async function askChoiceArrows(
     let cursor = Math.min(Math.max(defaultIdx, 0), options.length - 1);
     let settled = false;
     let frameLines = 0;
+    // Digit buffer: fast "28" jumps to #28, lone "2" (pause >800ms) to #2.
+    // Without this, piped multi-digit choices can never be entered.
+    let digitBuf = "";
+    let digitTimer: ReturnType<typeof setTimeout> | null = null;
     const up = (n: number): void => {
       if (n > 0) process.stdout.write(`\u001b[${n}A`);
     };
@@ -638,6 +656,7 @@ async function askChoiceArrows(
     const done = (fn: () => void): void => {
       if (settled) return;
       settled = true;
+      if (digitTimer) clearTimeout(digitTimer);
       try {
         process.stdin.setRawMode(false);
       } catch {
@@ -685,7 +704,9 @@ async function askChoiceArrows(
         render();
         return;
       }
-      if (name === "return" || name === "enter") {
+      if (name === "return" || name === "enter" || name === "linefeed") {
+        // linefeed (\n): piped/scripted input and some terminals send LF
+        // instead of CR — without this, piped selections hang to EOF.
         const picked = options[cursor];
         clearFrame();
         if (picked === undefined) {
@@ -701,11 +722,20 @@ async function askChoiceArrows(
       }
       const digit = Number.parseInt(key?.sequence ?? "", 10);
       if (Number.isInteger(digit) && digit >= 1 && digit <= 9) {
-        const idx = digit - 1;
-        if (idx < options.length) {
+        if (digitTimer) clearTimeout(digitTimer);
+        digitBuf += String(digit);
+        const idx = digitBufferTarget(digitBuf, options.length);
+        if (idx !== null) {
           cursor = idx;
           clearFrame();
           render();
+        }
+        digitTimer = setTimeout(() => {
+          digitBuf = "";
+          digitTimer = null;
+        }, 800);
+        if (typeof (digitTimer as unknown as { unref?: unknown }).unref === "function") {
+          (digitTimer as unknown as { unref: () => void }).unref();
         }
       }
     };

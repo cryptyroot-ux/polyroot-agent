@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.14.1] - 2026-09-30
+
+### 🔧 Fixed (critical — found via a real exposed-key incident)
+- **Arrow menu accepts piped/scripted input**: raw-mode Enter arrives as LF (`linefeed`), not CR — previously any piped menu selection hung to EOF and aborted setup. Multi-digit choices now buffer fast digit runs ("28" → #28). Proven over a real pty
+- **Credential handling rule**: secrets must never travel through piped stdin in automation — pty echo can surface them in logs. Onboarding keeps interactive secret entry; automation uses files with 600 perms
+
 ## [1.14.0] - 2026-09-30
 
 ### ✨ Added — guided Telegram setup (zero file editing)

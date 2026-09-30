@@ -14,6 +14,7 @@ import {
   pill,
   menuFrame,
   startSpinner,
+  digitBufferTarget,
 } from "@polyroot/runtime";
 
 const OFF = {
@@ -132,5 +133,20 @@ describe("console UI kit", () => {
       process.stdout.write = orig as never;
     }
     assert.deepEqual(seen, []);
+  });
+});
+
+describe("arrow-menu digit buffer (piped multi-digit choices)", () => {
+  it("fast digit runs target that number", () => {
+    assert.equal(digitBufferTarget("28", 34), 27);
+    assert.equal(digitBufferTarget("2", 34), 1);
+    assert.equal(digitBufferTarget("1", 34), 0);
+  });
+
+  it("out-of-range and garbage select nothing", () => {
+    assert.equal(digitBufferTarget("99", 34), null);
+    assert.equal(digitBufferTarget("0", 34), null);
+    assert.equal(digitBufferTarget("", 34), null);
+    assert.equal(digitBufferTarget("2a", 34), null);
   });
 });
