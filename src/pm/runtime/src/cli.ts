@@ -1514,6 +1514,16 @@ function printConsoleHelp(): void {
   );
 }
 
+/**
+ * Normalize one console line: trim, and tolerate a leading `polyroot `
+ * (operators habitually retype the binary inside its own console —
+ * `polyroot logs --follow` must work, not error). Pure and unit-tested.
+ */
+export function normalizeConsoleLine(raw: string): string {
+  const text = raw.trim();
+  if (/^polyroot\s+/i.test(text)) return text.replace(/^polyroot\s+/i, "");
+  return text;
+}
 /** Known agent log files (newest first). */
 function findAgentLogs(): string[] {
   const home = process.env["HOME"] ?? "/tmp";
@@ -1522,12 +1532,73 @@ function findAgentLogs(): string[] {
     .filter((p) => existsSync(p));
 }
 
+/**
+ * Journal fallback for `logs` when no log files exist (systemd installs).
+ * Returns true when it handled the request (unit loaded), false otherwise.
+ * Pure shape, best-effort: never throws.
+ */
+async function runJournalLogs(args: string[]): Promise<boolean> {
+  if (process.env["POLYROOT_NO_SYSTEMD"] === "1") return false;
+  try {
+    const { execSync, spawn } = await import("node:child_process");
+    const show = execSync(
+      "systemctl show polyroot --property=LoadState 2>/dev/null",
+      { encoding: "utf8" },
+    ) as string;
+    if (!/^LoadState=loaded$/m.test(show)) return false;
+    const follow = args.includes("--follow") || args.includes("-f");
+    const nRaw = Number(args.find((a) => /^\d+$/.test(a)));
+    const n =
+      Number.isFinite(nRaw) && nRaw > 0 ? Math.min(Math.floor(nRaw), 200) : 15;
+    if (!follow) {
+      const out = execSync(
+        `journalctl -u polyroot -n ${n} --no-pager 2>/dev/null`,
+        { encoding: "utf8", timeout: 10000 },
+      ) as string;
+      console.log(`\n── journal: polyroot.service (last ${n}) ──`);
+      console.log(out.trimEnd());
+      console.log(
+        `\nTip: \`logs --follow\` watches live. \`exit\` leaves to terminal.\n`,
+      );
+      return true;
+    }
+    console.log(
+      `\n── following journal: polyroot.service (Ctrl+C back to prompt) ──`,
+    );
+    const child = spawn(
+      "journalctl",
+      ["-u", "polyroot", "-f", "-n", String(n), "--no-pager"],
+      { stdio: ["ignore", "inherit", "inherit"] },
+    );
+    try {
+      await askOnShared("", { muted: true });
+    } catch (err) {
+      if (!(err instanceof OnboardingCancelled)) throw err;
+    } finally {
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        // already exited
+      }
+      console.log("\n— back to prompt —");
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Print the tail of the agent log. Follows live until Ctrl+C when asked. */
 async function runConsoleLogs(args: string[]): Promise<void> {
   const logs = findAgentLogs();
   if (logs.length === 0) {
+    // Supervised installs log to the journal, not files — read there.
+    if (await runJournalLogs(args)) return;
     console.log(
-      "No agent log yet. Start the agent first: type `run` here, or in a terminal: polyroot run",
+      "No agent log yet. If the agent runs under systemd, watch it with: sudo journalctl -u polyroot -f",
+    );
+    console.log(
+      "Otherwise start it first: type `run` here, or in a terminal: polyroot run",
     );
     return;
   }
@@ -1617,7 +1688,9 @@ async function runConsole(): Promise<void> {
       }
       throw err;
     }
-    const parts = line.trim().split(/\s+/).filter(Boolean);
+    const parts = normalizeConsoleLine(line)
+      .split(/\s+/)
+      .filter(Boolean);
     if (parts.length === 0) continue;
     const cmd = (parts[0] as string).toLowerCase();
     const args = parts.slice(1);

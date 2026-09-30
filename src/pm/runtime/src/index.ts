@@ -58,6 +58,7 @@ export {
   assertMicroLiveReady,
   refreshSupervisorUnit,
   suggestCommand,
+  normalizeConsoleLine,
   loadDotEnv,
   runWalletVerify,
   runGuardReset,

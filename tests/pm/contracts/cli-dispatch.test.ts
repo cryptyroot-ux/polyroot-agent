@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
 import { suggestCommand } from "@polyroot/runtime";
+import { normalizeConsoleLine } from "@polyroot/runtime";
 
 const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
 
@@ -80,10 +81,23 @@ describe("unknown commands never boot the loop", () => {
   });
 });
 
+describe("console tolerates a leading polyroot prefix", () => {
+  it("strips it, trims, leaves the rest verbatim", () => {
+    assert.equal(normalizeConsoleLine("polyroot logs --follow"), "logs --follow");
+    assert.equal(normalizeConsoleLine("  POLYROOT STATUS  "), "STATUS");
+    assert.equal(normalizeConsoleLine("status"), "status");
+    assert.equal(normalizeConsoleLine("polyroot"), "polyroot");
+    assert.equal(normalizeConsoleLine(""), "");
+  });
+});
+
 describe("top-level logs command", () => {
-  it("reports no logs cleanly with a fresh home", async () => {
+  it("reports no logs cleanly with a fresh home (no supervisor)", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-dispatch-"));
-    const { code, out } = await runCli(["logs"], { home });
+    const { code, out } = await runCli(["logs"], {
+      home,
+      extraEnv: { POLYROOT_NO_SYSTEMD: "1" },
+    });
     assert.equal(code, 0);
     assert.ok(out.includes("No agent log yet"));
   });

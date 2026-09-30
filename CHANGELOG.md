@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.11.4] - 2026-09-30
+
+### 🔧 Fixed (found in a live operator session)
+- **Console tolerates `polyroot …` prefix** — retyping the binary inside its own console (`polyroot logs --follow`) now works instead of erroring
+- **`logs` reads the journal on supervised installs** — file logs don't exist under systemd, so `logs`/`logs --follow` falls back to `journalctl -u polyroot` (graceful message when neither exists)
+
 ## [1.11.3] - 2026-09-30
 
 ### 🔧 Fixed
