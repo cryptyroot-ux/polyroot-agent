@@ -36,6 +36,7 @@ import { PgLiveGuardStore } from "./live-guard-store.js";
 import { PgResolvedClusters } from "./postgres-log.js";
 import { createStepPersistence } from "./observability/index.js";
 import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
+import { createStreamingObservability } from "./streaming-observability.js";
 import {
   resolveMarketUniverseWithSides,
   parseWatchlist,
@@ -48,6 +49,7 @@ import {
   type ForecastProvider,
 } from "@polyroot/intelligence";
 import { kellyShares, equityBankroll } from "@polyroot/strategy";
+import { type StreamEmitter } from "./telegram-stream.js";
 import { PgCalibrationService } from "@polyroot/intelligence";
 import type { G4CoreMetrics } from "./g4-core.js";
 
@@ -152,6 +154,11 @@ export interface BootstrapAgentOptions {
    * When omitted, a mock venue adapter is used (PAPER/SHADOW-only).
    */
   venueAdapter?: VenueAdapter;
+  /**
+   * Optional Telegram streaming emitter for real-time AI cycle updates.
+   * When provided, connects to the G4 pipeline observability hooks.
+   */
+  streamEmitter?: StreamEmitter;
 }
 
 export async function bootstrapAgent(
@@ -454,6 +461,16 @@ export async function bootstrapAgent(
         baseMinEdge: 0.03,
         getReasoning: (marketId: string) => lastReasoning.get(marketId),
       }),
+      // Telegram streaming observability — real-time AI cycle to owner DM
+      ...(opts.streamEmitter
+        ? createStreamingObservability({
+            emitter: opts.streamEmitter,
+            modelLineage: process.env["POLYROOT_FORECAST_MODEL"] ?? "unknown",
+            getFunds,
+            getReasoning: (marketId: string) => lastReasoning.get(marketId),
+            minEdgeThreshold: 0.03,
+          })
+        : {}),
     },
     kernel,
     signer,
