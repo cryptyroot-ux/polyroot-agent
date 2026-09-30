@@ -11,14 +11,6 @@
  *
  * The net edge subtracts the venue taker fee from the gross edge. The larger
  * net edge wins; a non-positive net edge (after fees) is never traded.
- *
- * Fee models (opts, first match wins):
- *   1. takerFeeBps — explicit flat basis-points override (tests, legacy books).
- *   2. feeTheta — Polymarket CLOB formula Fee = Θ·C·p·(1−p) per share
- *      (CFTC filing 2026: Θ=+0.05 taker, −0.0125 maker). The fee peaks at
- *      mid-prices, so contested ~50¢ books are the most expensive to take —
- *      exactly where the edge floor is already highest.
- *   3. book.fee_taker_bps — flat venue default (backward compatible).
  */
 
 import type { Forecast, MarketSnapshot } from "@polyroot/domain";
@@ -51,23 +43,6 @@ export interface SignalOpts {
   minEdge: number;
   /** Overrides the book's taker fee when provided. */
   takerFeeBps?: number;
-  /**
-   * Polymarket CLOB taker coefficient Θ (default venue value 0.05).
-   * Per-share fee = Θ·p·(1−p) at the candidate's own price. Ignored when
-   * takerFeeBps is set; the book flat fee is the last resort.
-   */
-  feeTheta?: number;
-}
-
-/**
- * Taker fee per share under the CLOB formula Fee = Θ·C·p·(1−p), C = 1.
- * Highest at mid-prices (≈1.25¢ at 50¢ with Θ=0.05), vanishing at extremes.
- */
-export function clobTakerFeePerShare(price: number, theta = 0.05): number {
-  if (!Number.isFinite(price) || !Number.isFinite(theta)) return 0;
-  const p = Math.min(Math.max(price, 0), 1);
-  const t = Math.max(theta, 0);
-  return t * p * (1 - p);
 }
 
 export function evaluateEdge(input: SignalInput, opts: SignalOpts): EdgeResult {
@@ -104,36 +79,28 @@ export function evaluateEdge(input: SignalInput, opts: SignalOpts): EdgeResult {
   }
 
   const takerBps = opts.takerFeeBps ?? b.fee_taker_bps ?? 0;
-  const flatFeeRate = takerBps / 10_000;
-  const useTheta = opts.takerFeeBps === undefined && opts.feeTheta !== undefined;
+  const feeRate = takerBps / 10_000;
 
   const candidates: Array<{
     side: SignalSide;
     gross: number;
     price: number;
-    fee: number;
   }> = [];
   if (yes !== undefined) {
-    candidates.push({
-      side: "YES",
-      gross: probability - yes,
-      price: yes,
-      fee: useTheta ? clobTakerFeePerShare(yes, opts.feeTheta) : flatFeeRate,
-    });
+    candidates.push({ side: "YES", gross: probability - yes, price: yes });
   }
   if (no !== undefined) {
     candidates.push({
       side: "NO",
       gross: 1 - probability - no,
       price: no,
-      fee: useTheta ? clobTakerFeePerShare(no, opts.feeTheta) : flatFeeRate,
     });
   }
 
   candidates.sort((a, z) => z.gross - a.gross);
   const best = candidates[0]!;
   const edge = best.gross;
-  const edge_after_fees = edge - best.fee;
+  const edge_after_fees = edge - feeRate;
 
   if (edge_after_fees <= 0) {
     return {

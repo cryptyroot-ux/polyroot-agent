@@ -1,6 +1,6 @@
 {
   "name": "@polyroot/strategy",
-  "version": "1.14.2",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -32,19 +32,19 @@
     "dev": "tsc -w -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
-    "test": "node -e \"console.log('no package-scoped tests yet — see tests/pm')\"",
-    "test:unit": "node -e \"console.log('no package-scoped tests yet — see tests/pm')\"",
+    "test": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
+    "test:unit": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@polyroot/data": "*",
     "@polyroot/domain": "*",
+    "@polyroot/intelligence": "*",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@polyroot/tsconfig": "*",
     "@types/node": "^20.19.0",
-    "@polyroot/data": "*",
-    "@polyroot/intelligence": "*",
     "typescript": "^5.5.0"
   }
 }

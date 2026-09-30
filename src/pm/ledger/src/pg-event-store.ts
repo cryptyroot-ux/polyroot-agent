@@ -15,10 +15,10 @@
  */
 
 import { Pool, type PoolConfig } from "pg";
-import type {
-  EventStore,
-  EventCursor,
-  AppendResult,
+import {
+  type EventStore,
+  type EventCursor,
+  type AppendResult,
 } from "./index.js";
 import { type LedgerEvent, LedgerEventSchema } from "@polyroot/domain";
 

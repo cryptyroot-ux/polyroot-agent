@@ -17,7 +17,6 @@ import type { MoneyKernel } from "@polyroot/risk";
 import type { SignerVault } from "@polyroot/signer";
 import type { Executor } from "@polyroot/executor";
 import { evaluateLossGuard, type LossGuardState } from "./micro-live-guard.js";
-import type { ModeWatcher } from "./mode-watcher.js";
 import {
   collectLiveInputs,
   type LiveMarketInput,
@@ -49,14 +48,6 @@ export interface G4CoreConfig {
   liveLossCapPusd?: number;
   /** Minimum edge after costs for entry. */
   minEdgeAfterCost?: number;
-  /**
-   * Owner wall: max markets evaluated per pass (default
-   * MAX_CONCURRENT_ORDERS). The allocator ranks by previous-pass score
-   * and defers the rest — the agent decides WHICH and HOW MANY up to
-   * this ceiling. <=0 (or unset-with-default) means bounded by the
-   * default, never unbounded.
-   */
-  maxConcurrentMarkets?: number;
   /** Paper simulator configuration. */
   paperConfig?: {
     cancelProbability: number;
@@ -99,10 +90,6 @@ export interface G4CoreDeps {
   now: () => Date;
   /** Wallet for simulator fills. */
   paperWallet?: WalletIdentity;
-  /** Optional funds snapshot for operator display (best-effort, may omit). */
-  getFunds?: () => Promise<StepFunds | undefined>;
-  /** Latest stated AI reasoning per market (display + persistence, best-effort). */
-  getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
   /** Observability hooks for metrics and logging */
   observability?: G4CoreObservability;
   /**
@@ -116,27 +103,6 @@ export interface G4CoreDeps {
    * configured.
    */
   marketSource?: MarketSource;
-  /**
-   * DB-backed mode watcher (hot-reload without restart). When present, the
-   * continuous loop re-reads the mode from `live_guard_state` every pass:
-   * `polyroot mode X` takes effect live. Jumps that violate the transition
-   * table are refused (stay + warn); DB loss degrades to READ_ONLY
-   * (entries halt, fail-closed). Absent = fixed boot mode (tests, --once).
-   */
-  modeWatcher?: ModeWatcher;
-  /**
-   * Smart-money flow lookup (in-memory cache fed by the watchlist sync).
-   * Powers the contradiction guard only; absent = no smart-money
-   * judgement (never blocks on missing data).
-   */
-  getSmartMoneyFlow?: ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
-  /**
-   * Settlement feed: token ids resolved since the last call (any cadence;
-   * the tracker dedupes). Powers the portfolio-full gate by freeing
-   * settled notional. Absent = positions never settle (conservative:
-   * exposure only grows, gate only tightens).
-   */
-  listSettledTokens?: (() => Promise<string[]>) | undefined;
 }
 
 /**
@@ -153,12 +119,6 @@ export interface G4CoreInput {
   market_id: string;
   bid: number;
   ask: number;
-  /**
-   * Quoted token side. UNKNOWN (manual ids carry no side info) is treated
-   * as YES — setup labels YES token ids for curation, discovery always
-   * provides real sides.
-   */
-  side?: "YES" | "NO" | "UNKNOWN";
   /** Optional forecast override (for testing/overrides). */
   forecastOverride?: number | null;
   /** Optional forecast object (for metadata). */
@@ -167,11 +127,6 @@ export interface G4CoreInput {
   currentMarketExposureUsd?: number;
   /** Current portfolio exposure in USD. */
   currentPortfolioExposureUsd?: number;
-  /**
-   * Days until market resolution, when known (discovery endDate).
-   * Feeds the expiry edge premium; absent = no premium (never blocks).
-   */
-  daysToExpiry?: number | null;
 }
 
 export interface G4CoreResult {
@@ -200,240 +155,6 @@ export interface G4CoreResult {
   edge?: number | undefined;
   bookBid?: number | undefined;
   bookAsk?: number | undefined;
-}
-
-/** Book regime from prices alone (no model input). */
-export type MarketRegime =
-  | "DUST"
-  | "TIGHT_CONSENSUS"
-  | "CONTESTED"
-  | "NORMAL";
-
-/**
- * Classify the book: DUST (extreme, untradeable), TIGHT_CONSENSUS
- * (≤2¢ spread — the book agrees with itself), CONTESTED (mid near 0.50),
- * else NORMAL. Pure and unit-tested.
- */
-export function classifyRegime(bid: number, ask: number): MarketRegime {
-  const mid = (bid + ask) / 2;
-  // Tick size is 1¢, so round the spread to 4dp: raw float subtraction turns
-  // an exact 2¢ book (0.52−0.50) into 0.020000000000000004 and silently
-  // misses the TIGHT_CONSENSUS gate that exists to block it.
-  const spread = Math.round(Math.abs(ask - bid) * 10000) / 10000;
-  if (mid <= 0.02 || mid >= 0.98) return "DUST";
-  if (spread <= 0.02) return "TIGHT_CONSENSUS";
-  if (Math.abs(mid - 0.5) < 0.1) return "CONTESTED";
-  return "NORMAL";
-}
-
-/**
- * Adverse-selection edge floor: base floor plus half the spread, capped at
- * +5pp, plus an optional guard premium in the same units. Wide spreads mean
- * the book knows something you do not, so demand more edge. The guard
- * premium carries research-backed surcharges (favorite-longshot extremes,
- * distant expiries) without changing the base formula. Pure and unit-tested.
- */
-export function resolveEdgeFloor(
-  baseMinEdge: number,
-  spread: number,
-  guardPremium = 0,
-): number {
-  const base =
-    Number.isFinite(baseMinEdge) && baseMinEdge > 0 ? baseMinEdge : 0.03;
-  const addon = Math.min(Math.max(spread, 0) * 0.5, 0.05);
-  const guard =
-    Number.isFinite(guardPremium) && guardPremium > 0 ? guardPremium : 0;
-  return Math.round((base + addon + guard) * 10000) / 10000;
-}
-
-/**
- * Favorite-longshot guard premium (fraction units, add to the edge floor).
- *
- * Measured on Polymarket (588M trades, Cardozo & Rivero-Wildemauwe 2026):
- * buys below 10¢ lose ~19.3¢ per dollar — longshots are systematically
- * overpriced, favorites underpriced. A flat edge floor underprices that
- * adverse selection, so demand +2pp extra edge at the extremes.
- * Bounds-checked: mid-prices pay no premium.
- */
-export function flbExtremePremium(touchPrice: number): number {
-  if (!Number.isFinite(touchPrice)) return 0;
-  if (touchPrice < 0.1 || touchPrice > 0.9) return 0.02;
-  return 0;
-}
-
-/**
- * Expiry guard premium (fraction units). Prediction-market prices are
- * well-calibrated near expiry but biased toward 0.50 for distant events
- * (Page 2013, Economic Journal) — the same favorite-longshot direction.
- * Demand a larger edge the farther the resolution: +0 under 7 days,
- * +0.5pp for 7–30 days, +1pp beyond 30 days. Unknown expiry pays nothing
- * (discovery already rejects near-expiry gambles separately).
- */
-export function expiryEdgePremium(daysToExpiry: number | null | undefined): number {
-  if (daysToExpiry === null || daysToExpiry === undefined) return 0;
-  if (!Number.isFinite(daysToExpiry) || daysToExpiry < 0) return 0;
-  if (daysToExpiry > 30) return 0.01;
-  if (daysToExpiry >= 7) return 0.005;
-  return 0;
-}
-
-/** Net-flow snapshot for one token, as served by the smart-money cache. */
-export interface SmartMoneyFlow {
-  netFlowUsd: number;
-  buyUsd: number;
-  sellUsd: number;
-  wallets: number;
-  updatedAtMs: number;
-}
-
-/**
- * Smart-money contradiction premium (fraction units, add to the edge floor).
- *
- * Entries here are BUY-only, so only OPPOSING flow matters: watched wallets
- * net SELLING the token we'd buy, with ≥2 corroborating wallets, ≥$1,000
- * net size, inside 30min freshness → +2pp. Everything else (aligned flow,
- * thin/anecdotal/stale/absent data) pays 0: aligned flow never lowers any
- * bar — photocopied conviction is not edge. One-way, fail-safe direction.
- */
-export function smartMoneyGuardPremium(
-  flow: SmartMoneyFlow | null | undefined,
-  nowMs = Date.now(),
-): { premium: number; note: string | null } {
-  if (!flow) return { premium: 0, note: null };
-  if (!Number.isFinite(flow.netFlowUsd) || flow.netFlowUsd >= 0) {
-    return { premium: 0, note: null };
-  }
-  if (!Number.isFinite(flow.wallets) || flow.wallets < 2) {
-    return { premium: 0, note: null };
-  }
-  if (
-    !Number.isFinite(flow.updatedAtMs) ||
-    nowMs - flow.updatedAtMs > 30 * 60_000
-  ) {
-    return { premium: 0, note: null };
-  }
-  if (Math.abs(flow.netFlowUsd) < 1000) {
-    return { premium: 0, note: null };
-  }
-  return {
-    premium: 0.02,
-    note: `smart-money contra: ${flow.wallets} wallets net -$${Math.round(Math.abs(flow.netFlowUsd))}`,
-  };
-}
-
-/** Funds snapshot for the operator display block. */
-export interface StepFunds {
-  bankrollUsd: number | null;
-  /** Temporarily reserved by in-flight intents; auto-released, never lost. */
-  lockedUsd?: number | undefined;
-  sessionPnlUsd: number;
-}
-
-/** Stated AI reasoning attached to a market step (display + DB lineage). */
-export interface StepReasoning {
-  rationale: string | null;
-  factors: string[];
-  model: string;
-}
-
-export interface StepBlockInput {
-  mode: string;
-  marketId: string;
-  bid: number;
-  ask: number;
-  p: number | null | undefined;
-  rationale?: string | null | undefined;
-  decision: "NO_TRADE" | "BUY" | "SELL";
-  reason: string | undefined;
-  edge?: number | undefined;
-  fillPrice?: number | undefined;
-  fillStatus?: string | undefined;
-  size?: number | undefined;
-  /** Minimum edge floor as percent, e.g. 3.0 for +3.0%. */
-  floorPct?: number | undefined;
-  funds?: StepFunds | undefined;
-}
-
-function pct1(x: number): string {
-  return `${(x * 100).toFixed(1)}%`;
-}
-
-function signedPct(x: number): string {
-  return `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}%`;
-}
-
-function money(n: number): string {
-  const sign = n < 0 ? "-" : n > 0 ? "+" : "";
-  const abs = Math.abs(n).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  return `${sign}$${abs}`;
-}
-
-function shortId(id: string): string {
-  return id.length > 12 ? `${id.slice(0, 5)}…${id.slice(-5)}` : id;
-}
-
-/**
- * Multi-line operator display block for one market step. Answers: which
- * market, what the book says, what the AI thinks (percent + rationale),
- * the action taken with edge math, and the money state. Pure formatter.
- */
-export function formatStepBlock(input: StepBlockInput): string {
-  const trim = (n: number): string => String(Math.round(n * 1000) / 1000);
-  const lines = [
-    `[${input.mode}] ${shortId(input.marketId)} · YES ${pct1(input.bid)} / NO ${pct1(input.ask)} · spread ${(Math.abs(input.ask - input.bid) * 100).toFixed(1)}¢`,
-  ];
-  const p =
-    typeof input.p === "number" && Number.isFinite(input.p) ? input.p : null;
-  if (p === null) {
-    lines.push(
-      `  AI abstained — no probability${input.rationale ? ` · "${input.rationale.slice(0, 140)}"` : ""}`,
-    );
-  } else {
-    lines.push(
-      `  AI p(YES)=${pct1(p)}${input.rationale ? ` · "${input.rationale.slice(0, 140)}"` : ""}`,
-    );
-  }
-  if (input.decision === "NO_TRADE") {
-    const edge =
-      typeof input.edge === "number" && Number.isFinite(input.edge)
-        ? ` (${signedPct(input.edge)}${input.floorPct !== undefined ? ` vs +${input.floorPct.toFixed(1)}% floor` : ""})`
-        : "";
-    lines.push(`  → ⏭ NO_TRADE — ${input.reason ?? "no reason given"}${edge}`);
-  } else {
-    const fillPrice =
-      typeof input.fillPrice === "number" &&
-      Number.isFinite(input.fillPrice) &&
-      input.fillPrice > 0
-        ? input.fillPrice
-        : null;
-    const price =
-      fillPrice ?? (input.decision === "BUY" ? input.ask : input.bid);
-    const edge =
-      typeof input.edge === "number" && Number.isFinite(input.edge)
-        ? ` · edge ${signedPct(input.edge)}`
-        : "";
-    const fill = input.fillStatus ? ` · ${input.fillStatus}` : "";
-    lines.push(
-      `  → ✓ ${input.decision} ${input.size ?? "?"} @ ${trim(price)}${fill}${edge}`,
-    );
-  }
-  if (input.funds) {
-    const bank =
-      input.funds.bankrollUsd === null
-        ? ""
-        : `bankroll ${money(input.funds.bankrollUsd)} · `;
-    const locked =
-      input.funds.lockedUsd !== undefined &&
-      Number.isFinite(input.funds.lockedUsd) &&
-      input.funds.lockedUsd > 0
-        ? `locked ${money(input.funds.lockedUsd)} · `
-        : "";
-    lines.push(`  $ ${bank}${locked}session ${money(input.funds.sessionPnlUsd)}`);
-  }
-  return lines.join("\n");
 }
 
 /** One-line rendering of the AI's thinking for operator logs. */
@@ -519,11 +240,6 @@ export interface CreateG4CoreOptions {
   observability?: G4CoreObservability;
   liveGuard?: LiveGuardDeps;
   marketSource?: MarketSource;
-  getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
-  getFunds?: (() => Promise<StepFunds | undefined>) | undefined;
-  modeWatcher?: ModeWatcher;
-  getSmartMoneyFlow?: ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
-  listSettledTokens?: (() => Promise<string[]>) | undefined;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -542,15 +258,6 @@ export function createG4Core(options: CreateG4CoreOptions) {
     ...(options.observability ? { observability: options.observability } : {}),
     ...(options.liveGuard ? { liveGuard: options.liveGuard } : {}),
     ...(options.marketSource ? { marketSource: options.marketSource } : {}),
-    ...(options.getReasoning ? { getReasoning: options.getReasoning } : {}),
-    ...(options.getFunds ? { getFunds: options.getFunds } : {}),
-    ...(options.modeWatcher ? { modeWatcher: options.modeWatcher } : {}),
-    ...(options.getSmartMoneyFlow
-      ? { getSmartMoneyFlow: options.getSmartMoneyFlow }
-      : {}),
-    ...(options.listSettledTokens
-      ? { listSettledTokens: options.listSettledTokens }
-      : {}),
   };
   return {
     config: options.config,
@@ -681,10 +388,19 @@ export async function executeG4Step(
     config.mode,
     deps.venueMode(),
   );
-  // NOTE: no emitStepComplete here — callers (G4Pipeline.processMarket,
-  // G4Loop.step) emit exactly once per step so every exit path is recorded
-  // without doubles.
   if (gate !== "ALLOW") {
+    core.deps.observability?.emitStepComplete?.(input, {
+      market_id,
+      decision: "NO_TRADE",
+      reason: `Financial gate: ${gate}`,
+      outcome: undefined,
+      pnl: 0,
+      fill: undefined,
+      orderId: undefined,
+      permitId: undefined,
+      p: undefined,
+      size: undefined,
+    } as G4CoreResult);
     return {
       market_id,
       decision: "NO_TRADE",
@@ -700,7 +416,7 @@ export async function executeG4Step(
     p = await deps.forecast({ market_id, bid, ask });
   }
   if (p === null || p <= 0.02 || p >= 0.98 || Math.abs(p - 0.5) < 0.02) {
-    return {
+    const res: G4CoreResult = {
       market_id,
       decision: "NO_TRADE",
       reason: "forecast uncertain or unavailable",
@@ -708,36 +424,11 @@ export async function executeG4Step(
       bookBid: bid,
       bookAsk: ask,
     };
+    core.deps.observability?.emitStepComplete?.(input, res);
+    return res;
   }
-  // 2b. Regime enforcement — the classifier used to be display-only, so
-  // DUST and TIGHT_CONSENSUS books could still reach sizing. A taker-only
-  // flow can never clear cost on a ≤2¢ spread, and dust extremes carry no
-  //fillable edge. CONTESTED/NORMAL proceed (fees peak at mid-prices, which
-  // the Θ fee model below prices exactly).
-  const regime = classifyRegime(bid, ask);
-  if (regime === "DUST" || regime === "TIGHT_CONSENSUS") {
-    return {
-      market_id,
-      decision: "NO_TRADE",
-      reason: `book regime ${regime} (untradeable as taker)`,
-      ...(p !== null ? { p } : {}),
-      bookBid: bid,
-      bookAsk: ask,
-    };
-  }
-  // 3. Edge evaluation — side-aware. The quote is a single token's book,
-  // so only that token's side is evaluable: BUY the quoted token at its
-  // ask. The old code fed the YES ask in as the NO price, fabricating
-  // +90% SELL edges (avg SELL p was 0.09 in production). SELL requires
-  // inventory, which no path tracks — entries are BUY-only by construction.
-  const evalSide = input.side === "NO" ? "NO" : "YES";
-  // Smart-money contradiction (one-way guard): watched wallets net SELLING
-  // the token we'd BUY → demand +2pp more edge. Aligned/weak/stale/absent
-  // flow changes nothing — photocopied conviction is not edge.
-  const smGuard = smartMoneyGuardPremium(
-    deps.getSmartMoneyFlow?.(market_id),
-    deps.now().getTime(),
-  );
+
+  // 3. Edge evaluation
   const edge = evaluateEdge(
     {
       forecast: {
@@ -751,11 +442,12 @@ export async function executeG4Step(
         schema_version: "1.1",
         evidence_ids: [],
         counterevidence_ids: [],
-        assumptions: smGuard.note ? [smGuard.note] : [],
+        assumptions: [],
         invalidators: [],
       },
       book: {
-        ...(evalSide === "NO" ? { no_price: ask } : { yes_price: ask }),
+        yes_price: bid,
+        no_price: ask,
         market_id,
         event_id: "",
         question: "",
@@ -774,22 +466,7 @@ export async function executeG4Step(
         schema_version: "1.1",
       },
     },
-    {
-      minEdge: resolveEdgeFloor(
-        config.minEdgeAfterCost ?? 0.03,
-        Math.abs(ask - bid),
-        // FLB extreme guard (+2pp under 10¢ / over 90¢, measured 19.3¢/$
-        // longshot loss on Polymarket) plus expiry premium, plus the
-        // smart-money contradiction premium. Fail-safe direction only:
-        // every term can only raise the bar, never lower it.
-        flbExtremePremium(ask) +
-          expiryEdgePremium(input.daysToExpiry) +
-          smGuard.premium,
-      ),
-      // CLOB taker formula Θ·p·(1−p), Θ=0.05 (CFTC filing 2026) — wins over
-      // the legacy flat 200bps fixture below, which stays as fallback.
-      feeTheta: 0.05,
-    },
+    { minEdge: config.minEdgeAfterCost ?? 0.03 },
   );
   if (edge.action === "NO_TRADE") {
     return {
@@ -803,9 +480,8 @@ export async function executeG4Step(
     };
   }
 
-  // 4. Build intent from edge. Entries are always BUY on the quoted
-  // token (SELL needs inventory, which no path tracks — see §3 above).
-  const intentSide = "BUY";
+  // 4. Build intent from edge
+  const intentSide = edge.side === "YES" ? "BUY" : "SELL";
   const size = deps.sizeIntent({ market_id, bid, ask }, p);
   if (size <= 0) {
     return {
@@ -831,7 +507,7 @@ export async function executeG4Step(
         market_id,
         side: intentSide,
         desired_qty: size,
-        limit_price: edge.reference_price ?? ask,
+        limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
         created_at: now,
         evidence_ids: [],
         forecast_refs: [],
@@ -873,7 +549,7 @@ export async function executeG4Step(
         market_id,
         side: intentSide,
         desired_qty: size,
-        limit_price: edge.reference_price ?? ask,
+        limit_price: edge.reference_price ?? (intentSide === "BUY" ? ask : bid),
         created_at: now,
         evidence_ids: [],
         forecast_refs: [],
@@ -992,25 +668,20 @@ export async function executeG4Step(
     }
   }
 
-  // Entries are BUY-only (see §4): the label follows the intent, and sim
-  // PnL is directional — profit scales with (fair − paid) on the quoted
-  // side, not with distance from 0.5.
   let decision: G4CoreResult["decision"] = "NO_TRADE";
   if (fill) {
-    decision = intentSide;
+    decision = p > 0.5 ? "BUY" : "SELL";
   } else if (
     (config.mode === "MICRO_LIVE" || config.mode === "LIVE") &&
     (outcome === "SUBMITTED" || outcome === "NEEDS_RECONCILIATION")
   ) {
-    decision = intentSide;
+    decision = p > 0.5 ? "BUY" : "SELL";
   }
 
   // Calculate PnL
-  const fairDiff =
-    evalSide === "NO" && fill ? (1 - p) - fill.fillPrice : p - (fill?.fillPrice ?? 0.5);
   const pnl = fill
     ? fill.status === "FILLED" || fill.status === "PARTIAL"
-      ? fill.filledSize * fairDiff - (fill.makerFee + fill.takerFee)
+      ? fill.filledSize * (p - 0.5) - (fill.makerFee + fill.takerFee)
       : 0
     : 0;
 
@@ -1029,5 +700,6 @@ export async function executeG4Step(
     bookBid: bid,
     bookAsk: ask,
   };
+  deps.observability?.emitStepComplete?.(input, res);
   return res;
 }

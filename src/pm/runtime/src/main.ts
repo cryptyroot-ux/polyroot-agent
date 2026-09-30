@@ -29,26 +29,18 @@ import {
 } from "@polyroot/venue";
 import { Executor } from "@polyroot/executor";
 import { createG4Pipeline } from "./g4-pipeline.js";
-import { ModeWatcher } from "./mode-watcher.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
+import type { AgentStreamEventType } from "@polyroot/observability";
+import { TelegramStreamEmitter, getTelegramEmitter } from "@polyroot/observability";
+import type { ForecastObservability } from "@polyroot/intelligence";
 import { PgLiveGuardStore } from "./live-guard-store.js";
-import { PgResolvedClusters } from "./postgres-log.js";
-import { createStepPersistence } from "./observability/index.js";
 import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
-import {
-  resolveMarketUniverseWithSides,
-  parseWatchlist,
-  startSmartMoneySync,
-  type MarketSide,
-  type MarketUniverseWithSides,
-} from "@polyroot/venue";
+import { resolveMarketUniverse } from "@polyroot/venue";
 import {
   createForecastProviderFromEnv,
   type ForecastProvider,
 } from "@polyroot/intelligence";
-import { kellyShares, equityBankroll } from "@polyroot/strategy";
-import { PgCalibrationService } from "@polyroot/intelligence";
 import type { G4CoreMetrics } from "./g4-core.js";
 
 /**
@@ -295,12 +287,6 @@ export async function bootstrapAgent(
   // 7. Forecast provider from env (null = abstain, never a stub value).
   const forecastProvider: ForecastProvider | null =
     createForecastProviderFromEnv();
-  // Latest stated reasoning per market, for live display + DB lineage.
-  // Best-effort only: missing rationale never blocks or alters decisions.
-  const lastReasoning = new Map<
-    string,
-    { rationale: string | null; factors: string[]; model: string }
-  >();
   let warnedNoProvider = false;
   if (forecastProvider) {
     const model = process.env["POLYROOT_FORECAST_MODEL"] ?? "unknown";
@@ -318,10 +304,8 @@ export async function bootstrapAgent(
   // exactly the owner-curated CLOB token ids; auto mode lets the agent
   // discover the most liquid markets itself within owner guardrails —
   // never mock data either way.
-  const { ids: marketUniverse, sides: marketSides }: MarketUniverseWithSides =
-    mode === "PAPER"
-      ? { ids: [], sides: {} }
-      : await resolveMarketUniverseWithSides(process.env);
+  const marketUniverse =
+    mode === "PAPER" ? [] : await resolveMarketUniverse(process.env);
   const marketSource =
     marketUniverse.length === 0
       ? undefined
@@ -332,43 +316,40 @@ export async function bootstrapAgent(
             if (snap.yes_price === undefined || snap.no_price === undefined) {
               return null;
             }
-            const side: MarketSide =
-              marketSides[marketId] ?? "UNKNOWN";
-            return { bid: snap.yes_price, ask: snap.no_price, side };
+            return { bid: snap.yes_price, ask: snap.no_price };
           },
         };
 
   // 9. Shared metrics + G4 Pipeline (observability wired to Metrics).
   const metrics = new Metrics();
 
-  // Operator display funds: sim bankroll from the ledger + locked
-  // reservations (in-flight intents, auto-released) + live session PnL
-  // from the shared metrics. Best-effort: null bankroll hides that line.
-  const toUsd = (raw: unknown): number | null => {
-    const n =
-      typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
-    return Number.isFinite(n) ? Math.round((n / 1e6) * 100) / 100 : null;
+  // 9b. Telegram agent stream (PM-OBS-01): the same observability fan-out
+  // that feeds Metrics also pushes the agent's live reasoning to Telegram.
+  // Fire-and-forget by construction — a slow or failing Bot API never blocks
+  // the trading loop. Disabled unless TELEGRAM_BOT_TOKEN is present.
+  const telegramStream: TelegramStreamEmitter = getTelegramEmitter();
+  const emitStream = (
+    type: Parameters<TelegramStreamEmitter["emit"]>[0]["type"],
+    message: string,
+    marketId?: string,
+    metadata?: Record<string, unknown>,
+  ): void => {
+    void telegramStream
+      .emit({
+        eventId: `${type.toLowerCase()}-${Date.now()}`,
+        timestamp: new Date(),
+        type,
+        ...(marketId ? { marketId } : {}),
+        message,
+        ...(metadata ? { metadata } : {}),
+      })
+      .catch(() => false);
   };
-  const getFunds = async (): Promise<{
-    bankrollUsd: number | null;
-    lockedUsd: number | undefined;
-    sessionPnlUsd: number;
-  }> => {
-    let bankrollUsd: number | null = null;
-    let lockedUsd: number | undefined = undefined;
-    try {
-      const r = await pool.query(
-        `SELECT available_base, committed_base FROM balance_entries
-          WHERE account = $1 AND asset = 'pUSD' LIMIT 1`,
-        [wallet.funder],
-      );
-      bankrollUsd = toUsd(r.rows[0]?.["available_base"]);
-      lockedUsd = toUsd(r.rows[0]?.["committed_base"]) ?? undefined;
-    } catch {
-      // display-only: stay null
-    }
-    return { bankrollUsd, lockedUsd, sessionPnlUsd: metrics.getCounter("totalPnl") };
-  };
+  if (telegramStream.isEnabled()) {
+    console.log(
+      `[telegram] agent stream ON → chat ${process.env["TELEGRAM_CHAT_ID"] ?? "8529153033"}`,
+    );
+  }
 
   // Live enforcement inputs (fail-closed): an explicit owner loss cap is
   // REQUIRED in live modes; the exposure cap defaults to the approved
@@ -395,65 +376,42 @@ export async function bootstrapAgent(
   const microLiveCapUsd =
     bounds.capUsd ?? (isLiveMode ? AUTONOMY_BOUNDS.CAPITAL_CAP_USD : undefined);
   const liveGuardStore = new PgLiveGuardStore(pool);
-  // Settlement feed for the portfolio tracker: recently resolved token
-  // ids, so filled positions free their notional back. Fail-open inside.
-  const resolvedClusters = new PgResolvedClusters(pool);
-  // Owner wall for per-pass breadth (default MAX_CONCURRENT_ORDERS = 3):
-  // the agent ranks and defers within it, never above it.
-  const maxConcurrentRaw = Number(process.env["POLYROOT_MAX_CONCURRENT_ORDERS"]);
-  const maxConcurrentMarkets =
-    Number.isFinite(maxConcurrentRaw) && maxConcurrentRaw > 0
-      ? Math.floor(maxConcurrentRaw)
-      : AUTONOMY_BOUNDS.MAX_CONCURRENT_ORDERS;
-  // Learned correction service: identity until the resolution sync trains
-  // real maps (fail-open by construction — see calibrate()).
-  const calibrationService = new PgCalibrationService(pool);
-  // DB-backed hot-reload: `polyroot mode X` takes effect in the running
-  // loop within one pass (no restart). Fail-closed on DB loss (READ_ONLY),
-  // latch-guarded upgrades to live modes. Owned by the pipeline lifecycle:
-  // started on runContinuous, stopped on pipeline.stop().
-  const modeWatcher = new ModeWatcher({
-    pool,
-    initialMode: mode,
-    onModeChange: (from, to, reason) =>
-      console.log(`🔄 ModeWatcher: ${from} -> ${to} (${reason})`),
-    onDegrade: (reason) =>
-      console.log(`⛔ ModeWatcher degraded: ${reason}`),
-  });
-  // Owner-curated smart-money watchlist (empty = disabled). Flow cache
-  // feeds the contradiction guard only; a dead feed changes nothing.
-  const smartWallets = parseWatchlist(process.env["POLYROOT_SMART_WALLETS"]);
-  const smartMoneySync =
-    smartWallets.length > 0
-      ? startSmartMoneySync({
-          wallets: smartWallets,
-          onUpdate: (tokens, wallets) =>
-            console.log(
-              `🐋 Smart-money watch: ${tokens} tokens across ${wallets} wallets`,
-            ),
-          onError: (e) =>
-            console.log(`⚠️  Smart-money sync skipped: ${e.message}`),
-        })
-      : null;
   const pipeline = createG4Pipeline({
     config: {
       mode,
       minEdgeAfterCost: 0.03,
-      maxConcurrentMarkets,
       ...(microLiveCapUsd !== undefined ? { microLiveCapUsd } : {}),
       ...(liveLossCapPusd !== undefined ? { liveLossCapPusd } : {}),
     },
     observability: {
+      emitStepStart: (input, mode) =>
+        emitStream("UNIVERSE_SCAN", `Memulai evaluasi market [Mode: ${mode}]`, input.market_id),
+      emitStepComplete: (input, result) => {
+        const isExecuted = result.decision !== "NO_TRADE" && result.fill?.status === "FILLED";
+        const eventType = isExecuted ? "ORDER_FILL" : (result.decision === "NO_TRADE" ? "NO_TRADE" : "ORDER_SUBMIT");
+        emitStream(
+          eventType,
+          isExecuted
+            ? `✅ Eksekusi Berhasil: Order terisi penuh di market.`
+            : `⚠️ Selesai dengan status [${result.decision}]. Alasan: ${result.reason ?? "Tidak ada keterangan"}`,
+          input.market_id,
+          {
+            decision: result.decision,
+            reason: result.reason,
+            fillStatus: result.fill?.status,
+            fillPrice: result.fill?.fillPrice,
+            filledSize: result.fill?.filledSize,
+            edge: result.edge,
+          },
+        );
+      },
+      emitFinancialGate: (gate, mode, venue) =>
+        emitStream("RISK_GATE", `Risk Gate Evaluasi: [${gate}] (Mode: ${mode}, Venue: ${venue})`),
+      emitError: (error, context) =>
+        emitStream("ERROR", `Error terdeteksi di Agent Loop: ${error.message}`, undefined, { context: String(context) }),
+      emitModeTransition: (from, to, reason) =>
+        emitStream("RESEARCH_INGEST", `Mode Transition: ${from} ➡️ ${to} | Alasan: ${reason}`),
       emitMetrics: (m) => recordG4Metrics(metrics, m),
-      // Durable per-step persistence (snapshots, forecasts, decision logs).
-      // Passive observer only: fire-and-forget, never blocks or breaks trading.
-      ...createStepPersistence({
-        pool,
-        mode,
-        model: process.env["POLYROOT_FORECAST_MODEL"],
-        baseMinEdge: 0.03,
-        getReasoning: (marketId: string) => lastReasoning.get(marketId),
-      }),
     },
     kernel,
     signer,
@@ -465,27 +423,6 @@ export async function bootstrapAgent(
     },
     policyHash: "ph_prod_audited_137",
     venueMode: () => venueAdapter.mode,
-    modeWatcher,
-    listSettledTokens: async () => {
-      try {
-        const rows = await resolvedClusters.listRecent(100);
-        const out: string[] = [];
-        for (const r of rows) {
-          for (const id of r.marketIds ?? []) {
-            if (typeof id === "string" && id) out.push(id);
-          }
-        }
-        return out;
-      } catch {
-        return [];
-      }
-    },
-    ...(smartMoneySync
-      ? {
-          getSmartMoneyFlow: (tokenId: string) =>
-            smartMoneySync.getFlow(tokenId) ?? undefined,
-        }
-      : {}),
     leaseEpoch: () => 1,
     now: () => new Date(),
     ...(marketSource ? { marketSource } : {}),
@@ -498,8 +435,6 @@ export async function bootstrapAgent(
       realizedLossPusd: () =>
         Math.max(0, -(metrics.getCounter("totalPnl") ?? 0)),
     },
-    getReasoning: (marketId: string) => lastReasoning.get(marketId),
-    getFunds,
     forecast: async (market) => {
       if (!forecastProvider) {
         if (!warnedNoProvider) {
@@ -512,56 +447,22 @@ export async function bootstrapAgent(
         return null;
       }
       try {
-        // Prefer the rich reply so the operator sees the AI's stated
-        // reasoning live; fall back to p-only on legacy providers.
-        // Display-only: the returned p drives the identical decision path.
-        if (typeof forecastProvider.forecastDetailed === "function") {
-          const detailed = await forecastProvider.forecastDetailed(market);
-          const model = process.env["POLYROOT_FORECAST_MODEL"] ?? "unknown";
-          lastReasoning.set(market.market_id, {
-            rationale: detailed.rationale,
-            factors: detailed.factors,
-            model,
-          });
-          // No console output here: the per-market display block (pipeline)
-          // renders the rationale right below with book + verdict context.
-          if (detailed.p === null) return null;
-          // Learned correction, fail-open: no trained map = identity, so
-          // behavior is byte-identical until resolutions teach it otherwise.
-          try {
-            const cal = await calibrationService.calibrate({
-              p_raw: detailed.p,
-              model,
-              category: "general",
-              horizon_sec: 3600,
-            });
-            return cal.p_calibrated;
-          } catch {
-            return detailed.p;
-          }
-        }
-        return await forecastProvider.forecast(market);
+        const forecastObs: ForecastObservability = {
+          onResearchStart: (marketId, message) =>
+            emitStream("RESEARCH_INGEST", message, marketId),
+          onEvidenceWeight: (marketId, message) =>
+            emitStream("EVIDENCE_WEIGHT", message, marketId),
+          onForecastReady: (marketId, probability, message) =>
+            emitStream("FORECAST_READY", message, marketId, { probability }),
+          onReasoningLog: (marketId, rationale) =>
+            emitStream("REASONING_LOG", rationale, marketId),
+        };
+        return await forecastProvider.forecast(market, forecastObs);
       } catch {
         return null;
       }
     },
-    // Fractional-Quarter-Kelly sizing on the touch price, hard-capped at the
-    // legacy fixed size: entries can only shrink vs the old behavior, never
-    // grow. Bankroll is LIVE EQUITY (owner cap + realized session P&L,
-    // floored at zero) — the agent compounds wins and shrinks on losses
-    // without owner input; a blown account sizes everything to zero.
-    sizeIntent: ({ ask }, p) =>
-      kellyShares({
-        p,
-        price: ask,
-        bankrollUsd: equityBankroll(
-          microLiveCapUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD,
-          metrics.getCounter("totalPnl") ?? 0,
-        ),
-        fraction: 0.25,
-        minShares: 1,
-        maxShares: 100,
-      }),
+    sizeIntent: () => 100, // Example size in shares
   });
 
   return {
@@ -570,8 +471,6 @@ export async function bootstrapAgent(
     signer,
     executor,
     pipeline,
-    modeWatcher,
-    smartMoneySync,
     metrics,
     reservationManager,
     stopReservationExpiry,

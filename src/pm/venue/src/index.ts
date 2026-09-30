@@ -38,9 +38,6 @@ export * from "./order-translation.js";
 // Explicit market universe + live input collection.
 export * from "./market-universe.js";
 export * from "./market-discovery.js";
-export * from "./resolution-recorder.js";
-export * from "./smart-money-feed.js";
-export * from "./arb-scan.js";
 
 // Permit store with atomic claim (PR-EXE-02, PR-OPS-02)
 export * from "./permit-store.js";

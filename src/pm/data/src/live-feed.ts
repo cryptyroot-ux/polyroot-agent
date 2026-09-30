@@ -11,7 +11,7 @@ import {
   FeeGate,
   SettlementRulesRegistry,
   UniverseLog,
-} from "./book-primitives.js";
+} from "./index.js";
 
 /** Minimal ErrorEvent type for WebSocket error handler (Node.js doesn't have DOM types). */
 interface ErrorEvent extends Event {
@@ -476,6 +476,5 @@ export function createLiveFeed(
 }
 
 /* ─── Exports ────────────────────────────────────────────────────────────── */
-// NOTE: no `export * from "./index.js"` barrel here by design — it created
-// a runtime index ⇄ live-feed import cycle. Import package API from
-// "@polyroot/data" (index) instead.
+
+export * from "./index.js";

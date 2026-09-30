@@ -16,7 +16,7 @@
 
 import keccak256 from "keccak256";
 import type { SignRequest, CryptoSigner } from "./index.js";
-import { computePayloadHash } from "./payload-hash.js";
+import { computePayloadHash } from "./index.js";
 import { resolveWalletKey } from "./keystore.js";
 import elliptic from "elliptic";
 const { ec: EC } = elliptic;

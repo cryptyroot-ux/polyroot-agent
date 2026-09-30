@@ -29,10 +29,6 @@ export {
 export * from "./g4-core.js";
 export * from "./reality-gap.js";
 export * from "./micro-live-guard.js";
-export * from "./resolution-sync.js";
-export * from "./console-ui.js";
-export * from "./instance-guard.js";
-export * from "./telegram.js";
 export * from "./live-guard-store.js";
 export * from "./autonomy-bounds.js";
 export * from "./live-preflight.js";
@@ -53,16 +49,10 @@ export {
 } from "./main.js";
 export {
   parseArgs,
-  printHelp,
   startAgent,
   main,
   assertRuntimeEnv,
   assertMicroLiveReady,
-  refreshSupervisorUnit,
-  suggestCommand,
-  normalizeConsoleLine,
-  digitBufferTarget,
-  mergeEnvPreserving,
   loadDotEnv,
   runWalletVerify,
   runGuardReset,
@@ -71,47 +61,3 @@ export {
   type WalletVerifyResult,
 } from "./cli.js";
 export type { CLIConfig } from "./cli.js";
-export {
-  formatOnceTranscript,
-  type OnceTranscriptInput,
-  type OnceTranscriptResult,
-} from "./cli.js";
-export { explainLastDecision } from "./observability/index.js";
-export {
-  requestHalt,
-  type HaltRequest,
-  type HaltDeps,
-  type HaltResult,
-} from "./observability/index.js";
-export {
-  collectHealth,
-  formatHealth,
-  type HealthDeps,
-  type HealthProbe,
-  type HealthReport,
-  type ProbeStatus,
-} from "./observability/index.js";
-export {
-  topOpportunities,
-  marketDeepDive,
-  formatInsight,
-  type ScoredMarket,
-} from "./observability/index.js";
-export {
-  createBackup,
-  restoreBackup,
-  decryptText,
-  type BackupDeps,
-  type BackupRequest,
-  type BackupManifest,
-  type RestoreDeps,
-  type RestoreRequest,
-  type RestoreResult,
-} from "./observability/index.js";
-export {
-  persistStep,
-  createStepPersistence,
-  flushStepPersistence,
-  type StepPersistenceDeps,
-  type PersistedStep,
-} from "./observability/index.js";

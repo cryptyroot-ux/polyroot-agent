@@ -1,6 +1,6 @@
 {
   "name": "@polyroot/security",
-  "version": "1.14.2",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -20,6 +20,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@polyroot/domain": "*",
     "@polyroot/venue": "*"
   },
   "devDependencies": {

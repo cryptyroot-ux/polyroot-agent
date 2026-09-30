@@ -30,9 +30,7 @@ import {
   executeG4Step,
   createG4Core,
   buildLoopInputs,
-  formatStepBlock,
-  resolveEdgeFloor,
-  type StepFunds,
+  formatAiLine,
 } from "./g4-core.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -127,9 +125,6 @@ export class G4AutonomousLoop {
       this.paperFillConfig,
     );
 
-    // Single step-complete emission point (see G4Pipeline.processMarket).
-    this.deps.observability?.emitStepComplete?.(input, result);
-
     // Update metrics
     this.metrics.totalOrders++;
     if (
@@ -188,36 +183,23 @@ export class G4AutonomousLoop {
         for (const loopInput of inputs) {
           const result = await this.step(loopInput);
 
-          let funds = undefined as StepFunds | undefined;
-          try {
-            const f = await this.deps.getFunds?.();
-            if (f) funds = f;
-          } catch {
-            // display-only: omit the funds line rather than break the loop
+          if (
+            result.fill &&
+            (result.fill.status === "FILLED" ||
+              result.fill.status === "PARTIAL")
+          ) {
+            console.log(
+              `✅ Fill: ${result.fill.status} @ ${result.fill.fillPrice} x ${result.fill.filledSize}${formatAiLine(result)}`,
+            );
+          } else if (result.decision !== "NO_TRADE") {
+            console.log(
+              `📊 Decision: ${result.decision} @ ${result.p} (size: ${result.size})${formatAiLine(result)}`,
+            );
+          } else {
+            console.log(
+              `⏭️  No trade: ${result.reason}${formatAiLine(result)}`,
+            );
           }
-          console.log(
-            formatStepBlock({
-              mode: this.config.mode,
-              marketId: loopInput.market_id,
-              bid: loopInput.bid,
-              ask: loopInput.ask,
-              p: result.p,
-              rationale: this.deps.getReasoning?.(loopInput.market_id)
-                ?.rationale,
-              decision: result.decision,
-              reason: result.reason,
-              edge: result.edge,
-              fillPrice: result.fill?.fillPrice,
-              fillStatus: result.fill?.status,
-              size: result.size,
-              floorPct:
-                resolveEdgeFloor(
-                  this.config.minEdgeAfterCost ?? 0.03,
-                  Math.abs(loopInput.ask - loopInput.bid),
-                ) * 100,
-              funds,
-            }),
-          );
 
           // Wait for next interval
           await new Promise((resolve) => setTimeout(resolve, 5000));

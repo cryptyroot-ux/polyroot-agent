@@ -1,6 +1,6 @@
 {
   "name": "@polyroot/venue",
-  "version": "1.14.2",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -17,13 +17,12 @@
     "dev": "tsc -w -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
-    "test": "node -e \"console.log('no package-scoped tests yet — see tests/pm')\"",
-    "test:unit": "node -e \"console.log('no package-scoped tests yet — see tests/pm')\"",
+    "test": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
+    "test:unit": "node -e \"console.log('no package-scoped tests yet \u2014 see tests/pm')\"",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@polyroot/domain": "*",
-    "@polyroot/strategy": "*",
     "@polymarket/client": "0.9.0",
     "ethers": "^6.16.0",
     "zod": "^3.22.4"
