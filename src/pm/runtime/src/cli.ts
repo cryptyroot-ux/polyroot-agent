@@ -3192,7 +3192,7 @@ async function runTelegramCLI(args: string[]): Promise<void> {
  *    (fallback: manual entry). Usernames are never accepted.
  * 3. Writes .env, offers immediate restart. Zero file editing by hand.
  */
-async function runTelegramSetup(): Promise<void> {
+async function runTelegramSetupInner(): Promise<void> {
   const tg = await import("./telegram.js");
   console.log(banner("Telegram Setup — kendali dari HP", "3 langkah, ~2 menit, tanpa edit file"));
   console.log("Langkah 1/3: buat bot");
@@ -3217,7 +3217,16 @@ async function runTelegramSetup(): Promise<void> {
       break;
     } catch (err) {
       console.log(`\n⚠️  Gagal verifikasi: ${(err as Error).message}`);
-      const retry = await askText("Coba token lain? (Y/n)", { defaultValue: "y" });
+      let retry = "";
+      try {
+        retry = await askText("Coba token lain? (Y/n)", { defaultValue: "y" });
+      } catch (e) {
+        if (e instanceof OnboardingCancelled) {
+          console.log("\nSetup dibatalkan, tidak ada yang berubah.");
+          return;
+        }
+        throw e;
+      }
       if (!retry.trim().toLowerCase().startsWith("y")) {
         console.log("Setup dibatalkan, tidak ada yang berubah.");
         return;
@@ -3347,6 +3356,18 @@ async function runTelegramSetup(): Promise<void> {
     console.log("Jalankan loop dulu (polyroot run / systemd), Telegram ikut aktif otomatis bila token terpasang.");
   }
   closeSharedSession();
+}
+
+async function runTelegramSetup(): Promise<void> {
+  try {
+    await runTelegramSetupInner();
+  } catch (e) {
+    if (e instanceof OnboardingCancelled) {
+      console.log("\nSetup dibatalkan, tidak ada yang berubah.");
+      return;
+    }
+    throw e;
+  }
 }
 
 async function runModeCommand(targetMode?: string): Promise<void> {
@@ -4580,3 +4601,5 @@ if (isMain) {
     process.exit(1);
   });
 }
+
+

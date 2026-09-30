@@ -317,9 +317,7 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
     return (await this.forecastDetailed(input)).p;
   }
 
-  /**
-
-/** Full reply: probability plus the model's stated reasoning (nullable). */
+  /** Full reply: probability plus the model's stated reasoning (nullable). */
   async forecastDetailed(input: ForecastInput): Promise<DetailedForecast> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -374,9 +372,12 @@ export class OpenAICompatibleForecastProvider implements ForecastProvider {
 
 /**
  * Build a provider from env, or null when forecasting is not configured.
- * POLYROOT_FORECAST_PROVIDER=openai enables; OPENAI_API_KEY +
- * POLYROOT_FORECAST_MODEL are then required (throws). OPENAI_BASE_URL
- * selects any OpenAI-compatible gateway (default api.openai.com).
+ * Provider names:
+ * - "codex"  : ChatGPT subscription login (Codex OAuth). No API key.
+ * - "9router": 9Router gateway (files.pango.fun/v1). Uses OPENAI_API_KEY.
+ * - "openai" : Generic OpenAI-compatible endpoint. Uses OPENAI_API_KEY.
+ *
+ * Returns null for unknown/unsupported providers (fail-closed).
  */
 export function createForecastProviderFromEnv(
   env: NodeJS.ProcessEnv = process.env,
@@ -402,6 +403,34 @@ export function createForecastProviderFromEnv(
         const { loadCodexAuth, codexHeaders } = await import("./codex-auth.js");
         return codexHeaders(await loadCodexAuth());
       },
+    });
+  }
+  if (provider === "9router") {
+    // 9Router: OpenAI-compatible API via files.pango.fun gateway.
+    // Uses OPENAI_API_KEY for authentication.
+    const model = env["POLYROOT_FORECAST_MODEL"] ?? "";
+    if (!model) {
+      throw new Error(
+        "FORECAST_CONFIG: POLYROOT_FORECAST_MODEL required when POLYROOT_FORECAST_PROVIDER=9router",
+      );
+    }
+    const baseUrl = env["OPENAI_BASE_URL"] ?? "https://files.pango.fun/v1";
+    const apiKey = env["OPENAI_API_KEY"] ?? "";
+    if (!apiKey) {
+      throw new Error(
+        "FORECAST_CONFIG: OPENAI_API_KEY required when POLYROOT_FORECAST_PROVIDER=9router",
+      );
+    }
+    if (!model) {
+      throw new Error(
+        "FORECAST_CONFIG: POLYROOT_FORECAST_MODEL required when POLYROOT_FORECAST_PROVIDER=9router",
+      );
+    }
+    return new OpenAICompatibleForecastProvider({
+      baseUrl,
+      apiKey,
+      model,
+      requestStyle: "chat",
     });
   }
   if (provider !== "openai") {
