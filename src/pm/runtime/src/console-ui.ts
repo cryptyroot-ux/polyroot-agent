@@ -77,7 +77,6 @@ export function theme(env: NodeJS.ProcessEnv = process.env): Theme {
   };
 }
 
-// eslint-disable-next-line no-control-regex
 const ANSI_RE = /\u001b\[[0-9;]*m/g;
 
 /** Strip ANSI escape codes (width math + log scraping). */

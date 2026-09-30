@@ -31,6 +31,10 @@ import {
   menuFrame,
   startSpinner,
 } from "./console-ui.js";
+import type {
+  CommandHandler as TelegramCommandHandler,
+  TelegramPool as TelegramDbPool,
+} from "./telegram.js";
 import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 import { bootstrapAgent, buildWalletIdentity } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
@@ -290,7 +294,8 @@ export function printHelp(): void {
     "  polyroot wallet verify   Check wallet with no network\n" +
     "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
     "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
-    "  polyroot mode            Show current runtime mode\n" +
+          "  polyroot mode            Show current runtime mode\n" +
+          "  polyroot telegram <approve|list|revoke|allow|status>  Pairing management\n" +
     "  polyroot run --once      Run once then stop (test)\n" +
     "  polyroot restart         Stop the background agent, print how to start it";
   writeSync(1, `${text}\n`);
@@ -2429,6 +2434,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
   let stopping = false;
   let stopResolutionSync: (() => void) | null = null;
   let stopArbScan: (() => void) | null = null;
+  let stopTelegram: (() => void) | null = null;
   const shutdown = (signal: string): void => {
     if (stopping) return;
     stopping = true;
@@ -2440,6 +2446,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     }
     try {
       stopArbScan?.();
+      stopTelegram?.();
     } catch (err: unknown) {
       console.error("Arb scan stop error:", err);
     }
@@ -2553,6 +2560,83 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     }
   }
 
+  // Telegram remote (read-first control): owner-gated DMs only. Entirely
+  // fail-open — a missing token, dead network or crashed poller only logs.
+  if (
+    process.env["TELEGRAM_BOT_TOKEN"] ||
+    process.env["TELEGRAM_BOT_TOKEN_FILE"]
+  ) {
+    try {
+      const tg = await import("./telegram.js");
+      let token = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
+      const tokenFile = process.env["TELEGRAM_BOT_TOKEN_FILE"];
+      if (!token && tokenFile) {
+        try {
+          token = readFileSync(tokenFile, "utf8").trim();
+        } catch {
+          token = "";
+        }
+      }
+      if (token) {
+        const api = tg.createBotApi(token);
+        const me = (await api.call("getMe")) as { username?: unknown };
+        const staticOwners = (process.env["TELEGRAM_OWNER_IDS"] ?? "")
+          .split(",")
+          .map((s) => tg.normalizeTelegramId(s))
+          .filter((s): s is string => s !== null);
+        await api.call("setMyCommands", {
+          commands: [
+            { command: "status", description: "Konfigurasi + supervisor" },
+            { command: "explain", description: "Rantai keputusan AI terakhir" },
+            { command: "insight", description: "Skor peluang + heatmap" },
+            { command: "health", description: "Kesehatan real-time" },
+            { command: "halt", description: "Kill switch darurat" },
+            { command: "help", description: "Daftar perintah" },
+          ],
+        });
+        const session = new tg.TelegramSession();
+        const home = process.env["HOME"] ?? "/tmp";
+        const tgInstallDir =
+          process.env["POLYROOT_AGENT_DIR"] || `${home}/.polyroot`;
+        const handlers = buildTelegramHandlers({
+          pool: agent.pool,
+          getOpenExposureUsd: () => {
+            try {
+              const p = agent.pipeline as unknown as {
+                openExposureUsd?: () => number;
+              };
+              return typeof p.openExposureUsd === "function"
+                ? p.openExposureUsd()
+                : 0;
+            } catch {
+              return 0;
+            }
+          },
+          installDir: tgInstallDir,
+        });
+        const handle = tg.startTelegramPolling({
+          api,
+          pool: agent.pool,
+          staticOwners,
+          session,
+          handlers,
+          readCommands: TELEGRAM_READ,
+          confirmCommands: TELEGRAM_CONFIRM,
+          onError: (e) => console.log(`⚠️  Telegram: ${e.message}`),
+        });
+        stopTelegram = handle.stop;
+        console.log(
+          `📲 Telegram live as @${typeof me.username === "string" ? me.username : "?"}` +
+            ` (owners: ${staticOwners.length > 0 ? staticOwners.length : "pairing-only"})`,
+        );
+      } else {
+        console.log("⚠️  Telegram token file unreadable — remote disabled.");
+      }
+    } catch (err) {
+      console.log(`⚠️  Telegram unavailable: ${(err as Error).message}`);
+    }
+  }
+
   await pipeline.runContinuous();
   // Resolved without a signal (e.g. stop() called externally):
   // flush step writes, then close the pool so the process can exit cleanly.
@@ -2564,6 +2648,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     }
     try {
       stopArbScan?.();
+      stopTelegram?.();
     } catch {
       // never block shutdown on timer cleanup
     }
@@ -2616,6 +2701,426 @@ export interface GuardResetResult {
 /**
  * Mode command - displays or dynamically updates the runtime mode in database.
  */
+/* ─── Telegram remote control ────────────────────────────────────────
+ * DM-only, owner-gated, audited. Read commands run free; state-changing
+ * commands need an in-chat YA; money-escalating actions (mode up, secrets,
+ * keys, guard reset) are refused with terminal instructions. See
+ * telegram.ts for the transport/pairing rules enforced underneath.
+ */
+
+const TELEGRAM_READ = new Set([
+  "status",
+  "explain",
+  "insight",
+  "health",
+  "markets",
+  "logs",
+  "help",
+  "start",
+]);
+
+const TELEGRAM_CONFIRM = new Set([
+  "halt",
+  "restart",
+  "update",
+  "mode",
+  "model",
+  "provider",
+]);
+
+const MODE_RANK: Record<string, number> = {
+  PAPER: 0,
+  SHADOW: 1,
+  MICRO_LIVE: 2,
+  LIVE: 3,
+};
+
+async function telegramExecFile(
+  cmd: string,
+  args: string[],
+): Promise<{ ok: boolean; out: string }> {
+  try {
+    const { execFile } = await import("node:child_process");
+    const out = (await new Promise((resolve, reject) => {
+      execFile(cmd, args, { timeout: 30_000 }, (err, stdout, stderr) => {
+        if (err) reject(new Error(String(stderr || err.message).slice(0, 300)));
+        else resolve(String(stdout));
+      });
+    })) as string;
+    return { ok: true, out };
+  } catch (err) {
+    return { ok: false, out: (err as Error).message };
+  }
+}
+
+async function telegramUnitLoaded(): Promise<boolean> {
+  const r = await telegramExecFile("systemctl", [
+    "show",
+    "polyroot",
+    "--property=LoadState",
+  ]);
+  return r.ok && /^LoadState=loaded$/m.test(r.out);
+}
+
+export interface TelegramRuntime {
+  pool: TelegramDbPool;
+  /** Live open filled notional (portfolio tracker); 0 when unknown. */
+  getOpenExposureUsd: () => number;
+  installDir: string;
+}
+
+function telegramHelpText(): string {
+  return [
+    "Perintah yang tersedia:",
+    "status, explain [--last N], insight, health, markets, logs — baca, bebas",
+    "halt, restart, update, mode, model, provider — butuh konfirmasi YA",
+    "mode naik (ke MICRO_LIVE/LIVE), setup, kunci, guard reset — HANYA via terminal",
+  ].join("\n");
+}
+
+export function buildTelegramHandlers(
+  ctx: TelegramRuntime,
+): Record<string, TelegramCommandHandler> {
+  const read = (
+    fn: (args: string[]) => Promise<void>,
+  ): TelegramCommandHandler => {
+    return async (args) => {
+      const { captureOutput } = await import("./telegram.js");
+      return captureOutput(() => fn(args));
+    };
+  };
+
+  return {
+    help: async () => telegramHelpText(),
+    start: async () =>
+      "PolyRoot Agent — remote terminal.\n" + telegramHelpText(),
+
+    status: read(async (args) => {
+      void args;
+      await runStatus();
+    }),
+    explain: read((args) => runExplainCLI(args)),
+    insight: read((args) => runInsightCLI(args)),
+    health: read((args) => runHealthCLI(args)),
+    logs: read((args) => runConsoleLogs(args)),
+    markets: async () => {
+      const { fetchActiveMarkets } = await import("@polyroot/venue");
+      const spin = startSpinner("Fetching live markets…");
+      try {
+        const all = await fetchActiveMarkets(20);
+        if (all.length === 0) return "Tidak ada pasar aktif saat ini.";
+        return all
+          .slice(0, 5)
+          .map(
+            (m, i) =>
+              `${i + 1}. ${m.question}\n   Vol 24h $${Math.round(m.volume24h).toLocaleString("en-US")}`,
+          )
+          .join("\n");
+      } finally {
+        spin.stop();
+      }
+    },
+
+    halt: async (args) => {
+      const { requestHalt } = await import("./observability/index.js");
+      let cancelVenueOrder: ((id: string) => Promise<boolean>) | undefined;
+      if (args.includes("--cancel-orders")) {
+        try {
+          const adapter = await buildLiveVenueAdapter();
+          cancelVenueOrder = async (id: string) => {
+            const res = await adapter.cancelOrder(id);
+            return res.ok;
+          };
+        } catch {
+          // latch engages regardless; cancels are best-effort
+        }
+      }
+      const r = await requestHalt(
+        { pool: ctx.pool as never, cancelVenueOrder },
+        { reason: "telegram halt", cancelOrders: args.includes("--cancel-orders") },
+      );
+      const summary =
+        `🛑 HALT engaged — loss latch ON (${r.openOrders} open, ` +
+        `${r.canceledOrders} canceled). Menghentikan service…`;
+      if (await telegramUnitLoaded()) {
+        await telegramExecFile("systemctl", ["stop", "polyroot"]);
+      } else {
+        setTimeout(() => process.exit(1), 1500);
+      }
+      return summary;
+    },
+
+    restart: async () => {
+      if (!(await telegramUnitLoaded())) {
+        throw new Error(
+          "Tidak ada supervisor systemd — restart manual dari terminal.",
+        );
+      }
+      await telegramExecFile("systemctl", ["restart", "polyroot"]);
+      return "🔄 Service di-restart. Cek /status semenit lagi.";
+    },
+
+    update: async () => {
+      const r = await telegramExecFile("git", [
+        "-C",
+        ctx.installDir,
+        "ls-remote",
+        "origin",
+        "main",
+      ]);
+      const note = r.ok
+        ? `Remote main: ${r.out.trim().slice(0, 12)}. `
+        : "";
+      const child = await import("node:child_process");
+      const cliJs = process.argv[1] ?? "";
+      if (!cliJs) throw new Error("Lokasi CLI tak dikenal — update dari terminal.");
+      child.spawn(process.execPath, [cliJs, "update"], {
+        detached: true,
+        stdio: "ignore",
+      }).unref();
+      return (
+        `⬆️ Update dimulai di background (~2-3 mnt). ${note}` +
+        "Service akan restart sendiri. Cek /status nanti."
+      );
+    },
+
+    mode: async (args) => {
+      const target = (args[0] ?? "").toUpperCase();
+      const MODES = ["PAPER", "SHADOW", "MICRO_LIVE", "LIVE"];
+      if (!MODES.includes(target)) {
+        throw new Error(
+          `Mode: ${MODES.join(" | ")}. Contoh: mode SHADOW. Mode naik hanya via terminal.`,
+        );
+      }
+      // Current mode from DB (durable truth, not .env).
+      const { ModeWatcher } = await import("./mode-watcher.js");
+      const watcher = new ModeWatcher({ pool: ctx.pool, initialMode: "PAPER" });
+      await watcher.pollOnce();
+      const current = watcher.getMode();
+      const rank = (m: string): number => MODE_RANK[m] ?? -1;
+      if (rank(target) > rank(current)) {
+        throw new Error(
+          `Mode NAIK (${current} → ${target}) hanya via terminal — butuh doctor gates + keputusan sadar.`,
+        );
+      }
+      if (target === current) return `Sudah di mode ${current}.`;
+      const exposure = ctx.getOpenExposureUsd();
+      if (exposure > 0) {
+        throw new Error(
+          `Mode switch ditolak: $${exposure.toFixed(2)} posisi terbuka (akan yatim). Tutup/flat dulu, atau via terminal.`,
+        );
+      }
+      const res = await watcher.requestModeChange(
+        target as "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE",
+        "telegram",
+      );
+      if (!res.ok) throw new Error(`${res.code}: ${res.reason}`);
+      return `✅ Mode → ${res.mode} (berlaku tanpa restart).`;
+    },
+
+    model: async (args) => {
+      loadDotEnv();
+      const {
+        fetchOpenAIModels,
+        fetchCodexModels,
+        loadCodexAuth,
+        DEFAULT_CODEX_MODELS,
+      } = await import("@polyroot/intelligence");
+      const env = process.env;
+      const provider = (env["POLYROOT_FORECAST_PROVIDER"] ?? "openai").toLowerCase();
+      const baseUrl =
+        provider === "codex"
+          ? (env["POLYROOT_CODEX_BASE_URL"] ??
+            "https://chatgpt.com/backend-api/codex")
+          : (env["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1");
+      let catalog: string[] = [];
+      try {
+        if (provider === "codex") {
+          const creds = await loadCodexAuth();
+          catalog = await fetchCodexModels(baseUrl, creds);
+        } else {
+          const key = env["OPENAI_API_KEY"] ?? "";
+          if (!key) throw new Error("no key");
+          catalog = await fetchOpenAIModels(baseUrl, key);
+        }
+      } catch {
+        if (provider === "codex") catalog = [...DEFAULT_CODEX_MODELS];
+      }
+      if (catalog.length === 0) {
+        throw new Error("Katalog model kosong/tak terjangkau — coba lagi nanti.");
+      }
+      const pick = (args[0] ?? "").trim();
+      if (!pick) {
+        return (
+          `Model aktif: ${env["POLYROOT_FORECAST_MODEL"] ?? "(unset)"}\n` +
+          catalog.map((m, i) => `${i + 1}. ${m}`).join("\n") +
+          "\nBalas: model <nomor/nama> — lalu YA. Berlaku setelah restart service."
+        );
+      }
+      const idx = Number.parseInt(pick, 10) - 1;
+      const chosen =
+        Number.isInteger(idx) && idx >= 0 && idx < catalog.length
+          ? (catalog[idx] as string)
+          : catalog.find((m) => m.toLowerCase() === pick.toLowerCase());
+      if (!chosen) throw new Error(`Model "${pick}" tidak ada di katalog.`);
+      writeEnvKey("POLYROOT_FORECAST_MODEL", chosen);
+      if (await telegramUnitLoaded()) {
+        await telegramExecFile("systemctl", ["restart", "polyroot"]);
+        return `✅ Model → ${chosen}. Service di-restart, berlaku ~30 dtk.`;
+      }
+      return `✅ Model → ${chosen} tersimpan. Restart manual untuk berlaku.`;
+    },
+
+    provider: async (args) => {
+      loadDotEnv();
+      const env = process.env;
+      const current = (env["POLYROOT_FORECAST_PROVIDER"] ?? "openai").toLowerCase();
+      const { readCodexLogin } = await import("@polyroot/intelligence");
+      const options: Array<{ id: string; label: string; ready: boolean }> = [
+        {
+          id: "openai",
+          label: `openai (API key ${env["OPENAI_API_KEY"] ? "terpasang" : "BELUM ADA — via terminal"})`,
+          ready: Boolean(env["OPENAI_API_KEY"]),
+        },
+        {
+          id: "codex",
+          label: `codex (ChatGPT login ${readCodexLogin() ? "terdeteksi" : "BELUM ADA — codex login dulu"})`,
+          ready: readCodexLogin() !== null,
+        },
+        {
+          id: "ollama",
+          label: "ollama (lokal, tanpa key — butuh daemon Ollama)",
+          ready: true,
+        },
+      ];
+      const pick = (args[0] ?? "").trim().toLowerCase();
+      if (!pick) {
+        return (
+          `Provider aktif: ${current}\n` +
+          options.map((o, i) => `${i + 1}. ${o.label}`).join("\n") +
+          "\nBalas: provider <nomor/nama> — lalu YA, lalu /model. Tanpa input secret di sini, selamanya."
+        );
+      }
+      const idx = Number.parseInt(pick, 10) - 1;
+      const chosen: { id: string; label: string; ready: boolean } | undefined =
+        Number.isInteger(idx) && idx >= 0 && idx < options.length
+          ? options[idx]
+          : options.find((o) => o.id === pick);
+      if (!chosen) throw new Error(`Provider "${pick}" tidak dikenal.`);
+      if (!chosen.ready) {
+        throw new Error(
+          `Provider "${chosen.id}" belum punya kredensial — konfigurasi via terminal dulu.`,
+        );
+      }
+      writeEnvKey("POLYROOT_FORECAST_PROVIDER", chosen.id);
+      if (chosen.id === "ollama" && !env["OPENAI_BASE_URL"]) {
+        writeEnvKey("OPENAI_BASE_URL", "http://localhost:11434/v1");
+      }
+      return `✅ Provider → ${chosen.id} tersimpan. Lanjut: /model untuk pilih model.`;
+    },
+  };
+}
+
+/** Rewrite one .env key in place (never prints values). */
+function writeEnvKey(key: string, value: string): void {
+  loadDotEnv();
+  const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
+  writeFileSync(ENV_PATH, upsertEnvLines(existing, [`${key}=${value}`]) + "\n", {
+    mode: 0o600,
+  });
+}
+
+/**
+ * `polyroot telegram approve|list|revoke|allow|status` — pairing management
+ * from the owner's terminal. Pairing codes are minted when strangers DM the
+ * bot; approval happens here, never in chat.
+ */
+async function runTelegramCLI(args: string[]): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"] ?? "";
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL required (set in ~/.polyroot/.env).");
+    process.exit(1);
+  }
+  const {
+    approvePairing,
+    listPendingPairings,
+    revokeUser,
+    allowUserDirect,
+    normalizeTelegramId,
+  } = await import("./telegram.js");
+  const { Pool } = await import("pg");
+  const pool = new Pool({ connectionString: dbUrl });
+  const sub = (args[0] ?? "").toLowerCase();
+  try {
+    if (sub === "approve") {
+      const code = args[1] ?? "";
+      if (!code) {
+        console.error("Usage: polyroot telegram approve <CODE>");
+        process.exit(1);
+      }
+      const hit = await approvePairing(pool, code);
+      if (!hit) {
+        console.error("❌ Kode salah / kedaluwarsa / sudah dipakai.");
+        process.exit(1);
+      }
+      console.log(`✅ Paired: ${hit.userId} (${hit.username || "no name"})`);
+    } else if (sub === "list") {
+      const rows = await listPendingPairings(pool);
+      if (rows.length === 0) console.log("(tidak ada pairing pending)");
+      for (const r of rows) {
+        console.log(`- ${r.userId} (${r.username || "no name"}) s/d ${r.expiresAt}`);
+      }
+      console.log("Setujui dengan: polyroot telegram approve <CODE> (kode ada di DM peminta)");
+    } else if (sub === "revoke") {
+      const id = normalizeTelegramId(args[1] ?? "");
+      if (!id) {
+        console.error("Usage: polyroot telegram revoke <numeric-user-id>");
+        process.exit(1);
+      }
+      const touched = await revokeUser(pool, id);
+      console.log(touched ? `✅ Dicabut: ${id}` : `Tidak ada akses untuk ${id}.`);
+    } else if (sub === "allow") {
+      const id = normalizeTelegramId(args[1] ?? "");
+      if (!id) {
+        console.error(
+          "Usage: polyroot telegram allow <numeric-user-id> (cek ID via @userinfobot; username DITOLAK)",
+        );
+        process.exit(1);
+      }
+      await allowUserDirect(pool, id);
+      console.log(`✅ Allowed: ${id}`);
+    } else if (sub === "status" || sub === "") {
+      const token =
+        process.env["TELEGRAM_BOT_TOKEN"] ??
+        (process.env["TELEGRAM_BOT_TOKEN_FILE"] ? "(via file)" : "(unset)");
+      const owners = (process.env["TELEGRAM_OWNER_IDS"] ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      console.log(`Bot token: ${token.startsWith("(") ? token : "✅ set (hidden)"}`);
+      console.log(`Owner IDs: ${owners.length > 0 ? owners.join(", ") : "(none — pairing only)"}`);
+      const pend = await listPendingPairings(pool);
+      console.log(`Pairing pending: ${pend.length}`);
+      try {
+        const audit = await pool.query(
+          `SELECT COUNT(*)::int AS c FROM telegram_audit WHERE created_at > now() - interval '24 hours'`,
+        );
+        console.log(`Audit 24h: ${(audit.rows[0] as { c?: unknown } | undefined)?.c ?? "?"} commands`);
+      } catch {
+        console.log("Audit 24h: (tabel belum migrate — jalankan migrate:latest)");
+      }
+    } else {
+      console.error(
+        "Usage: polyroot telegram <approve CODE|list|revoke ID|allow ID|status>",
+      );
+      process.exit(1);
+    }
+  } finally {
+    await pool.end().catch(() => undefined);
+  }
+}
+
 async function runModeCommand(targetMode?: string): Promise<void> {
   loadDotEnv();
   const dbUrl = process.env["DATABASE_URL"];
@@ -3724,6 +4229,10 @@ export async function main(
     await runModeCommand(argv[1]);
     return;
   }
+  if (argv[0] === "telegram") {
+    await runTelegramCLI(argv.slice(1));
+    return;
+  }
   if (argv[0] === "shadow-fund") {
     const aIdx = argv.indexOf("--amount");
     const amountRaw =
@@ -3791,6 +4300,7 @@ export async function main(
     "logs",
     "log",
     "console",
+    "telegram",
   ]);
   const first = argv[0] ?? "";
   if (argv.length > 0 && !KNOWN_COMMANDS.has(first) && !first.startsWith("-")) {

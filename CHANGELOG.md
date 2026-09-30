@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.13.0] - 2026-09-30
+
+### ✨ Added — Telegram remote (read-first control)
+- **Transport**: Bot API long-polling over native fetch (zero new deps), offset-tracked, stale queue dropped on boot, 4096-char chunking, `/` menu registered
+- **Pairing**: strangers get ID + 8-char code (sha256 stored, 1h expiry, deduped); owner approves via `polyroot telegram approve <CODE>`; numeric IDs only (CVE-2026-28480 class), groups silently dropped, per-user rate limit
+- **Command tiers**: read (`status explain insight health markets logs help`) free · confirm-on-YA (`halt restart update mode model provider`) · refused with terminal instructions (`setup`, keys, guard, `run`, mode-UP)
+- **Safety specifics**: mode-DOWN blocked with open exposure; mode-UP never via chat; provider switch only to credentialed options; secrets refused inbound + scrubbed outbound; every command audited to DB (migration `0025_telegram`)
+- **Ops**: `polyroot telegram <approve|list|revoke|allow|status>`; auto-starts with the loop when configured, fail-open otherwise; `POLYROOT_NO_SYSTEMD`-style escape via unset token
+
 ## [1.12.0] - 2026-09-30
 
 ### ✨ Added — ChatGPT subscription login (Codex OAuth, no API key)
