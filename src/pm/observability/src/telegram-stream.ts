@@ -246,7 +246,7 @@ export class TelegramStreamEmitter {
           parse_mode: this.parseMode,
           disable_web_page_preview: true,
         }),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(60000),
       });
 
       if (response.ok) {

@@ -163,9 +163,9 @@ describe("executeG4Step enforces book regime (no longer display-only)", () => {
   });
 
   it("TIGHT_CONSENSUS books abstain before sizing", async () => {
-    assert.equal(classifyRegime(0.5, 0.52), "TIGHT_CONSENSUS");
+    assert.equal(classifyRegime(0.5, 0.51), "TIGHT_CONSENSUS");
     const res = await executeG4Step(
-      { market_id: "tight", bid: 0.5, ask: 0.52, forecastOverride: 0.65 },
+      { market_id: "tight", bid: 0.5, ask: 0.51, forecastOverride: 0.65 },
       core() as never,
       { cancelProbability: 0 } as never,
     );
