@@ -82,6 +82,8 @@ reasoning renders as "no rationale recorded", never fabricated.
 | Evaluated market, first time / changed reason | One full message |
 | Rejected market, same reason as before | Silent |
 | TRADE / fill / reject / error / mode change | Always, never deduped |
+| RISK_GATE evaluations | Once per distinct gate state (repeats silent until it changes) |
+| Market display name | Gamma discovery text first; venue book `question` accepted only when non-empty and not the token id echoed back |
 | `--once` / test runs (mock fixture) | Fully silent — never touches owner DM |
 | Above 30/min rate cap | Non-money messages dropped; TRADE/error prioritized |
 | Dead Bot API | Trading loop unaffected; messages dropped (gap, never stale backlog) |

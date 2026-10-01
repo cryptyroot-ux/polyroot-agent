@@ -75,6 +75,32 @@ export function recordG4Metrics(metrics: Metrics, m: G4CoreMetrics): void {
   metrics.gauge("maxExposureUsd", m.maxExposureUsd);
 }
 
+/**
+ * Display-name priority for a market (pure, display-only).
+ * Source of truth order: Gamma discovery text first. The venue book
+ * snapshot's `question` echoes the token id on the public adapter, so it
+ * is accepted only when non-empty AND not the market id parroted back.
+ * Returns undefined when nothing human-readable exists (callers fall back
+ * to the market id, never to a fabricated title).
+ */
+export function resolveDisplayQuestion(
+  marketId: string,
+  snapQuestion: unknown,
+  discoveryQuestion: unknown,
+): string | undefined {
+  if (typeof discoveryQuestion === "string" && discoveryQuestion.length > 0) {
+    return discoveryQuestion;
+  }
+  if (
+    typeof snapQuestion === "string" &&
+    snapQuestion.length > 0 &&
+    snapQuestion !== marketId
+  ) {
+    return snapQuestion;
+  }
+  return undefined;
+}
+
 /** PAPER/SHADOW placeholder identity (mock venue — never touches real funds). */
 const PAPER_WALLET_IDENTITY: WalletIdentity = {
   schema_version: "1.1",
@@ -373,10 +399,11 @@ export async function bootstrapAgent(
             }
             const side: MarketSide = marketSides[marketId] ?? "UNKNOWN";
             const meta = marketMeta.get(marketId);
-            const q =
-              typeof snap.question === "string" && snap.question.length > 0
-                ? snap.question
-                : meta?.question;
+            const q = resolveDisplayQuestion(
+              marketId,
+              snap.question,
+              meta?.question,
+            );
             return {
               bid: snap.yes_price,
               ask: snap.no_price,
@@ -659,11 +686,15 @@ export async function bootstrapAgent(
           }
         })();
       },
-      emitFinancialGate: (gate, gateMode, venue) =>
+      // Gate state is deduped like reports: first ALLOW goes out once,
+      // repeats stay silent until the gate actually changes state.
+      emitFinancialGate: (gate, gateMode, venue) => {
+        if (!reportDedupe.shouldSend("__gate__", gate)) return;
         emitStream(
           "RISK_GATE",
           `Risk gate: [${gate}] (mode ${gateMode}, venue ${venue})`,
-        ),
+        );
+      },
       emitError: (error, context) =>
         emitStream("ERROR", `Agent loop error: ${error.message}`, undefined, {
           context: String(context),

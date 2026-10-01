@@ -49,6 +49,7 @@ export {
   buildWalletIdentity,
   deterministicWalletId,
   recordG4Metrics,
+  resolveDisplayQuestion,
   type BootstrapAgentOptions,
 } from "./main.js";
 export {
