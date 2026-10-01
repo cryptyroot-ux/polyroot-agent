@@ -22,6 +22,8 @@ export type AgentStreamEventType =
   | "ORDER_SUBMIT"
   | "ORDER_FILL"
   | "NO_TRADE"
+  | "PASS_DIGEST"
+  | "MARKET_REPORT"
   | "ERROR";
 
 export interface AgentStreamEvent {
@@ -49,26 +51,28 @@ const EVENT_STYLE: Record<AgentStreamEventType, EventStyle> = {
   ORDER_SUBMIT: { icon: "🚀", stage: "SUBMIT" },
   ORDER_FILL: { icon: "✅", stage: "FILL" },
   NO_TRADE: { icon: "🛑", stage: "NO TRADE" },
+  PASS_DIGEST: { icon: "🌐", stage: "PASS" },
+  MARKET_REPORT: { icon: "🧠", stage: "MARKET" },
   ERROR: { icon: "❌", stage: "ERROR" },
 };
 
 /** Metadata keys that read better as a labelled value than a raw dump. */
 const FIELD_LABELS: Record<string, string> = {
-  probability: "Probabilitas",
+  probability: "Probability",
   ask: "Ask",
   bid: "Bid",
   spread: "Spread",
   edge: "Edge",
-  decision: "Keputusan",
-  reason: "Alasan",
-  fillStatus: "Status Fill",
-  fillPrice: "Harga Fill",
-  filledSize: "Ukuran Fill",
+  decision: "Decision",
+  reason: "Reason",
+  fillStatus: "Fill status",
+  fillPrice: "Fill price",
+  filledSize: "Filled size",
   mode: "Mode",
   venue: "Venue",
-  from: "Dari",
-  to: "Ke",
-  context: "Konteks",
+  from: "From",
+  to: "To",
+  context: "Context",
 };
 
 /** Escape Telegram legacy-Markdown control characters in an untrusted value. */
@@ -107,7 +111,7 @@ function renderValue(value: unknown): string | null {
     // 4-decimal display for probabilities/prices, integers stay bare.
     return Number.isInteger(value) ? String(value) : value.toFixed(4);
   }
-  if (typeof value === "boolean") return value ? "ya" : "tidak";
+  if (typeof value === "boolean") return value ? "yes" : "no";
   if (typeof value === "string") return value.length > 0 ? value : null;
   return null;
 }
@@ -274,4 +278,103 @@ export function getTelegramEmitter(): TelegramStreamEmitter {
     globalEmitter = new TelegramStreamEmitter();
   }
   return globalEmitter;
+}
+
+export function confidenceOf(p: number): number {
+  // Derived certainty, NOT a model self-report (profit-contract rule).
+  return Math.min(Math.max(2 * Math.abs(p - 0.5), 0), 1);
+}
+
+export function formatPassDigest(input: {
+  mode: string;
+  clock: string;
+  scanned: number;
+  evaluating: Array<{ id: string; question: string }>;
+  deferredCount: number;
+}): string {
+  const lines = [
+    `🌐 PASS [${input.mode}] ${input.clock}`,
+    `Scanned ${input.scanned} → evaluating ${input.evaluating.length}, deferred ${input.deferredCount}`,
+  ];
+  for (const m of input.evaluating.slice(0, 5)) {
+    const name = m.question.length > 0 ? m.question : m.id;
+    lines.push(`• "${name}" — evaluating`);
+  }
+  if (input.deferredCount > 0) {
+    lines.push(
+      `• ${input.deferredCount} more deferred (ranked below this pass's top-K cut)`,
+    );
+  }
+  return lines.join("\n");
+}
+
+export function formatMarketReport(input: {
+  question: string;
+  bid: number;
+  ask: number;
+  spread: number;
+  volume24h?: number;
+  pYes: number | null;
+  confidence: number;
+  rationale: string;
+  factors: string[];
+  decision: "TRADE" | "NO_TRADE";
+  reason: string;
+  edgePct: number;
+  floorPct: number;
+  sizeShares: number;
+  notionalUsd: number;
+  bankrollUsd: number;
+  exposureUsd: number;
+}): string {
+  const head = input.question.length > 0 ? input.question : "Untitled market";
+  const lines = [
+    `🧠 "${head}"`,
+    `Book: YES ${(input.bid * 100).toFixed(1)}¢ / NO ${((1 - input.ask) * 100).toFixed(1)}¢ · spread ${(input.spread * 100).toFixed(1)}¢` +
+      (input.volume24h !== undefined
+        ? ` · 24h vol $${Math.round(input.volume24h).toLocaleString("en-US")}`
+        : ""),
+  ];
+  if (input.pYes === null) {
+    lines.push(`AI: abstained — ${input.reason}`);
+  } else {
+    lines.push(
+      `AI: p(YES) ${(input.pYes * 100).toFixed(1)}% (confidence ${(input.confidence * 100).toFixed(0)}%)`,
+      `Reasoning: "${input.rationale.length > 0 ? input.rationale : "no rationale recorded"}"`,
+    );
+    if (input.factors.length > 0) {
+      lines.push(
+        `Factors: ${input.factors
+          .slice(0, 3)
+          .map((f) => `• ${f}`)
+          .join(" ")}`,
+      );
+    }
+  }
+  lines.push("---");
+  if (input.decision === "TRADE") {
+    lines.push(
+      `🚀 TRADE: ${input.sizeShares} shares ≈ $${input.notionalUsd.toFixed(2)}`,
+      `"${head}"`,
+      `Edge +${input.edgePct.toFixed(1)}% > floor +${input.floorPct.toFixed(1)}%`,
+      `Bankroll $${input.bankrollUsd.toFixed(2)} · exposure $${input.exposureUsd.toFixed(2)}`,
+    );
+  } else {
+    lines.push(
+      `🛡️ DECISION: ⏭️ NO_TRADE`,
+      `Why not: ${input.reason}`,
+      `At stake: $${input.notionalUsd.toFixed(2)} (held)`,
+    );
+  }
+  return lines.join("\n");
+}
+
+export class ReportDedupe {
+  private readonly lastReason = new Map<string, string>();
+  shouldSend(marketId: string, reasonKey: string): boolean {
+    const prev = this.lastReason.get(marketId);
+    if (prev === reasonKey) return false;
+    this.lastReason.set(marketId, reasonKey);
+    return true;
+  }
 }
