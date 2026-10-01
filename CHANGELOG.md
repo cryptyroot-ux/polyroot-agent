@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **PM-OBS-01 Telegram agent stream** — every G4 loop stage (research ingest, evidence weight, universe scan, forecast, reasoning, risk gate, order submit/fill, no-trade, errors) is pushed in real time to the owner's Telegram DM via a `G4CoreObservability` fan-out in `bootstrapAgent`. Fire-and-forget with failure backoff, 30/min rate cap, HTML-escaped fields, and outbound secret redaction — a dead Bot API never touches the trading loop
 
+### ✨ Changed
+
+- **Telegram agent stream v2 (PM-OBS-01 refinement)** — per-pass digest with real market names and scanned/evaluated/deferred counts; per-market reports (question, book, AI probability + verbatim reasoning, decision + reason, money at stake) in full English; NO_TRADE reported once per reason; `--once` runs stay silent
+
 ## [1.14.2] - 2026-09-30
 
 ### 🔧 Fixed
