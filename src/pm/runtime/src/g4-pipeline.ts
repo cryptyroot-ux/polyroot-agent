@@ -152,9 +152,7 @@ export class G4Pipeline {
 
   /** Portfolio cap in USD: explicit cap, else the autonomy default. */
   portfolioCapUsd(): number {
-    return (
-      this.config.microLiveCapUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD
-    );
+    return this.config.microLiveCapUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
   }
 
   /**
@@ -318,6 +316,18 @@ export class G4Pipeline {
           console.log(
             `⏭️  Portfolio: evaluating ${selected.length}/${inputs.length} top-scored markets, ${deferred.length} deferred to next pass.`,
           );
+        }
+        // Real per-pass universe report for observers (Telegram stream).
+        // Fire-and-forget: observer failure never breaks the pass.
+        try {
+          this.deps.onUniversePass?.({
+            scanned: inputs.length,
+            selected: selected.length,
+            deferred: deferred.length,
+            mode: this.config.mode,
+          });
+        } catch {
+          // observability is never load-bearing
         }
         const byId = new Map(inputs.map((i) => [i.market_id, i] as const));
 

@@ -129,7 +129,8 @@ export interface G4CoreDeps {
    * Powers the contradiction guard only; absent = no smart-money
    * judgement (never blocks on missing data).
    */
-  getSmartMoneyFlow?: ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
+  getSmartMoneyFlow?:
+    ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
   /**
    * Settlement feed: token ids resolved since the last call (any cadence;
    * the tracker dedupes). Powers the portfolio-full gate by freeing
@@ -137,6 +138,18 @@ export interface G4CoreDeps {
    * exposure only grows, gate only tightens).
    */
   listSettledTokens?: (() => Promise<string[]>) | undefined;
+  /**
+   * Per-pass universe summary hook (observability only). The pipeline calls
+   * it once per loop pass with real scanned/selected/deferred counts.
+   */
+  onUniversePass?:
+    | ((summary: {
+        scanned: number;
+        selected: number;
+        deferred: number;
+        mode: string;
+      }) => void)
+    | undefined;
 }
 
 /**
@@ -203,11 +216,7 @@ export interface G4CoreResult {
 }
 
 /** Book regime from prices alone (no model input). */
-export type MarketRegime =
-  | "DUST"
-  | "TIGHT_CONSENSUS"
-  | "CONTESTED"
-  | "NORMAL";
+export type MarketRegime = "DUST" | "TIGHT_CONSENSUS" | "CONTESTED" | "NORMAL";
 
 /**
  * Classify the book: DUST (extreme, untradeable), TIGHT_CONSENSUS
@@ -269,7 +278,9 @@ export function flbExtremePremium(touchPrice: number): number {
  * +0.5pp for 7–30 days, +1pp beyond 30 days. Unknown expiry pays nothing
  * (discovery already rejects near-expiry gambles separately).
  */
-export function expiryEdgePremium(daysToExpiry: number | null | undefined): number {
+export function expiryEdgePremium(
+  daysToExpiry: number | null | undefined,
+): number {
   if (daysToExpiry === null || daysToExpiry === undefined) return 0;
   if (!Number.isFinite(daysToExpiry) || daysToExpiry < 0) return 0;
   if (daysToExpiry > 30) return 0.01;
@@ -431,7 +442,9 @@ export function formatStepBlock(input: StepBlockInput): string {
       input.funds.lockedUsd > 0
         ? `locked ${money(input.funds.lockedUsd)} · `
         : "";
-    lines.push(`  $ ${bank}${locked}session ${money(input.funds.sessionPnlUsd)}`);
+    lines.push(
+      `  $ ${bank}${locked}session ${money(input.funds.sessionPnlUsd)}`,
+    );
   }
   return lines.join("\n");
 }
@@ -522,8 +535,17 @@ export interface CreateG4CoreOptions {
   getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
   getFunds?: (() => Promise<StepFunds | undefined>) | undefined;
   modeWatcher?: ModeWatcher;
-  getSmartMoneyFlow?: ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
+  getSmartMoneyFlow?:
+    ((tokenId: string) => SmartMoneyFlow | undefined) | undefined;
   listSettledTokens?: (() => Promise<string[]>) | undefined;
+  onUniversePass?:
+    | ((summary: {
+        scanned: number;
+        selected: number;
+        deferred: number;
+        mode: string;
+      }) => void)
+    | undefined;
 }
 
 export function createG4Core(options: CreateG4CoreOptions) {
@@ -550,6 +572,9 @@ export function createG4Core(options: CreateG4CoreOptions) {
       : {}),
     ...(options.listSettledTokens
       ? { listSettledTokens: options.listSettledTokens }
+      : {}),
+    ...(options.onUniversePass
+      ? { onUniversePass: options.onUniversePass }
       : {}),
   };
   return {
@@ -1007,7 +1032,9 @@ export async function executeG4Step(
 
   // Calculate PnL
   const fairDiff =
-    evalSide === "NO" && fill ? (1 - p) - fill.fillPrice : p - (fill?.fillPrice ?? 0.5);
+    evalSide === "NO" && fill
+      ? 1 - p - fill.fillPrice
+      : p - (fill?.fillPrice ?? 0.5);
   const pnl = fill
     ? fill.status === "FILLED" || fill.status === "PARTIAL"
       ? fill.filledSize * fairDiff - (fill.makerFee + fill.takerFee)

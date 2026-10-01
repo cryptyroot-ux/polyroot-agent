@@ -157,6 +157,12 @@ export interface BootstrapAgentOptions {
    * When omitted, a mock venue adapter is used (PAPER/SHADOW-only).
    */
   venueAdapter?: VenueAdapter;
+  /**
+   * Telegram agent-stream switch. Default true; the CLI sets it false for
+   * `--once` / test runs so dry runs never spam the owner's DM with mock
+   * markets. The continuous service always streams.
+   */
+  streamEnabled?: boolean;
 }
 
 export async function bootstrapAgent(
@@ -462,12 +468,16 @@ export async function bootstrapAgent(
     getReasoning: (marketId: string) => lastReasoning.get(marketId),
   });
   const telegramStream: TelegramStreamEmitter = getTelegramEmitter();
+  // `--once` and other dry runs stay silent: only the continuous loop may
+  // push to the owner's DM (a mock_market_1 test ping is spam, not signal).
+  const streamOn = opts.streamEnabled !== false && telegramStream.isEnabled();
   const emitStream = (
     type: AgentStreamEventType,
     message: string,
     marketId?: string,
     metadata?: Record<string, unknown>,
   ): void => {
+    if (!streamOn) return;
     void telegramStream
       .emit({
         eventId: `${type.toLowerCase()}-${Date.now()}`,
@@ -479,7 +489,7 @@ export async function bootstrapAgent(
       })
       .catch(() => false);
   };
-  if (telegramStream.isEnabled()) {
+  if (streamOn) {
     console.log("[telegram] agent stream ON");
   }
   const safeObserve = (fn: () => unknown): void => {
@@ -502,12 +512,6 @@ export async function bootstrapAgent(
       emitMetrics: (m) => {
         safeObserve(() => recordG4Metrics(metrics, m));
       },
-      emitStepStart: (input, stepMode) =>
-        emitStream(
-          "UNIVERSE_SCAN",
-          `Memulai evaluasi market [Mode: ${stepMode}]`,
-          input.market_id,
-        ),
       emitStepComplete: (input, result) => {
         safeObserve(() => stepPersistence.emitStepComplete(input, result));
         const isExecuted =
@@ -598,6 +602,21 @@ export async function bootstrapAgent(
     },
     getReasoning: (marketId: string) => lastReasoning.get(marketId),
     getFunds,
+    // Real per-pass universe report: scanned (priced) → selected for
+    // evaluation → deferred. This is the only UNIVERSE_SCAN the owner
+    // ever sees — real counts, never a placeholder line.
+    onUniversePass: (s) =>
+      emitStream(
+        "UNIVERSE_SCAN",
+        `Pass [Mode: ${s.mode}]: ${s.scanned} market berlikuiditas dipindai → ${s.selected} dievaluasi, ${s.deferred} ditunda`,
+        undefined,
+        {
+          scanned: s.scanned,
+          selected: s.selected,
+          deferred: s.deferred,
+          mode: s.mode,
+        },
+      ),
     forecast: async (market) => {
       if (!forecastProvider) {
         if (!warnedNoProvider) {

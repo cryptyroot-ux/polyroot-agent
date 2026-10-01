@@ -274,7 +274,8 @@ export function printHelp(): void {
   const text =
     banner("PolyRoot Agent", "Autonomous AI trading for Polymarket") +
     "\n" +
-    helpThemeBold("commands:") + "\n" +
+    helpThemeBold("commands:") +
+    "\n" +
     "  polyroot                 Open the interactive console\n" +
     "  polyroot run             Start the agent (mode from settings)\n" +
     "  polyroot onboard         First-time setup (new users)\n" +
@@ -294,14 +295,13 @@ export function printHelp(): void {
     "  polyroot wallet verify   Check wallet with no network\n" +
     "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
     "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
-          "  polyroot mode            Show current runtime mode\n" +
-          "  polyroot telegram setup          Wizard: hubungkan bot Telegram (tanpa edit file)\n" +
-          "  polyroot telegram <approve|list|revoke|allow|status>  Pairing management\n" +
+    "  polyroot mode            Show current runtime mode\n" +
+    "  polyroot telegram setup          Wizard: hubungkan bot Telegram (tanpa edit file)\n" +
+    "  polyroot telegram <approve|list|revoke|allow|status>  Pairing management\n" +
     "  polyroot run --once      Run once then stop (test)\n" +
     "  polyroot restart         Stop the background agent, print how to start it";
   writeSync(1, `${text}\n`);
 }
-
 
 export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
   let mode: CLIConfig["mode"] = "SHADOW";
@@ -544,7 +544,8 @@ async function pickOpenAIModel(
     return await askChoice(`Select model for ${provider}:`, fallbackModels, 0);
   }
   return await askText("Model name", { defaultValue: fallbackDefault });
-}async function pingModelsEndpoint(
+}
+async function pingModelsEndpoint(
   baseUrl: string,
   apiKey: string,
 ): Promise<boolean> {
@@ -734,7 +735,10 @@ async function askChoiceArrows(
           digitBuf = "";
           digitTimer = null;
         }, 800);
-        if (typeof (digitTimer as unknown as { unref?: unknown }).unref === "function") {
+        if (
+          typeof (digitTimer as unknown as { unref?: unknown }).unref ===
+          "function"
+        ) {
           (digitTimer as unknown as { unref: () => void }).unref();
         }
       }
@@ -813,19 +817,29 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let isCodexProvider = false;
 
   // Provider configurations
-  const providerConfig: Record<string, {
-    baseUrl?: string;
-    defaultModel?: string;
-    models?: string[];
-    apiKeyRequired?: boolean;
-    specialHandling?: 'ollama' | 'vertex' | 'bedrock' | 'custom' | 'copilot' | 'azure' | 'codex';
-  }> = {
-    "OpenAI": {
+  const providerConfig: Record<
+    string,
+    {
+      baseUrl?: string;
+      defaultModel?: string;
+      models?: string[];
+      apiKeyRequired?: boolean;
+      specialHandling?:
+        | "ollama"
+        | "vertex"
+        | "bedrock"
+        | "custom"
+        | "copilot"
+        | "azure"
+        | "codex";
+    }
+  > = {
+    OpenAI: {
       baseUrl: "https://api.openai.com/v1",
       models: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
       defaultModel: "gpt-4o-mini",
     },
-    "Qwen": {
+    Qwen: {
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
       models: ["qwen-max", "qwen-plus", "qwen-turbo", "qwen-coder-plus"],
       defaultModel: "qwen-max",
@@ -855,7 +869,11 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     },
     "Hugging Face Inference Providers": {
       baseUrl: "https://api-inference.huggingface.co/v1",
-      models: ["meta-llama/Meta-Llama-3.1-70B-Instruct", "mistralai/Mixtral-8x7B-Instruct-v0.1", "google/gemma-2-27b-it"],
+      models: [
+        "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "google/gemma-2-27b-it",
+      ],
       defaultModel: "meta-llama/Meta-Llama-3.1-70B-Instruct",
     },
     "Google AI Studio": {
@@ -866,7 +884,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     "Google Vertex AI": {
       specialHandling: "vertex",
     },
-    "DeepSeek": {
+    DeepSeek: {
       baseUrl: "https://api.deepseek.com/v1",
       models: ["deepseek-chat", "deepseek-coder", "deepseek-r1"],
       defaultModel: "deepseek-chat",
@@ -886,7 +904,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       models: ["step-1", "step-2"],
       defaultModel: "step-1",
     },
-    "MiniMax": {
+    MiniMax: {
       baseUrl: "https://api.minimax.chat/v1",
       models: ["abab6.5s-chat", "abab6.5-chat", "abab5.5-chat"],
       defaultModel: "abab6.5s-chat",
@@ -939,15 +957,23 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     },
     "CommandCode — Claude models via Anthropic Messages API": {
       baseUrl: "https://api.anthropic.com/v1",
-      models: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
+      models: [
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+        "claude-3-opus-20240229",
+      ],
       defaultModel: "claude-3-5-sonnet-20241022",
     },
     "custom (direct API)": {
       specialHandling: "custom",
     },
-    "DeepInfra": {
+    DeepInfra: {
       baseUrl: "https://api.deepinfra.com/v1/openai",
-      models: ["meta-llama/Meta-Llama-3.1-70B-Instruct", "microsoft/phi-3-medium-4k-instruct", "mistralai/Mixtral-8x7B-Instruct-v0.1"],
+      models: [
+        "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        "microsoft/phi-3-medium-4k-instruct",
+        "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      ],
       defaultModel: "meta-llama/Meta-Llama-3.1-70B-Instruct",
     },
     "Meta Muse Spark family": {
@@ -957,7 +983,10 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     },
     "Nebius Token Factory": {
       baseUrl: "https://api.studio.nebius.ai/v1",
-      models: ["meta-llama/Meta-Llama-3.1-405B-Instruct", "mistralai/Mixtral-8x7B-Instruct-v0.1"],
+      models: [
+        "meta-llama/Meta-Llama-3.1-405B-Instruct",
+        "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      ],
       defaultModel: "meta-llama/Meta-Llama-3.1-405B-Instruct",
     },
     "Ramp Router": {
@@ -965,12 +994,12 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       models: ["auto"],
       defaultModel: "auto",
     },
-    "Upstage": {
+    Upstage: {
       baseUrl: "https://api.upstage.ai/v1/solar",
       models: ["solar-1-mini", "solar-1-pro"],
       defaultModel: "solar-1-pro",
     },
-    "Ollama": {
+    Ollama: {
       specialHandling: "ollama",
     },
     "OpenAI (ChatGPT login via Codex OAuth": {
@@ -983,7 +1012,12 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   // first so "Ollama Cloud (...)" wins over "Ollama".
   const configKey = Object.keys(providerConfig)
     .sort((a, b) => b.length - a.length)
-    .find((k) => provider === k || provider.startsWith(`${k} `) || provider.startsWith(`${k} (`));
+    .find(
+      (k) =>
+        provider === k ||
+        provider.startsWith(`${k} `) ||
+        provider.startsWith(`${k} (`),
+    );
   const config = (configKey ? providerConfig[configKey] : undefined) || {};
 
   const specialHandling = config.specialHandling;
@@ -1067,39 +1101,80 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       }
     }
   } else if (specialHandling === "copilot") {
-    console.log("GitHub Copilot ACP uses stdio transport. Spawning copilot --acp --stdio...");
+    console.log(
+      "GitHub Copilot ACP uses stdio transport. Spawning copilot --acp --stdio...",
+    );
     model = "copilot";
     baseUrl = "stdio";
     apiKey = "copilot";
   } else if (specialHandling === "vertex") {
     console.log("Google Vertex AI uses ADC (Application Default Credentials).");
     console.log("Ensure gcloud auth application-default login is set up.");
-    model = await askChoice("Select model:", [
-      "gemini-1.5-pro",
-      "gemini-1.5-flash",
-      "gemini-1.5-flash-8b",
-    ], 0);
+    model = await askChoice(
+      "Select model:",
+      ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b"],
+      0,
+    );
     baseUrl = "vertex";
     apiKey = "adc";
   } else if (specialHandling === "bedrock") {
     console.log("AWS Bedrock uses IAM credentials or API key.");
     console.log("Ensure AWS credentials are configured (aws configure).");
-    model = await askChoice("Select model:", [
-      "anthropic.claude-3-5-sonnet-20241022-v2:0",
-      "anthropic.claude-3-5-haiku-20241022-v1:0",
-      "meta.llama3-1-70b-instruct-v1:0",
-      "amazon.nova-pro-v1:0",
-    ], 0);
+    model = await askChoice(
+      "Select model:",
+      [
+        "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "anthropic.claude-3-5-haiku-20241022-v1:0",
+        "meta.llama3-1-70b-instruct-v1:0",
+        "amazon.nova-pro-v1:0",
+      ],
+      0,
+    );
     baseUrl = "bedrock";
     apiKey = "aws";
   } else if (specialHandling === "azure") {
     console.log("Azure Foundry uses Azure credentials.");
     console.log("Ensure az login or service principal is configured.");
     model = await askText("Model deployment name (example: gpt-4o)");
-    baseUrl = await askText("Azure OpenAI endpoint (example: https://your-resource.openai.azure.com)");
+    baseUrl = await askText(
+      "Azure OpenAI endpoint (example: https://your-resource.openai.azure.com)",
+    );
     apiKey = await askRequiredSecret("Paste your Azure OpenAI API key");
     baseUrl = "azure";
   } else if (specialHandling === "custom") {
+    baseUrl = await askText(
+      "Your gateway base URL (example: https://your-gateway.example/v1)",
+    );
+    if (!/^https?:\/\/.+/.test(baseUrl)) {
+      console.log(
+        "That does not look like a web address — it starts with http:// or https://.",
+      );
+      baseUrl = await askText(
+        "Your gateway base URL (example: https://your-gateway.example/v1)",
+      );
+      if (!/^https?:\/\/.+/.test(baseUrl)) {
+        throw new Error("A valid gateway base URL is required");
+      }
+    }
+    model = await askText("Model name (example: gpt-4o-mini)");
+    apiKey = await askRequiredSecret("Paste your gateway API key");
+  } else if (specialHandling === undefined) {
+    // Standard OpenAI-compatible providers: authenticate FIRST, then let
+    // the endpoint itself list its models (Hermes-style live discovery).
+    // Dead keys / offline hosts fall back to the curated list, never to
+    // a blind guess.
+    if (config.baseUrl) {
+      baseUrl = config.baseUrl;
+      apiKey = await askRequiredSecret(`Paste your ${provider} API key`);
+      model = await pickOpenAIModel(
+        provider,
+        baseUrl,
+        apiKey,
+        config.models ?? [],
+        config.defaultModel,
+      );
+    } else {
+      // Fallback for unknown providers
       baseUrl = await askText(
         "Your gateway base URL (example: https://your-gateway.example/v1)",
       );
@@ -1115,39 +1190,6 @@ async function runOnboarding(): Promise<OnboardingConfig> {
         }
       }
       model = await askText("Model name (example: gpt-4o-mini)");
-      apiKey = await askRequiredSecret("Paste your gateway API key");
-    } else if (specialHandling === undefined) {
-      // Standard OpenAI-compatible providers: authenticate FIRST, then let
-      // the endpoint itself list its models (Hermes-style live discovery).
-      // Dead keys / offline hosts fall back to the curated list, never to
-      // a blind guess.
-      if (config.baseUrl) {
-        baseUrl = config.baseUrl;
-        apiKey = await askRequiredSecret(`Paste your ${provider} API key`);
-        model = await pickOpenAIModel(
-          provider,
-          baseUrl,
-          apiKey,
-          config.models ?? [],
-          config.defaultModel,
-        );
-      } else {
-        // Fallback for unknown providers
-        baseUrl = await askText(
-          "Your gateway base URL (example: https://your-gateway.example/v1)",
-        );
-        if (!/^https?:\/\/.+/.test(baseUrl)) {
-          console.log(
-            "That does not look like a web address — it starts with http:// or https://.",
-          );
-          baseUrl = await askText(
-            "Your gateway base URL (example: https://your-gateway.example/v1)",
-          );
-          if (!/^https?:\/\/.+/.test(baseUrl)) {
-            throw new Error("A valid gateway base URL is required");
-          }
-        }
-        model = await askText("Model name (example: gpt-4o-mini)");
       apiKey = await askRequiredSecret("Paste your gateway API key");
     }
   }
@@ -1860,9 +1902,7 @@ async function runConsole(): Promise<void> {
       }
       throw err;
     }
-    const parts = normalizeConsoleLine(line)
-      .split(/\s+/)
-      .filter(Boolean);
+    const parts = normalizeConsoleLine(line).split(/\s+/).filter(Boolean);
     if (parts.length === 0) continue;
     const cmd = (parts[0] as string).toLowerCase();
     const args = parts.slice(1);
@@ -2056,9 +2096,12 @@ async function restartBackgroundAgent(): Promise<void> {
   let systemdLoaded = false;
   if (process.env["POLYROOT_NO_SYSTEMD"] !== "1") {
     try {
-      const show = execSync("systemctl show polyroot --property=LoadState 2>/dev/null", {
-        encoding: "utf8",
-      });
+      const show = execSync(
+        "systemctl show polyroot --property=LoadState 2>/dev/null",
+        {
+          encoding: "utf8",
+        },
+      );
       systemdLoaded = show.trim() === "LoadState=loaded";
     } catch {
       systemdLoaded = false;
@@ -2120,7 +2163,12 @@ async function promptVenueCredentials(): Promise<void> {
 async function runSetupFlow(): Promise<void> {
   try {
     loadDotEnv();
-    console.log(banner("PolyRoot Setup — Full Configuration", "mode · bounds · markets · wallet · credentials"));
+    console.log(
+      banner(
+        "PolyRoot Setup — Full Configuration",
+        "mode · bounds · markets · wallet · credentials",
+      ),
+    );
 
     // 1. MODE SELECTION
     const currentMode = process.env["RUNTIME_MODE"] ?? "PAPER";
@@ -2348,7 +2396,9 @@ async function runSetupFlow(): Promise<void> {
     if (universe.length > 0) {
       console.log(`   Markets: ${universe.join(", ")}`);
     }
-    console.log(formatNextSteps(mode as "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE"));
+    console.log(
+      formatNextSteps(mode as "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE"),
+    );
     process.loadEnvFile(ENV_PATH as string);
     closeSharedSession();
   } catch (err) {
@@ -2387,20 +2437,22 @@ import {
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
   const isLive = config.mode === "MICRO_LIVE" || config.mode === "LIVE";
-  const agent = await bootstrapAgent(
-    config.databaseUrl,
-    config.mode,
-    isLive
-      ? {
-          cryptoSigner: createSignerFromEnv(),
-          // Authenticated secure client (reads live books; submission of
-          // domain SignedOrders stays refused until CLOB translation lands).
-          venueAdapter: await buildLiveVenueAdapter(),
-        }
-      : config.mode === "SHADOW"
-        ? { venueAdapter: buildPublicVenueAdapter() }
-        : {},
-  );
+  const baseOpts = isLive
+    ? {
+        cryptoSigner: createSignerFromEnv(),
+        // Authenticated secure client (reads live books; submission of
+        // domain SignedOrders stays refused until CLOB translation lands).
+        venueAdapter: await buildLiveVenueAdapter(),
+      }
+    : config.mode === "SHADOW"
+      ? { venueAdapter: buildPublicVenueAdapter() }
+      : {};
+  const agent = await bootstrapAgent(config.databaseUrl, config.mode, {
+    ...baseOpts,
+    // Dry runs stay silent on Telegram: `--once` evaluates the mock
+    // fixture, and its PAPER/mock_market_1 lines are test noise.
+    streamEnabled: !config.once,
+  });
   const pipeline = agent.pipeline as unknown as {
     runContinuous: () => Promise<void>;
     processMarket: (input: {
@@ -2554,7 +2606,9 @@ export async function startAgent(config: CLIConfig): Promise<void> {
       const handle = startResolutionSync({
         pool: agent.pool,
         calibration: new PgCalibrationService(agent.pool),
-        ...(Number.isFinite(syncMs) && syncMs > 0 ? { intervalMs: syncMs } : {}),
+        ...(Number.isFinite(syncMs) && syncMs > 0
+          ? { intervalMs: syncMs }
+          : {}),
         onTick: (s) =>
           console.log(
             `📚 Resolution sync: ${s.decidedMarkets} decided, ${s.recordedNew} new, calibration ${s.calibrationGroups} group(s)/${s.calibrationSamples} samples`,
@@ -2564,9 +2618,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
       });
       stopResolutionSync = handle.stop;
     } catch (err) {
-      console.log(
-        `⚠️  Resolution sync unavailable: ${(err as Error).message}`,
-      );
+      console.log(`⚠️  Resolution sync unavailable: ${(err as Error).message}`);
     }
   }
 
@@ -2869,7 +2921,10 @@ export function buildTelegramHandlers(
       }
       const r = await requestHalt(
         { pool: ctx.pool as never, cancelVenueOrder },
-        { reason: "telegram halt", cancelOrders: args.includes("--cancel-orders") },
+        {
+          reason: "telegram halt",
+          cancelOrders: args.includes("--cancel-orders"),
+        },
       );
       const summary =
         `🛑 HALT engaged — loss latch ON (${r.openOrders} open, ` +
@@ -2900,16 +2955,17 @@ export function buildTelegramHandlers(
         "origin",
         "main",
       ]);
-      const note = r.ok
-        ? `Remote main: ${r.out.trim().slice(0, 12)}. `
-        : "";
+      const note = r.ok ? `Remote main: ${r.out.trim().slice(0, 12)}. ` : "";
       const child = await import("node:child_process");
       const cliJs = process.argv[1] ?? "";
-      if (!cliJs) throw new Error("Lokasi CLI tak dikenal — update dari terminal.");
-      child.spawn(process.execPath, [cliJs, "update"], {
-        detached: true,
-        stdio: "ignore",
-      }).unref();
+      if (!cliJs)
+        throw new Error("Lokasi CLI tak dikenal — update dari terminal.");
+      child
+        .spawn(process.execPath, [cliJs, "update"], {
+          detached: true,
+          stdio: "ignore",
+        })
+        .unref();
       return (
         `⬆️ Update dimulai di background (~2-3 mnt). ${note}` +
         "Service akan restart sendiri. Cek /status nanti."
@@ -2959,7 +3015,9 @@ export function buildTelegramHandlers(
         DEFAULT_CODEX_MODELS,
       } = await import("@polyroot/intelligence");
       const env = process.env;
-      const provider = (env["POLYROOT_FORECAST_PROVIDER"] ?? "openai").toLowerCase();
+      const provider = (
+        env["POLYROOT_FORECAST_PROVIDER"] ?? "openai"
+      ).toLowerCase();
       const baseUrl =
         provider === "codex"
           ? (env["POLYROOT_CODEX_BASE_URL"] ??
@@ -2979,7 +3037,9 @@ export function buildTelegramHandlers(
         if (provider === "codex") catalog = [...DEFAULT_CODEX_MODELS];
       }
       if (catalog.length === 0) {
-        throw new Error("Katalog model kosong/tak terjangkau — coba lagi nanti.");
+        throw new Error(
+          "Katalog model kosong/tak terjangkau — coba lagi nanti.",
+        );
       }
       const pick = (args[0] ?? "").trim();
       if (!pick) {
@@ -3006,7 +3066,9 @@ export function buildTelegramHandlers(
     provider: async (args) => {
       loadDotEnv();
       const env = process.env;
-      const current = (env["POLYROOT_FORECAST_PROVIDER"] ?? "openai").toLowerCase();
+      const current = (
+        env["POLYROOT_FORECAST_PROVIDER"] ?? "openai"
+      ).toLowerCase();
       const { readCodexLogin } = await import("@polyroot/intelligence");
       const options: Array<{ id: string; label: string; ready: boolean }> = [
         {
@@ -3060,7 +3122,10 @@ export function buildTelegramHandlers(
  * Without this, re-running onboarding wipes integrations configured
  * afterwards (e.g. `polyroot telegram setup`). Pure and unit-tested.
  */
-export function mergeEnvPreserving(existing: string, freshLines: string[]): string {
+export function mergeEnvPreserving(
+  existing: string,
+  freshLines: string[],
+): string {
   const fresh = freshLines.join("\n");
   const managed = new Set(
     freshLines
@@ -3079,9 +3144,13 @@ export function mergeEnvPreserving(existing: string, freshLines: string[]): stri
 function writeEnvKey(key: string, value: string): void {
   loadDotEnv();
   const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
-  writeFileSync(ENV_PATH, upsertEnvLines(existing, [`${key}=${value}`]) + "\n", {
-    mode: 0o600,
-  });
+  writeFileSync(
+    ENV_PATH,
+    upsertEnvLines(existing, [`${key}=${value}`]) + "\n",
+    {
+      mode: 0o600,
+    },
+  );
 }
 
 /**
@@ -3129,9 +3198,13 @@ async function runTelegramCLI(args: string[]): Promise<void> {
       const rows = await listPendingPairings(pool);
       if (rows.length === 0) console.log("(tidak ada pairing pending)");
       for (const r of rows) {
-        console.log(`- ${r.userId} (${r.username || "no name"}) s/d ${r.expiresAt}`);
+        console.log(
+          `- ${r.userId} (${r.username || "no name"}) s/d ${r.expiresAt}`,
+        );
       }
-      console.log("Setujui dengan: polyroot telegram approve <CODE> (kode ada di DM peminta)");
+      console.log(
+        "Setujui dengan: polyroot telegram approve <CODE> (kode ada di DM peminta)",
+      );
     } else if (sub === "revoke") {
       const id = normalizeTelegramId(args[1] ?? "");
       if (!id) {
@@ -3139,7 +3212,9 @@ async function runTelegramCLI(args: string[]): Promise<void> {
         process.exit(1);
       }
       const touched = await revokeUser(pool, id);
-      console.log(touched ? `✅ Dicabut: ${id}` : `Tidak ada akses untuk ${id}.`);
+      console.log(
+        touched ? `✅ Dicabut: ${id}` : `Tidak ada akses untuk ${id}.`,
+      );
     } else if (sub === "allow") {
       const id = normalizeTelegramId(args[1] ?? "");
       if (!id) {
@@ -3158,17 +3233,25 @@ async function runTelegramCLI(args: string[]): Promise<void> {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      console.log(`Bot token: ${token.startsWith("(") ? token : "✅ set (hidden)"}`);
-      console.log(`Owner IDs: ${owners.length > 0 ? owners.join(", ") : "(none — pairing only)"}`);
+      console.log(
+        `Bot token: ${token.startsWith("(") ? token : "✅ set (hidden)"}`,
+      );
+      console.log(
+        `Owner IDs: ${owners.length > 0 ? owners.join(", ") : "(none — pairing only)"}`,
+      );
       const pend = await listPendingPairings(pool);
       console.log(`Pairing pending: ${pend.length}`);
       try {
         const audit = await pool.query(
           `SELECT COUNT(*)::int AS c FROM telegram_audit WHERE created_at > now() - interval '24 hours'`,
         );
-        console.log(`Audit 24h: ${(audit.rows[0] as { c?: unknown } | undefined)?.c ?? "?"} commands`);
+        console.log(
+          `Audit 24h: ${(audit.rows[0] as { c?: unknown } | undefined)?.c ?? "?"} commands`,
+        );
       } catch {
-        console.log("Audit 24h: (tabel belum migrate — jalankan migrate:latest)");
+        console.log(
+          "Audit 24h: (tabel belum migrate — jalankan migrate:latest)",
+        );
       }
     } else if (sub === "setup") {
       await runTelegramSetup();
@@ -3194,7 +3277,12 @@ async function runTelegramCLI(args: string[]): Promise<void> {
  */
 async function runTelegramSetupInner(): Promise<void> {
   const tg = await import("./telegram.js");
-  console.log(banner("Telegram Setup — kendali dari HP", "3 langkah, ~2 menit, tanpa edit file"));
+  console.log(
+    banner(
+      "Telegram Setup — kendali dari HP",
+      "3 langkah, ~2 menit, tanpa edit file",
+    ),
+  );
   console.log("Langkah 1/3: buat bot");
   console.log("  1. Buka Telegram → cari @BotFather → kirim /newbot");
   console.log("  2. Nama tampilan bebas, username harus berakhiran 'bot'");
@@ -3206,7 +3294,9 @@ async function runTelegramSetupInner(): Promise<void> {
     const raw = await askRequiredSecret("Tempel token bot dari BotFather");
     token = raw.trim();
     if (!tg.isValidBotTokenFormat(token)) {
-      console.log("  Itu bukan format token (harusnya 123456:ABC-... 35+ karakter). Coba lagi.");
+      console.log(
+        "  Itu bukan format token (harusnya 123456:ABC-... 35+ karakter). Coba lagi.",
+      );
       continue;
     }
     try {
@@ -3235,12 +3325,18 @@ async function runTelegramSetupInner(): Promise<void> {
   }
 
   console.log("\nLangkah 2/3: kenali pemilik (tanpa cari ID manual)");
-  console.log(`  Buka Telegram → cari @${botUsername || "bot Anda"} → kirim "halo".`);
-  console.log("  Saya deteksi ID numerik Anda otomatis (username DITOLAK — bisa didaur ulang).");
+  console.log(
+    `  Buka Telegram → cari @${botUsername || "bot Anda"} → kirim "halo".`,
+  );
+  console.log(
+    "  Saya deteksi ID numerik Anda otomatis (username DITOLAK — bisa didaur ulang).",
+  );
   const api = tg.createBotApi(token);
   let frontier = 0;
   try {
-    const seen = (await api.call("getUpdates", { timeout: 0 })) as Array<{ update_id?: unknown }>;
+    const seen = (await api.call("getUpdates", { timeout: 0 })) as Array<{
+      update_id?: unknown;
+    }>;
     for (const u of Array.isArray(seen) ? seen : []) {
       if (typeof u?.update_id === "number" && u.update_id >= frontier) {
         frontier = u.update_id + 1;
@@ -3279,7 +3375,9 @@ async function runTelegramSetupInner(): Promise<void> {
   }
   let ownerId = "";
   if (detected) {
-    console.log(`\n✅ Terdeteksi: ${detected.username} (ID ${detected.userId})`);
+    console.log(
+      `\n✅ Terdeteksi: ${detected.username} (ID ${detected.userId})`,
+    );
     const mine = await askText("Ini Anda? (Y/n)", { defaultValue: "y" });
     if (mine.trim().toLowerCase().startsWith("y")) {
       ownerId = detected.userId;
@@ -3321,7 +3419,9 @@ async function runTelegramSetupInner(): Promise<void> {
   );
   console.log("✅ Tersimpan (token disembunyikan, tidak pernah di-log).");
   console.log(`   Owner: ${owners.join(", ")}`);
-  console.log("\nKirim /status ke bot untuk test. Perintah: status explain insight health halt(mode turun) YA-konfirmasi.");
+  console.log(
+    "\nKirim /status ke bot untuk test. Perintah: status explain insight health halt(mode turun) YA-konfirmasi.",
+  );
 
   const loaded = await (async () => {
     try {
@@ -3336,9 +3436,12 @@ async function runTelegramSetupInner(): Promise<void> {
     }
   })();
   if (loaded) {
-    const restart = await askText("Restart service sekarang agar aktif? (Y/n)", {
-      defaultValue: "y",
-    });
+    const restart = await askText(
+      "Restart service sekarang agar aktif? (Y/n)",
+      {
+        defaultValue: "y",
+      },
+    );
     if (restart.trim().toLowerCase().startsWith("y")) {
       try {
         const { execFile } = await import("node:child_process");
@@ -3349,11 +3452,15 @@ async function runTelegramSetupInner(): Promise<void> {
         });
         console.log("✅ Service di-restart. Kirim /status ke bot.");
       } catch (err) {
-        console.log(`⚠️  Restart gagal: ${(err as Error).message} — jalankan: sudo systemctl restart polyroot`);
+        console.log(
+          `⚠️  Restart gagal: ${(err as Error).message} — jalankan: sudo systemctl restart polyroot`,
+        );
       }
     }
   } else {
-    console.log("Jalankan loop dulu (polyroot run / systemd), Telegram ikut aktif otomatis bila token terpasang.");
+    console.log(
+      "Jalankan loop dulu (polyroot run / systemd), Telegram ikut aktif otomatis bila token terpasang.",
+    );
   }
   closeSharedSession();
 }
@@ -3872,7 +3979,8 @@ async function runStatus(): Promise<void> {
  * user input — execSync is safe here. Never throws.
  */
 async function supervisorState(): Promise<string> {
-  if (process.env["POLYROOT_NO_SYSTEMD"] === "1") return "skipped (manual mode)";
+  if (process.env["POLYROOT_NO_SYSTEMD"] === "1")
+    return "skipped (manual mode)";
   try {
     const { execSync } = await import("node:child_process");
     const show = execSync(
@@ -3995,14 +4103,24 @@ export async function refreshSupervisorUnit(installDir: string): Promise<{
     return out;
   }
   try {
-    const show = execSync("systemctl show polyroot --property=LoadState 2>/dev/null", {
-      encoding: "utf8",
-    });
+    const show = execSync(
+      "systemctl show polyroot --property=LoadState 2>/dev/null",
+      {
+        encoding: "utf8",
+      },
+    );
     // SYSTEMD_DIR override = render-only test mode: never touch real systemd.
-    if (!process.env["POLYROOT_SYSTEMD_DIR"] && show.trim() === "LoadState=loaded") {
-      execSync("systemctl try-restart polyroot 2>/dev/null", { stdio: "ignore" });
+    if (
+      !process.env["POLYROOT_SYSTEMD_DIR"] &&
+      show.trim() === "LoadState=loaded"
+    ) {
+      execSync("systemctl try-restart polyroot 2>/dev/null", {
+        stdio: "ignore",
+      });
       out.restarted = true;
-      console.log("\n✅ Supervisor unit refreshed (service try-restarted if active)");
+      console.log(
+        "\n✅ Supervisor unit refreshed (service try-restarted if active)",
+      );
     } else if (out.refreshed) {
       console.log("\n✅ Supervisor unit refreshed");
     }
@@ -4601,5 +4719,3 @@ if (isMain) {
     process.exit(1);
   });
 }
-
-
