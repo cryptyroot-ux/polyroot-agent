@@ -293,18 +293,16 @@ export function formatPassDigest(input: {
   deferredCount: number;
 }): string {
   const lines = [
-    `🌐 <b>PASS</b> [${input.mode}] ${input.clock}`,
-    `📊 Scanned ${input.scanned} → evaluating ${input.evaluating.length} | deferred ${input.deferredCount}`,
+    `🌐 PASS [${input.mode}] ${input.clock}`,
+    `Scanned ${input.scanned} | evaluating ${input.evaluating.length} | deferred ${input.deferredCount}`,
   ];
   for (const m of input.evaluating.slice(0, 5)) {
     const name = m.question.length > 0 ? m.question : m.id;
     const tag = m.side === "YES" || m.side === "NO" ? ` [${m.side}]` : "";
-    lines.push(`▫️ <b>"${name}"</b>${tag} — evaluating`);
+    lines.push(`  • ${name}${tag} — evaluating`);
   }
   if (input.deferredCount > 0) {
-    lines.push(
-      `🔽 ${input.deferredCount} more deferred (ranked below top-K cut)`,
-    );
+    lines.push(`  … ${input.deferredCount} more deferred (below top-K)`);
   }
   return lines.join("\n");
 }
@@ -336,41 +334,39 @@ export function formatMarketReport(input: {
   const sideTag =
     input.side === "YES" || input.side === "NO" ? ` [${input.side}]` : "";
   const lines = [
-    `🧠 <b>${head}</b>${sideTag}`,
-    `📊 <b>Book:</b> YES ${(input.bid * 100).toFixed(1)}¢ | NO ${((1 - input.ask) * 100).toFixed(1)}¢ | spread ${(input.spread * 100).toFixed(1)}¢` +
+    `🧠 ${head}${sideTag}`,
+    `Book: YES ${(input.bid * 100).toFixed(1)}¢  NO ${((1 - input.ask) * 100).toFixed(1)}¢  spread ${(input.spread * 100).toFixed(1)}¢` +
       (input.volume24h !== undefined
-        ? ` | vol24h $${Math.round(input.volume24h).toLocaleString("en-US")}`
+        ? `  vol $${Math.round(input.volume24h).toLocaleString("en-US")}`
         : ""),
   ];
   if (input.pYes === null) {
-    lines.push(`⚠️ <b>AI:</b> abstained — ${input.reason}`);
+    lines.push(`AI abstained — ${input.reason}`);
   } else {
     lines.push(
-      `🎯 <b>AI:</b> p(YES) ${(input.pYes * 100).toFixed(1)}% (conf ${(input.confidence * 100).toFixed(0)}%)`,
-      `💭 <b>Reasoning:</b> "${input.rationale.length > 0 ? input.rationale : "no rationale recorded"}"`,
+      `AI: YES ${(input.pYes * 100).toFixed(1)}%  confidence ${(input.confidence * 100).toFixed(0)}%`,
+      `Reasoning: ${input.rationale.length > 0 ? input.rationale : "no rationale recorded"}`,
     );
     if (input.factors.length > 0) {
       lines.push(
-        `📌 <b>Factors:</b> ${input.factors
+        `Factors: ${input.factors
           .slice(0, 3)
           .map((f) => `• ${f}`)
-          .join(" ")}`,
+          .join("  ")}`,
       );
     }
   }
-  lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  lines.push("");
   if (input.decision === "TRADE") {
     lines.push(
-      `🚀 <b>TRADE</b>: ${input.sizeShares} shares ≈ $${input.notionalUsd.toFixed(2)}`,
-      `📋 <b>Market:</b> "${head}"`,
-      `📊 <b>Edge:</b> +${input.edgePct.toFixed(1)}% > floor +${input.floorPct.toFixed(1)}%`,
-      `💰 <b>Bankroll:</b> ${money(input.bankrollUsd)} | <b>Exposure:</b> ${money(input.exposureUsd)}`,
+      `🚀 TRADE: ${input.sizeShares} shares`,
+      `💰 $${input.notionalUsd.toFixed(2)} (Bankroll: ${money(input.bankrollUsd)} | Exp: ${money(input.exposureUsd)})`,
+      `📈 Edge: +${input.edgePct.toFixed(1)}% (Floor: +${input.floorPct.toFixed(1)}%)`,
     );
   } else {
     lines.push(
-      `🛡️ <b>DECISION:</b> ⏭️ NO_TRADE`,
-      `❓ <b>Why not:</b> ${input.reason}`,
-      `💰 <b>At stake:</b> ${money(input.notionalUsd)} (held)`,
+      `⏭️ NO_TRADE: ${input.reason}`,
+      `💰 At stake: $${input.notionalUsd.toFixed(2)}`,
     );
   }
   return lines.join("\n");
