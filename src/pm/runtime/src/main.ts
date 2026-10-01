@@ -333,6 +333,29 @@ export async function bootstrapAgent(
     mode === "PAPER"
       ? { ids: [], sides: {} }
       : await resolveMarketUniverseWithSides(process.env);
+  const marketMeta = new Map<string, { question: string; volume24h: number }>();
+  // Display-only enrichment (skipped for empty universes such as PAPER):
+  // an empty map just means nameless lines, never a boot failure.
+  if (marketUniverse.length > 0) {
+    try {
+      const { fetchActiveMarkets } = await import("@polyroot/venue");
+      const discovered = await fetchActiveMarkets(50, 15_000);
+      for (const d of discovered) {
+        if (d.yesTokenId)
+          marketMeta.set(d.yesTokenId, {
+            question: d.question,
+            volume24h: d.volume24h,
+          });
+        if (d.noTokenId)
+          marketMeta.set(d.noTokenId, {
+            question: d.question,
+            volume24h: d.volume24h,
+          });
+      }
+    } catch {
+      // display-only enrichment; an empty map just means nameless lines
+    }
+  }
   const marketSource =
     marketUniverse.length === 0
       ? undefined
@@ -344,7 +367,20 @@ export async function bootstrapAgent(
               return null;
             }
             const side: MarketSide = marketSides[marketId] ?? "UNKNOWN";
-            return { bid: snap.yes_price, ask: snap.no_price, side };
+            const meta = marketMeta.get(marketId);
+            const q =
+              typeof snap.question === "string" && snap.question.length > 0
+                ? snap.question
+                : meta?.question;
+            return {
+              bid: snap.yes_price,
+              ask: snap.no_price,
+              side,
+              ...(q ? { question: q } : {}),
+              ...(meta && Number.isFinite(meta.volume24h)
+                ? { volume24h: meta.volume24h }
+                : {}),
+            };
           },
         };
 

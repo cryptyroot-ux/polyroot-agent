@@ -38,9 +38,13 @@ export type MarketSide = "YES" | "NO" | "UNKNOWN";
 /** Live price source backing collectLiveInputs (venue-backed in prod). */
 export interface MarketSource {
   universe(): string[];
-  snapshot(
-    marketId: string,
-  ): Promise<{ bid: number; ask: number; side?: MarketSide } | null>;
+  snapshot(marketId: string): Promise<{
+    bid: number;
+    ask: number;
+    side?: MarketSide;
+    question?: string;
+    volume24h?: number;
+  } | null>;
 }
 
 export interface LiveMarketInput {
@@ -48,6 +52,8 @@ export interface LiveMarketInput {
   bid: number;
   ask: number;
   side?: MarketSide;
+  question?: string;
+  volume24h?: number;
 }
 
 /**
@@ -67,7 +73,13 @@ export async function collectLiveInputs(
       market_id,
       bid: snap.bid,
       ask: snap.ask,
-      ...(snap.side ? { side: snap.side } : {}),
+      ...(snap.side !== undefined ? { side: snap.side } : {}),
+      ...(typeof snap.question === "string" && snap.question.length > 0
+        ? { question: snap.question }
+        : {}),
+      ...(typeof snap.volume24h === "number" && Number.isFinite(snap.volume24h)
+        ? { volume24h: snap.volume24h }
+        : {}),
     });
   }
   return inputs;
