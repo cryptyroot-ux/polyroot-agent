@@ -177,9 +177,7 @@ export function extractJsonObject(text: string): string {
  * Returns the stitched assistant text, or null when unusable.
  * Pure over the body text — unit-tested without network.
  */
-export function readCompletionContent(
-  bodyText: string,
-): string | null {
+export function readCompletionContent(bodyText: string): string | null {
   const text = bodyText.trim();
   if (!text) return null;
   if (!text.startsWith("data:") && !text.includes("\ndata:")) {
@@ -204,10 +202,7 @@ export function readCompletionContent(
             continue;
           }
           for (const part of item.content) {
-            if (
-              part?.type === "output_text" &&
-              typeof part.text === "string"
-            ) {
+            if (part?.type === "output_text" && typeof part.text === "string") {
               stitched += part.text;
             }
           }
@@ -247,7 +242,6 @@ export function readCompletionContent(
   return stitched.trim() ? stitched : null;
 }
 
-
 /**
  * Live model catalog for any OpenAI-compatible endpoint: GET {base}/models
  * with the owner's key. Returns deduplicated model ids (possibly empty —
@@ -263,13 +257,10 @@ export async function fetchOpenAIModels(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(
-      `${baseUrl.replace(/\/+$/, "")}/models`,
-      {
-        headers: { authorization: `Bearer ${apiKey}` },
-        signal: ctrl.signal,
-      },
-    );
+    const res = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/models`, {
+      headers: { authorization: `Bearer ${apiKey}` },
+      signal: ctrl.signal,
+    });
     if (!res.ok) throw new Error(`model catalog HTTP ${res.status}`);
     const data = (await res.json()) as {
       data?: Array<{ id?: unknown }>;
@@ -431,6 +422,9 @@ export function createForecastProviderFromEnv(
       apiKey,
       model,
       requestStyle: "chat",
+      // Measured 9Router latency 0.5–14s; the 15s default amputates
+      // slow-but-good responses into abstains during gateway slow spells.
+      timeoutMs: 30_000,
     });
   }
   if (provider !== "openai") {

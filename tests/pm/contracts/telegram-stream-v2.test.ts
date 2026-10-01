@@ -80,6 +80,41 @@ describe("stream v2 builders", () => {
     assert.ok(!text.includes("Bankroll $0"));
   });
 
+  it("digest and report tag YES/NO sides so duplicate names disambiguate", () => {
+    const digest = formatPassDigest({
+      mode: "SHADOW",
+      clock: "10:58:04",
+      scanned: 4,
+      evaluating: [
+        { id: "yes-id", question: "Putin out as President?", side: "YES" },
+        { id: "no-id", question: "Putin out as President?", side: "NO" },
+      ],
+      deferredCount: 1,
+    });
+    assert.ok(digest.includes('"Putin out as President?" [YES]'));
+    assert.ok(digest.includes('"Putin out as President?" [NO]'));
+    const report = formatMarketReport({
+      question: "Putin out as President?",
+      side: "NO",
+      bid: 0.972,
+      ask: 0.973,
+      spread: 0.001,
+      pYes: 0.028,
+      confidence: 0.944,
+      rationale: "Tight spread.",
+      factors: [],
+      decision: "NO_TRADE",
+      reason: "edge below floor",
+      edgePct: -1,
+      floorPct: 3,
+      sizeShares: 0,
+      notionalUsd: 0,
+      bankrollUsd: 100,
+      exposureUsd: 0,
+    });
+    assert.ok(report.includes('"Putin out as President?" [NO]'));
+  });
+
   it("ReportDedupe sends once per reason, resends on change", () => {
     const d = new ReportDedupe();
     assert.equal(d.shouldSend("m1", "NO_TRADE:spread"), true);

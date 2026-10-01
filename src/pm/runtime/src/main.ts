@@ -101,6 +101,24 @@ export function resolveDisplayQuestion(
   return undefined;
 }
 
+/**
+ * Cooldown after a failed forecast attempt for one market (pure).
+ * The loop re-evaluates the same books every pass; without this a dead
+ * gateway gets hammered on every step. Skipping re-attempts changes
+ * nothing decision-wise (the outcome would be null either way) — passes
+ * just get faster during outages, and the gateway gets room to recover.
+ */
+export const FORECAST_FAIL_COOLDOWN_MS = 45_000;
+
+export function shouldSkipFailedForecast(
+  lastFailMs: number | undefined,
+  nowMs: number,
+): boolean {
+  return (
+    lastFailMs !== undefined && nowMs - lastFailMs < FORECAST_FAIL_COOLDOWN_MS
+  );
+}
+
 /** PAPER/SHADOW placeholder identity (mock venue — never touches real funds). */
 const PAPER_WALLET_IDENTITY: WalletIdentity = {
   schema_version: "1.1",
@@ -343,6 +361,8 @@ export async function bootstrapAgent(
     { rationale: string | null; factors: string[]; model: string }
   >();
   const reportDedupe = new ReportDedupe();
+  // Last failed-forecast timestamp per market (see shouldSkipFailedForecast).
+  const lastForecastFail = new Map<string, number>();
   let warnedNoProvider = false;
   if (forecastProvider) {
     const model = process.env["POLYROOT_FORECAST_MODEL"] ?? "unknown";
@@ -661,6 +681,9 @@ export async function bootstrapAgent(
             if (!reportDedupe.shouldSend(input.market_id, reasonKey)) return;
             const body = formatMarketReport({
               question,
+              ...(input.side === "YES" || input.side === "NO"
+                ? { side: input.side }
+                : {}),
               bid: input.bid,
               ask: input.ask,
               spread: Math.abs(input.ask - input.bid),
@@ -772,6 +795,20 @@ export async function bootstrapAgent(
         }
         return null;
       }
+      // Skip a market whose forecast just failed: same null outcome,
+      // zero wasted gateway calls while it recovers.
+      if (
+        shouldSkipFailedForecast(
+          lastForecastFail.get(market.market_id),
+          Date.now(),
+        )
+      ) {
+        return null;
+      }
+      const markFailed = (): null => {
+        lastForecastFail.set(market.market_id, Date.now());
+        return null;
+      };
       try {
         // Prefer the rich reply so the operator sees the AI's stated
         // reasoning live; fall back to p-only on legacy providers.
@@ -786,7 +823,7 @@ export async function bootstrapAgent(
           });
           // No console output here: the per-market display block (pipeline)
           // renders the rationale right below with book + verdict context.
-          if (detailed.p === null) return null;
+          if (detailed.p === null) return markFailed();
           // Learned correction, fail-open: no trained map = identity, so
           // behavior is byte-identical until resolutions teach it otherwise.
           try {
@@ -796,14 +833,19 @@ export async function bootstrapAgent(
               category: "general",
               horizon_sec: 3600,
             });
+            lastForecastFail.delete(market.market_id);
             return cal.p_calibrated;
           } catch {
+            lastForecastFail.delete(market.market_id);
             return detailed.p;
           }
         }
-        return await forecastProvider.forecast(market);
+        const p = await forecastProvider.forecast(market);
+        if (p === null) return markFailed();
+        lastForecastFail.delete(market.market_id);
+        return p;
       } catch {
-        return null;
+        return markFailed();
       }
     },
     // Fractional-Quarter-Kelly sizing on the touch price, hard-capped at the

@@ -50,6 +50,8 @@ export {
   deterministicWalletId,
   recordG4Metrics,
   resolveDisplayQuestion,
+  shouldSkipFailedForecast,
+  FORECAST_FAIL_COOLDOWN_MS,
   type BootstrapAgentOptions,
 } from "./main.js";
 export {

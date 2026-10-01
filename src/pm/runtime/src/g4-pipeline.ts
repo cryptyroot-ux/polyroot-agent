@@ -330,9 +330,11 @@ export class G4Pipeline {
               .map((id) => {
                 const hit = byId.get(id);
                 const q = hit?.question;
+                const s = hit?.side;
                 return {
                   id,
                   question: typeof q === "string" && q.length > 0 ? q : id,
+                  ...(s === "YES" || s === "NO" ? { side: s } : {}),
                 };
               })
               .slice(0, 5),

@@ -289,7 +289,7 @@ export function formatPassDigest(input: {
   mode: string;
   clock: string;
   scanned: number;
-  evaluating: Array<{ id: string; question: string }>;
+  evaluating: Array<{ id: string; question: string; side?: string }>;
   deferredCount: number;
 }): string {
   const lines = [
@@ -298,7 +298,8 @@ export function formatPassDigest(input: {
   ];
   for (const m of input.evaluating.slice(0, 5)) {
     const name = m.question.length > 0 ? m.question : m.id;
-    lines.push(`• "${name}" — evaluating`);
+    const tag = m.side === "YES" || m.side === "NO" ? ` [${m.side}]` : "";
+    lines.push(`• "${name}"${tag} — evaluating`);
   }
   if (input.deferredCount > 0) {
     lines.push(
@@ -310,6 +311,7 @@ export function formatPassDigest(input: {
 
 export function formatMarketReport(input: {
   question: string;
+  side?: string;
   bid: number;
   ask: number;
   spread: number;
@@ -331,8 +333,10 @@ export function formatMarketReport(input: {
   const money = (v: number | null): string =>
     v === null ? "—" : `$${v.toFixed(2)}`;
   const head = input.question.length > 0 ? input.question : "Untitled market";
+  const sideTag =
+    input.side === "YES" || input.side === "NO" ? ` [${input.side}]` : "";
   const lines = [
-    `🧠 "${head}"`,
+    `🧠 "${head}"${sideTag}`,
     `Book: YES ${(input.bid * 100).toFixed(1)}¢ / NO ${((1 - input.ask) * 100).toFixed(1)}¢ · spread ${(input.spread * 100).toFixed(1)}¢` +
       (input.volume24h !== undefined
         ? ` · 24h vol $${Math.round(input.volume24h).toLocaleString("en-US")}`

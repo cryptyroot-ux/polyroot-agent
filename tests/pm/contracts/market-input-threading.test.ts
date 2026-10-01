@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { collectLiveInputs } from "@polyroot/venue";
-import { resolveDisplayQuestion } from "@polyroot/runtime";
+import {
+  resolveDisplayQuestion,
+  shouldSkipFailedForecast,
+  FORECAST_FAIL_COOLDOWN_MS,
+} from "@polyroot/runtime";
 
 describe("loop inputs carry question + volume24h when present", () => {
   it("copies question/volume from snapshot; omits them when absent", async () => {
@@ -42,5 +46,21 @@ describe("resolveDisplayQuestion prefers discovery text over echoed ids", () => 
     );
     assert.equal(resolveDisplayQuestion(id, id, undefined), undefined);
     assert.equal(resolveDisplayQuestion(id, "", ""), undefined);
+  });
+});
+
+describe("shouldSkipFailedForecast cools down hammering without changing outcomes", () => {
+  it("skips within cooldown, retries after, never skips first attempts", () => {
+    const now = 1_000_000;
+    assert.equal(shouldSkipFailedForecast(undefined, now), false);
+    assert.equal(shouldSkipFailedForecast(now - 1_000, now), true);
+    assert.equal(
+      shouldSkipFailedForecast(now - FORECAST_FAIL_COOLDOWN_MS, now),
+      false,
+    );
+    assert.equal(
+      shouldSkipFailedForecast(now - FORECAST_FAIL_COOLDOWN_MS - 1, now),
+      false,
+    );
   });
 });

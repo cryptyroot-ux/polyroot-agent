@@ -148,7 +148,7 @@ export interface G4CoreDeps {
         selected: number;
         deferred: number;
         mode: string;
-        evaluated: Array<{ id: string; question: string }>;
+        evaluated: Array<{ id: string; question: string; side?: string }>;
       }) => void)
     | undefined;
 }
@@ -551,7 +551,7 @@ export interface CreateG4CoreOptions {
         selected: number;
         deferred: number;
         mode: string;
-        evaluated: Array<{ id: string; question: string }>;
+        evaluated: Array<{ id: string; question: string; side?: string }>;
       }) => void)
     | undefined;
 }
