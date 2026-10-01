@@ -237,7 +237,7 @@ export function classifyRegime(bid: number, ask: number): MarketRegime {
   // misses the TIGHT_CONSENSUS gate that exists to block it.
   const spread = Math.round(Math.abs(ask - bid) * 10000) / 10000;
   if (mid <= 0.02 || mid >= 0.98) return "DUST";
-  if (spread <= 0.02) return "TIGHT_CONSENSUS";
+  if (spread <= 0.01) return "TIGHT_CONSENSUS";
   if (Math.abs(mid - 0.5) < 0.1) return "CONTESTED";
   return "NORMAL";
 }

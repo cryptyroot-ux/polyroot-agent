@@ -6,9 +6,15 @@ describe("market regime classifier", () => {
   it("flags dust, tight consensus, contested and normal books", () => {
     assert.equal(classifyRegime(0.009, 0.011), "DUST");
     assert.equal(classifyRegime(0.989, 0.991), "DUST");
+    // Gate loosened to 1¢ (was 2¢): 0.6/0.61 is a 1¢ book and still tight.
     assert.equal(classifyRegime(0.6, 0.61), "TIGHT_CONSENSUS");
     assert.equal(classifyRegime(0.45, 0.55), "CONTESTED");
     assert.equal(classifyRegime(0.6, 0.7), "NORMAL");
+  });
+
+  it("admits a 3¢ book that the old 2¢ gate rejected", () => {
+    // 0.6/0.63 = 3¢ spread, mid 0.615 (away from the contested band).
+    assert.equal(classifyRegime(0.6, 0.63), "NORMAL");
   });
 });
 
