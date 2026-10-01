@@ -229,6 +229,34 @@ function probeResources(): HealthProbe {
   };
 }
 
+async function probeLiveGuard(pool: QueryablePool): Promise<HealthProbe> {
+  try {
+    const res = await pool.query(
+      `SELECT halted, realized_loss_pusd FROM live_guard_state LIMIT 1`,
+      [],
+    );
+    const row = res.rows[0];
+    if (row?.["halted"]) {
+      return {
+        name: "LiveGuard",
+        status: "down",
+        detail: `HALTED due to loss breach (loss: $${row?.["realized_loss_pusd"]})`,
+      };
+    }
+    return {
+      name: "LiveGuard",
+      status: "ok",
+      detail: "operational",
+    };
+  } catch (err) {
+    return {
+      name: "LiveGuard",
+      status: "degraded",
+      detail: `state unreadable: ${(err as Error).message}`,
+    };
+  }
+}
+
 /** Run all probes and roll up the overall status. Never throws. */
 export async function collectHealth(deps: HealthDeps): Promise<HealthReport> {
   const fetchImpl = deps.fetchImpl ?? fetch;
@@ -243,6 +271,7 @@ export async function collectHealth(deps: HealthDeps): Promise<HealthReport> {
       fetchImpl,
     ),
   );
+  probes.push(await probeLiveGuard(deps.pool));
   probes.push(probeResources());
   const overall = probes.some((p) => p.status === "down")
     ? "DOWN"

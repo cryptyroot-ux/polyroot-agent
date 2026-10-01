@@ -372,6 +372,10 @@ interface OnboardingConfig {
   capitalUsd: number;
   /** Owner-set daily loss latch in basis points (500 = 5%). */
   lossBps: number;
+  /** Distinct deposit wallet address (required for LIVE/MICRO_LIVE). */
+  walletAccount?: string;
+  /** Distinct funder wallet address (required for LIVE/MICRO_LIVE). */
+  walletFunder?: string;
 }
 
 function ensurePolyrootHome(): void {
@@ -1297,34 +1301,83 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     0,
   );
   let mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" = "SHADOW";
-  let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
-  let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
+    let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
+    let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
+    let walletAccount = "";
+    let walletFunder = "";
 
-  // SHADOW, MICRO_LIVE and LIVE need capital/loss caps (SHADOW simulates with
-  // real data; PAPER ignores caps and runs the mock fixture).
-  const needsCapitalConfig =
-    modeChoice.startsWith("SHADOW") ||
-    modeChoice.startsWith("MICRO") ||
-    modeChoice.startsWith("LIVE");
-  if (needsCapitalConfig) {
-    const isLive = modeChoice.startsWith("LIVE");
-    const isMicro = modeChoice.startsWith("MICRO");
-    if (isLive || isMicro) {
-      const label = isLive ? "LIVE" : "MICRO_LIVE";
-      mode = label;
-      console.log(
-        `\n${label} uses REAL MONEY. The daily loss cap shuts the system`,
-        "down automatically when reached (needs your manual reset).",
-      );
-      if (isMicro) {
+    // SHADOW, MICRO_LIVE and LIVE need capital/loss caps (SHADOW simulates with
+    // real data; PAPER ignores caps and runs the mock fixture).
+    const needsCapitalConfig =
+      modeChoice.startsWith("SHADOW") ||
+      modeChoice.startsWith("MICRO") ||
+      modeChoice.startsWith("LIVE");
+    if (needsCapitalConfig) {
+      const isLive = modeChoice.startsWith("LIVE");
+      const isMicro = modeChoice.startsWith("MICRO");
+      if (isLive || isMicro) {
+        const label = isLive ? "LIVE" : "MICRO_LIVE";
+        mode = label;
         console.log(
-          "MICRO_LIVE also needs: Polymarket API keys + 3 distinct wallet",
-          "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
+          `\n${label} uses REAL MONEY. The daily loss cap shuts the system`,
+          "down automatically when reached (needs your manual reset).",
         );
-      }
-      const confirm = await askText(
-        `Type ${label} to continue (anything else stays SHADOW)`,
-      );
+        if (isMicro || isLive) {
+          const signerAddress = deriveAddressFromPrivateKey(privateKey!);
+          console.log(
+            `\n${label} also needs: Polymarket API keys + 3 distinct wallet`,
+            "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
+          );
+          console.log(
+            "\n📍 WAL-03 requires 3 distinct addresses for live trading: Signer, Account, and Funder.",
+          );
+          console.log(`   Your Signer address is: ${signerAddress}`);
+          for (;;) {
+            walletAccount = await askText(
+              "Wallet Account address (0x...) — must differ from Signer:",
+              { defaultValue: "" },
+            );
+            if (!walletAccount) {
+              console.log("WALLET_ACCOUNT is required for LIVE/MICRO_LIVE mode.");
+              continue;
+            }
+            if (!/^0x[0-9a-fA-F]{40}$/.test(walletAccount)) {
+              console.log("Invalid address format — expected 0x followed by 40 hex characters.");
+              continue;
+            }
+            if (walletAccount.toLowerCase() === signerAddress.toLowerCase()) {
+              console.log("Wallet Account must differ from Signer address.");
+              continue;
+            }
+            break;
+          }
+          for (;;) {
+            walletFunder = await askText(
+              "Wallet Funder address (0x...) — must differ from Signer and Account:",
+              { defaultValue: "" },
+            );
+            if (!walletFunder) {
+              console.log("WALLET_FUNDER is required for LIVE/MICRO_LIVE mode.");
+              continue;
+            }
+            if (!/^0x[0-9a-fA-F]{40}$/.test(walletFunder)) {
+              console.log("Invalid address format — expected 0x followed by 40 hex characters.");
+              continue;
+            }
+            if (walletFunder.toLowerCase() === signerAddress.toLowerCase()) {
+              console.log("Wallet Funder must differ from Signer address.");
+              continue;
+            }
+            if (walletFunder.toLowerCase() === walletAccount.toLowerCase()) {
+              console.log("Wallet Funder must differ from Account address.");
+              continue;
+            }
+            break;
+          }
+        }
+        const confirm = await askText(
+          `Type ${label} to continue (anything else stays SHADOW)`,
+        );
       if (confirm.trim() !== label) {
         mode = "SHADOW";
         console.log("Staying on SHADOW.");
@@ -1377,6 +1430,8 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     mode,
     capitalUsd,
     lossBps,
+    walletAccount,
+    walletFunder,
   };
 }
 
@@ -1412,7 +1467,12 @@ function writeEnv(config: OnboardingConfig): void {
     `POLYROOT_KEYSTORE_JSON=${JSON.stringify(sealPrivateKey(config.privateKey!, config.passphrase))}`,
     `POLYROOT_KEYSTORE_PASSPHRASE=${config.passphrase}`,
     `WALLET_ADDRESS=${deriveAddressFromPrivateKey(config.privateKey!)}`,
-    `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
+    ...(config.walletAccount ? [`WALLET_ACCOUNT=${config.walletAccount}`] : []),
+    ...(config.walletFunder ? [`WALLET_FUNDER=${config.walletFunder}`] : []),
+    ...((config.mode === "LIVE" || config.mode === "MICRO_LIVE") &&
+    (!config.walletAccount || !config.walletFunder)
+      ? [`# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`]
+      : []),
     `RPC_URL=https://polygon-rpc.com`,
     // The brain wire protocol follows the provider choice: most speak
     // OpenAI-compatible /chat/completions with a static key, while the
@@ -1446,8 +1506,6 @@ function writeEnv(config: OnboardingConfig): void {
     "# POLYMARKET_API_KEY=",
     "# POLYMARKET_API_SECRET=",
     "# POLYMARKET_API_PASSPHRASE=",
-    "# WALLET_ACCOUNT=",
-    "# WALLET_FUNDER=",
   ];
   const existing = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf8") : "";
   writeFileSync(ENV_PATH, mergeEnvPreserving(existing, lines), { mode: 0o600 });
