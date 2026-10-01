@@ -70,9 +70,13 @@ describe("PM-INTEL-09/10: Forecast Ensemble — Persistent Calibration Service",
   });
 
   it("trains a real isotonic map that shrinks longshots, lifts favorites", async () => {
-    const lowP = [0.05, 0.08, 0.1, 0.12, 0.15, 0.18, 0.2, 0.22, 0.25, 0.28, 0.3, 0.32];
+    const lowP = [
+      0.05, 0.08, 0.1, 0.12, 0.15, 0.18, 0.2, 0.22, 0.25, 0.28, 0.3, 0.32,
+    ];
     const lowY = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0];
-    const highP = [0.68, 0.7, 0.72, 0.75, 0.78, 0.8, 0.82, 0.85, 0.88, 0.9, 0.92, 0.95];
+    const highP = [
+      0.68, 0.7, 0.72, 0.75, 0.78, 0.8, 0.82, 0.85, 0.88, 0.9, 0.92, 0.95,
+    ];
     const highY = [1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1];
     await cal.train({
       model: "gpt-4",
@@ -82,7 +86,12 @@ describe("PM-INTEL-09/10: Forecast Ensemble — Persistent Calibration Service",
       outcomes: [...lowY, ...highY],
     });
     const q = (p: number) =>
-      cal.calibrate({ p_raw: p, model: "gpt-4", category: "politics", horizon_sec: 3600 });
+      cal.calibrate({
+        p_raw: p,
+        model: "gpt-4",
+        category: "politics",
+        horizon_sec: 3600,
+      });
     // Favorite-longshot direction: cheap tickets were overpriced, favorites cheap.
     assert.ok((await q(0.1)).p_calibrated < 0.1);
     assert.ok((await q(0.9)).p_calibrated > 0.9);

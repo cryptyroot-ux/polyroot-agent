@@ -49,7 +49,10 @@ export function redactSecrets(text: string): string {
   let out = text;
   out = out.replace(/0x[0-9a-fA-F]{64}/g, "0x…[redacted]");
   out = out.replace(/sk-[A-Za-z0-9_-]{8,}/g, "sk-…[redacted]");
-  out = out.replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[redacted-block]");
+  out = out.replace(
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    "[redacted-block]",
+  );
   out = out.replace(
     /(["']?(?:api[_-]?key|secret|passphrase|mnemonic)["']?\s*[:=]\s*)\S+/gi,
     "$1[redacted]",
@@ -61,7 +64,9 @@ export function redactSecrets(text: string): string {
 
 /** Numeric Telegram user id or null (usernames NEVER accepted). */
 export function normalizeTelegramId(raw: unknown): string | null {
-  const s = String(raw ?? "").trim().replace(/^(tg:|telegram:)/i, "");
+  const s = String(raw ?? "")
+    .trim()
+    .replace(/^(tg:|telegram:)/i, "");
   return /^\d{1,20}$/.test(s) ? s : null;
 }
 
@@ -73,7 +78,8 @@ const PAIR_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export function makePairingCode(): string {
   const bytes = randomBytes(8);
   let code = "";
-  for (const b of bytes) code += PAIR_ALPHABET[(b as number) % PAIR_ALPHABET.length];
+  for (const b of bytes)
+    code += PAIR_ALPHABET[(b as number) % PAIR_ALPHABET.length];
   return code;
 }
 
@@ -139,7 +145,12 @@ export async function requestPairing(
   await pool.query(
     `INSERT INTO telegram_pairing (user_id, username, code_hash, status, expires_at)
      VALUES ($1, $2, $3, 'pending', $4)`,
-    [userId, username.slice(0, 64), hashPairingCode(code), new Date(nowMs + PAIRING_CODE_TTL_MS).toISOString()],
+    [
+      userId,
+      username.slice(0, 64),
+      hashPairingCode(code),
+      new Date(nowMs + PAIRING_CODE_TTL_MS).toISOString(),
+    ],
   );
   return { code, deduped: false };
 }
@@ -154,7 +165,8 @@ export async function approvePairing(
       RETURNING user_id, username`,
     [hashPairingCode(code.trim().toUpperCase())],
   );
-  const row = res.rows[0] as { user_id?: unknown; username?: unknown } | undefined;
+  const row = res.rows[0] as
+    { user_id?: unknown; username?: unknown } | undefined;
   if (!row || typeof row["user_id"] !== "string") return null;
   const userId = row["user_id"] as string;
   await pool.query(
@@ -162,7 +174,10 @@ export async function approvePairing(
      ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username`,
     [userId, typeof row["username"] === "string" ? row["username"] : ""],
   );
-  return { userId, username: typeof row["username"] === "string" ? row["username"] : "" };
+  return {
+    userId,
+    username: typeof row["username"] === "string" ? row["username"] : "",
+  };
 }
 
 export async function listPendingPairings(
@@ -184,7 +199,9 @@ export async function revokeUser(
   pool: TelegramPool,
   userId: string,
 ): Promise<boolean> {
-  await pool.query(`DELETE FROM telegram_allowlist WHERE user_id = $1`, [userId]);
+  await pool.query(`DELETE FROM telegram_allowlist WHERE user_id = $1`, [
+    userId,
+  ]);
   const res = await pool.query(
     `UPDATE telegram_pairing SET status = 'revoked'
       WHERE user_id = $1 AND status IN ('pending', 'approved')`,
@@ -235,7 +252,12 @@ export async function auditCommand(
     await pool.query(
       `INSERT INTO telegram_audit (user_id, command, args_redacted, result)
        VALUES ($1, $2, $3, $4)`,
-      [userId, command.slice(0, 64), argsRedacted.slice(0, 500), result.slice(0, 500)],
+      [
+        userId,
+        command.slice(0, 64),
+        argsRedacted.slice(0, 500),
+        result.slice(0, 500),
+      ],
     );
   } catch {
     // audit must never break command handling
@@ -245,7 +267,10 @@ export async function auditCommand(
 /* ─── Bot API client (native fetch, zero new dependencies) ────────── */
 
 export interface BotApi {
-  call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
+  call<T = unknown>(
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<T>;
 }
 
 export function createBotApi(
@@ -255,7 +280,10 @@ export function createBotApi(
   fetchImpl: typeof fetch = fetch,
 ): BotApi {
   return {
-    async call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    async call<T>(
+      method: string,
+      params: Record<string, unknown> = {},
+    ): Promise<T> {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
@@ -355,12 +383,25 @@ export class TelegramSession {
   readonly limiter = new RateLimiter();
   private readonly pending = new Map<string, PendingConfirm>();
 
-  requestConfirm(userId: string, command: string, args: string[], nowMs = Date.now()): void {
-    this.pending.set(userId, { command, args, expiresAtMs: nowMs + CONFIRM_TTL_MS });
+  requestConfirm(
+    userId: string,
+    command: string,
+    args: string[],
+    nowMs = Date.now(),
+  ): void {
+    this.pending.set(userId, {
+      command,
+      args,
+      expiresAtMs: nowMs + CONFIRM_TTL_MS,
+    });
   }
 
   /** Consume a YES for this user (single-use, expiring). */
-  takeConfirm(userId: string, text: string, nowMs = Date.now()): PendingConfirm | null {
+  takeConfirm(
+    userId: string,
+    text: string,
+    nowMs = Date.now(),
+  ): PendingConfirm | null {
     const p = this.pending.get(userId);
     if (!p) return null;
     this.pending.delete(userId);
@@ -385,7 +426,10 @@ export type TelegramUpdate = {
   };
 };
 
-export function parseTelegramText(raw: string): { command: string; args: string[] } {
+export function parseTelegramText(raw: string): {
+  command: string;
+  args: string[];
+} {
   const text = raw.trim().replace(/^\//, "");
   const parts = text.split(/\s+/).filter(Boolean);
   const [command = "", ...args] = parts;
@@ -465,7 +509,9 @@ export function extractInbound(update: TelegramUpdate): InboundMessage | null {
   const username =
     typeof m.from?.username === "string"
       ? m.from.username
-      : (typeof m.from?.first_name === "string" ? m.from.first_name : "");
+      : typeof m.from?.first_name === "string"
+        ? m.from.first_name
+        : "";
   return {
     updateId: typeof update.update_id === "number" ? update.update_id : 0,
     chatId,
@@ -510,7 +556,13 @@ export async function routeTelegramMessage(
   // Rule 1: DMs only. Groups/channels die silently (no existence signal).
   if (msg.chatType !== "private") return ack;
   if (!deps.session.limiter.allow(msg.userId)) {
-    await auditCommand(deps.pool, msg.userId, "<rate>", "", "denied:rate-limit");
+    await auditCommand(
+      deps.pool,
+      msg.userId,
+      "<rate>",
+      "",
+      "denied:rate-limit",
+    );
     return { ...ack, replies: ["Terlalu cepat — coba lagi sebentar lagi."] };
   }
   const allowed = await isAllowed(deps.pool, msg.userId, deps.staticOwners);
@@ -520,7 +572,13 @@ export async function routeTelegramMessage(
   // Confirmation replies (YA) resolve a pending action first.
   if (command === "ya" || command === "yes" || command === "y") {
     if (!allowed) {
-      await auditCommand(deps.pool, msg.userId, "ya", "", "denied:unknown-user");
+      await auditCommand(
+        deps.pool,
+        msg.userId,
+        "ya",
+        "",
+        "denied:unknown-user",
+      );
       return { ...ack, replies: [unknownUserReply(msg.userId)] };
     }
     const pending = deps.session.takeConfirm(msg.userId, command);
@@ -534,8 +592,18 @@ export async function routeTelegramMessage(
   if (!allowed) {
     // Stranger: mint (or reuse) a pairing code. Never process content.
     try {
-      const { code, deduped } = await requestPairing(deps.pool, msg.userId, msg.username);
-      await auditCommand(deps.pool, msg.userId, "<pair>", "", deduped ? "deduped" : "challenged");
+      const { code, deduped } = await requestPairing(
+        deps.pool,
+        msg.userId,
+        msg.username,
+      );
+      await auditCommand(
+        deps.pool,
+        msg.userId,
+        "<pair>",
+        "",
+        deduped ? "deduped" : "challenged",
+      );
       return {
         ...ack,
         replies: [
@@ -545,14 +613,29 @@ export async function routeTelegramMessage(
         ],
       };
     } catch {
-      await auditCommand(deps.pool, msg.userId, "<pair>", "", "denied:pairing-error");
-      return { ...ack, replies: ["Pairing penuh — hubungi operator langsung."] };
+      await auditCommand(
+        deps.pool,
+        msg.userId,
+        "<pair>",
+        "",
+        "denied:pairing-error",
+      );
+      return {
+        ...ack,
+        replies: ["Pairing penuh — hubungi operator langsung."],
+      };
     }
   }
 
   // Owner past the gate: secret-looking input is refused outright.
   if (looksLikeSecret(msg.text)) {
-    await auditCommand(deps.pool, msg.userId, command, "", "denied:secret-like");
+    await auditCommand(
+      deps.pool,
+      msg.userId,
+      command,
+      "",
+      "denied:secret-like",
+    );
     return {
       ...ack,
       replies: [
@@ -565,7 +648,10 @@ export async function routeTelegramMessage(
   if (!handler && !FORBIDDEN_COMMANDS.has(command)) {
     await auditCommand(deps.pool, msg.userId, command, "", "unknown-command");
     const names = Object.keys(deps.handlers).sort().join(", ");
-    return { ...ack, replies: [`Perintah tak dikenal. Yang tersedia: ${names}`] };
+    return {
+      ...ack,
+      replies: [`Perintah tak dikenal. Yang tersedia: ${names}`],
+    };
   }
   if (FORBIDDEN_COMMANDS.has(command)) {
     await auditCommand(deps.pool, msg.userId, command, "", "denied:forbidden");
@@ -578,7 +664,13 @@ export async function routeTelegramMessage(
   }
   if (deps.confirmCommands.has(command)) {
     deps.session.requestConfirm(msg.userId, command, args);
-    await auditCommand(deps.pool, msg.userId, command, args.join(" "), "confirm-requested");
+    await auditCommand(
+      deps.pool,
+      msg.userId,
+      command,
+      args.join(" "),
+      "confirm-requested",
+    );
     return {
       ...ack,
       replies: [
@@ -614,11 +706,26 @@ async function runHandler(
     const texts = (Array.isArray(out) ? out : [out]).map((t) =>
       redactSecrets(String(t ?? "")),
     );
-    await auditCommand(deps.pool, msg.userId, command, args.join(" "), `${via}:ok`);
-    return { ...ack, replies: texts.length > 0 ? texts : ["(tidak ada output)"] };
+    await auditCommand(
+      deps.pool,
+      msg.userId,
+      command,
+      args.join(" "),
+      `${via}:ok`,
+    );
+    return {
+      ...ack,
+      replies: texts.length > 0 ? texts : ["(tidak ada output)"],
+    };
   } catch (err) {
     const message = redactSecrets((err as Error).message ?? String(err));
-    await auditCommand(deps.pool, msg.userId, command, args.join(" "), `${via}:error`);
+    await auditCommand(
+      deps.pool,
+      msg.userId,
+      command,
+      args.join(" "),
+      `${via}:error`,
+    );
     return { ...ack, replies: [`❌ Gagal: ${message}`] };
   }
 }

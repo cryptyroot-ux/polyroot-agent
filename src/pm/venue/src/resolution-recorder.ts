@@ -101,9 +101,7 @@ export function parseResolvedMarkets(
       const prices = toPrices(rec["outcomePrices"]);
       if (ids.length < 2 || !prices || prices.length < 2) continue;
       // Exactly one side must dominate: split/voided markets are skipped.
-      const winners = prices
-        .map((p, i) => ({ p, i }))
-        .filter((w) => w.p > 0.5);
+      const winners = prices.map((p, i) => ({ p, i })).filter((w) => w.p > 0.5);
       if (winners.length !== 1) continue;
       const winIdx = winners[0]!.i;
       const winningTokenId = ids[winIdx];

@@ -13,8 +13,7 @@ function freePort(): Promise<number> {
     s.once("error", reject);
     s.listen(0, "127.0.0.1", () => {
       const addr = s.address();
-      const port =
-        typeof addr === "object" && addr !== null ? addr.port : 0;
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
       s.close(() => resolve(port));
     });
   });
@@ -49,10 +48,7 @@ describe("single-instance guard", () => {
     const held = await occupy(port);
     try {
       await assert.rejects(
-        assertSingleInstance(
-          { port, skipSystemdCheck: true },
-          {},
-        ),
+        assertSingleInstance({ port, skipSystemdCheck: true }, {}),
         (err: unknown) =>
           err instanceof AgentAlreadyRunningError &&
           /already bound/.test(err.message) &&
@@ -89,8 +85,7 @@ describe("single-instance guard", () => {
       { port },
       { readUnitState: () => self, portInUse: async () => false },
     );
-    const selfActive =
-      `LoadState=loaded\nActiveState=active\nMainPID=${process.pid}\n`;
+    const selfActive = `LoadState=loaded\nActiveState=active\nMainPID=${process.pid}\n`;
     await assertSingleInstance(
       { port },
       { readUnitState: () => selfActive, portInUse: async () => false },

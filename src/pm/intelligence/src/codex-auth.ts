@@ -47,7 +47,8 @@ export type CodexLogin = CodexOAuthCredentials | CodexApiKeyLogin | null;
 export function codexAuthFilePath(homeDir?: string): string {
   const override = process.env["POLYROOT_CODEX_AUTH_FILE"];
   if (override) return override;
-  if (process.env["CODEX_HOME"]) return join(process.env["CODEX_HOME"], "auth.json");
+  if (process.env["CODEX_HOME"])
+    return join(process.env["CODEX_HOME"], "auth.json");
   const home = homeDir ?? process.env["HOME"] ?? "/tmp";
   return join(home, ".codex", "auth.json");
 }
@@ -139,7 +140,9 @@ export function readCodexLogin(authFile?: string): CodexLogin {
     if (accountId !== undefined) creds.accountId = accountId;
     const exp =
       jwtExpiryMs(accessToken) ??
-      (typeof bag["expires_at"] === "number" ? bag["expires_at"] * 1000 : undefined);
+      (typeof bag["expires_at"] === "number"
+        ? bag["expires_at"] * 1000
+        : undefined);
     if (exp !== undefined) creds.expiresAtMs = exp;
     return creds;
   }
@@ -210,7 +213,10 @@ export async function refreshCodexToken(
   const freshRefresh = asNonEmptyString(bag["refresh_token"]);
   if (freshRefresh !== undefined) creds.refreshToken = freshRefresh;
   else creds.refreshToken = refreshToken;
-  const freshAccount = accountIdFromIdToken(asNonEmptyString(bag["id_token"]), undefined);
+  const freshAccount = accountIdFromIdToken(
+    asNonEmptyString(bag["id_token"]),
+    undefined,
+  );
   if (freshAccount !== undefined) creds.accountId = freshAccount;
   const freshExp = jwtExpiryMs(accessToken);
   if (freshExp !== undefined) creds.expiresAtMs = freshExp;
@@ -243,11 +249,13 @@ export async function refreshCodexToken(
  * refresh token), else throw re-login guidance. Never returns stale tokens
  * silently, never fabricates any.
  */
-export async function loadCodexAuth(opts: {
-  authFile?: string;
-  fetchImpl?: typeof fetch;
-  nowMs?: number;
-} = {}): Promise<CodexOAuthCredentials> {
+export async function loadCodexAuth(
+  opts: {
+    authFile?: string;
+    fetchImpl?: typeof fetch;
+    nowMs?: number;
+  } = {},
+): Promise<CodexOAuthCredentials> {
   const login = readCodexLogin(opts.authFile);
   if (login === null) {
     throw new Error(
@@ -319,10 +327,10 @@ export async function fetchCodexModels(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(
-      `${baseUrl.replace(/\/+$/, "")}/models`,
-      { headers: codexHeaders(creds), signal: ctrl.signal },
-    );
+    const res = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/models`, {
+      headers: codexHeaders(creds),
+      signal: ctrl.signal,
+    });
     if (!res.ok) throw new Error(`Codex catalog HTTP ${res.status}`);
     const data = (await res.json()) as {
       models?: Array<{ slug?: unknown }>;
@@ -357,10 +365,10 @@ export async function pingCodexBackend(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(
-      `${baseUrl.replace(/\/+$/, "")}/models`,
-      { headers: codexHeaders(creds), signal: ctrl.signal },
-    );
+    const res = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/models`, {
+      headers: codexHeaders(creds),
+      signal: ctrl.signal,
+    });
     return res.ok;
   } catch {
     return false;

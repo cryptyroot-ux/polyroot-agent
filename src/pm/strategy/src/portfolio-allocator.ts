@@ -53,8 +53,7 @@ export function selectMarketsForPass(
   nowMs = Date.now(),
   staleAfterMs = 10 * 60_000,
 ): { selected: string[]; deferred: string[] } {
-  const limit =
-    !Number.isFinite(k) || k <= 0 ? inputIds.length : Math.floor(k);
+  const limit = !Number.isFinite(k) || k <= 0 ? inputIds.length : Math.floor(k);
   if (memory.size === 0 || limit >= inputIds.length) {
     return { selected: [...inputIds], deferred: [] };
   }
@@ -84,10 +83,7 @@ export function selectMarketsForPass(
  * zero (a blown account sizes everything to zero — fail-closed). Lets
  * Kelly sizing compound wins and shrink on losses without owner input.
  */
-export function equityBankroll(
-  capUsd: number,
-  sessionPnlUsd: number,
-): number {
+export function equityBankroll(capUsd: number, sessionPnlUsd: number): number {
   if (!Number.isFinite(capUsd) || capUsd <= 0) return 0;
   const pnl = Number.isFinite(sessionPnlUsd) ? sessionPnlUsd : 0;
   return Math.max(capUsd + pnl, 0);

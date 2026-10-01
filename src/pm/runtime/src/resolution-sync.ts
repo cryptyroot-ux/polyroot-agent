@@ -42,7 +42,9 @@ export interface ResolutionSyncHandle {
   tick: () => Promise<ResolutionSyncSummary>;
 }
 
-export function startResolutionSync(deps: ResolutionSyncDeps): ResolutionSyncHandle {
+export function startResolutionSync(
+  deps: ResolutionSyncDeps,
+): ResolutionSyncHandle {
   const intervalMs = deps.intervalMs ?? 3_600_000;
   const limit = deps.eventLimit ?? 50;
   let timer: NodeJS.Timeout | null = null;
@@ -88,9 +90,12 @@ export function startResolutionSync(deps: ResolutionSyncDeps): ResolutionSyncHan
   const first = setTimeout(() => {
     if (stopped) return;
     void tick();
-    timer = setInterval(() => {
-      void tick();
-    }, Math.max(intervalMs, 30_000));
+    timer = setInterval(
+      () => {
+        void tick();
+      },
+      Math.max(intervalMs, 30_000),
+    );
   }, 5_000);
 
   return {

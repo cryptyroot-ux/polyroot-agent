@@ -241,7 +241,11 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
 
   it("tradable market in SHADOW produces decision + simulated fill (no venue financial I/O)", async () => {
     // Capital sized so the honest ask-based limit ($55) clears max_order_pct.
-    const { pipeline, venueAdapter } = makeShadowPipeline(0.65, undefined, 100_000);
+    const { pipeline, venueAdapter } = makeShadowPipeline(
+      0.65,
+      undefined,
+      100_000,
+    );
     const result = await pipeline.processMarket({
       market_id: "mkt_shadow_1",
       bid: 0.45,

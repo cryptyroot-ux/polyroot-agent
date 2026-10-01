@@ -276,6 +276,7 @@ sudo systemctl stop polyroot          # pause trading (mode/latch stay in DB)
 ```
 
 Notes:
+
 - The unit is rendered from `scripts/polyroot.service.template` — never
   hand-edit `/etc/systemd/system/polyroot.service`; re-run
   `bash ~/.polyroot/scripts/install-systemd.sh` instead.

@@ -488,5 +488,8 @@ export async function resolveMarketUniverseWithSides(env: {
       else if (m.noTokenId === id) sides[id] = "NO";
     }
   }
-  return { ids: readMarketUniverse({ POLYROOT_MARKET_IDS: ids.join(",") }), sides };
+  return {
+    ids: readMarketUniverse({ POLYROOT_MARKET_IDS: ids.join(",") }),
+    sides,
+  };
 }

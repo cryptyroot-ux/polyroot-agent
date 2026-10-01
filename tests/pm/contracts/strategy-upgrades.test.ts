@@ -18,7 +18,16 @@ import {
   touchDepthNotionalUsd,
   type TokenTouch,
 } from "@polyroot/venue";
-import { kellyFraction, kellyShares, QuoteEngine, evaluateMultiOutcomeArb, scoreOpportunity, selectMarketsForPass, equityBankroll, PositionTracker } from "@polyroot/strategy";
+import {
+  kellyFraction,
+  kellyShares,
+  QuoteEngine,
+  evaluateMultiOutcomeArb,
+  scoreOpportunity,
+  selectMarketsForPass,
+  equityBankroll,
+  PositionTracker,
+} from "@polyroot/strategy";
 import { countComponentFamilies } from "../../../src/pm/intelligence/src/ensemble-pg";
 import { countEnsembleFamilies } from "../../../src/pm/intelligence/src/calibration";
 import { randomUUID } from "crypto";
@@ -78,7 +87,10 @@ describe("CLOB taker fee Θ·p·(1−p)", () => {
 
   it("evaluateEdge prices each side at its own touch when feeTheta set", () => {
     const res = evaluateEdge(
-      { forecast: makeForecast({ p_calibrated: 0.6 }), book: makeBook({ yes_price: 0.55 }) },
+      {
+        forecast: makeForecast({ p_calibrated: 0.6 }),
+        book: makeBook({ yes_price: 0.55 }),
+      },
       { minEdge: 0.03, feeTheta: 0.05 },
     );
     // gross 0.05, fee Θ·0.55·0.45 = 0.012375 → net 0.037625 ≥ 0.03
@@ -88,7 +100,10 @@ describe("CLOB taker fee Θ·p·(1−p)", () => {
 
   it("explicit flat takerFeeBps still wins (backward compatible)", () => {
     const res = evaluateEdge(
-      { forecast: makeForecast({ p_calibrated: 0.6 }), book: makeBook({ yes_price: 0.55 }) },
+      {
+        forecast: makeForecast({ p_calibrated: 0.6 }),
+        book: makeBook({ yes_price: 0.55 }),
+      },
       { minEdge: 0.025, takerFeeBps: 200, feeTheta: 0.05 },
     );
     // flat 2% wins over Θ: net ≈ 0.03 ≥ 0.025 → TRADE
@@ -452,11 +467,20 @@ describe("smart-money contradiction guard (one-way)", () => {
   });
 
   it("pays nothing for aligned, thin, small, stale or missing flow", () => {
-    assert.equal(smartMoneyGuardPremium({ ...flow(), netFlowUsd: 5000 }).premium, 0);
-    assert.equal(smartMoneyGuardPremium({ ...flow(), wallets: 1 }).premium, 0);
-    assert.equal(smartMoneyGuardPremium({ ...flow(), netFlowUsd: -500 }).premium, 0);
     assert.equal(
-      smartMoneyGuardPremium({ ...flow(), updatedAtMs: Date.now() - 31 * 60_000 }).premium,
+      smartMoneyGuardPremium({ ...flow(), netFlowUsd: 5000 }).premium,
+      0,
+    );
+    assert.equal(smartMoneyGuardPremium({ ...flow(), wallets: 1 }).premium, 0);
+    assert.equal(
+      smartMoneyGuardPremium({ ...flow(), netFlowUsd: -500 }).premium,
+      0,
+    );
+    assert.equal(
+      smartMoneyGuardPremium({
+        ...flow(),
+        updatedAtMs: Date.now() - 31 * 60_000,
+      }).premium,
       0,
     );
     assert.equal(smartMoneyGuardPremium(null).premium, 0);
@@ -493,9 +517,7 @@ describe("smart-money contradiction guard (one-way)", () => {
 
 describe("portfolio allocator (autonomy inside owner walls)", () => {
   it("scoreOpportunity scales edge by conviction, garbage scores -inf", () => {
-    assert.ok(
-      Math.abs(scoreOpportunity(0.08, 0.65) - 0.08 * 0.3) < 1e-9,
-    );
+    assert.ok(Math.abs(scoreOpportunity(0.08, 0.65) - 0.08 * 0.3) < 1e-9);
     assert.equal(scoreOpportunity(0.08, undefined), 0.08 * 0.5);
     assert.equal(scoreOpportunity(undefined, 0.65), Number.NEGATIVE_INFINITY);
     assert.equal(scoreOpportunity(NaN, 0.65), Number.NEGATIVE_INFINITY);
@@ -649,23 +671,14 @@ describe("fractional-Kelly sizing", () => {
 
   it("kellyShares converts stake at touch, capped at legacy size", () => {
     // p=0.65, q=0.55: f = 0.10/0.45 × 0.25 ≈ 5.55% of $100 = $5.55 → 10 shares
-    assert.equal(
-      kellyShares({ p: 0.65, price: 0.55, bankrollUsd: 100 }),
-      10,
-    );
+    assert.equal(kellyShares({ p: 0.65, price: 0.55, bankrollUsd: 100 }), 10);
     // whale bankroll still caps at the legacy 100 (may only shrink)
     assert.equal(
       kellyShares({ p: 0.9, price: 0.5, bankrollUsd: 1_000_000 }),
       100,
     );
     // dust edge stakes nothing
-    assert.equal(
-      kellyShares({ p: 0.505, price: 0.5, bankrollUsd: 100 }),
-      0,
-    );
-    assert.equal(
-      kellyShares({ p: 0.65, price: 0.55, bankrollUsd: 0 }),
-      0,
-    );
+    assert.equal(kellyShares({ p: 0.505, price: 0.5, bankrollUsd: 100 }), 0);
+    assert.equal(kellyShares({ p: 0.65, price: 0.55, bankrollUsd: 0 }), 0);
   });
 });

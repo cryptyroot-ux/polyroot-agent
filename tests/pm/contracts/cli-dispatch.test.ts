@@ -26,7 +26,11 @@ describe("suggestCommand (typo rescue)", () => {
 
 function runCli(
   args: string[],
-  opts: { home?: string; extraEnv?: Record<string, string>; stdin?: string } = {},
+  opts: {
+    home?: string;
+    extraEnv?: Record<string, string>;
+    stdin?: string;
+  } = {},
 ): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ["--import", "tsx", CLI, ...args], {
@@ -67,7 +71,7 @@ describe("unknown commands never boot the loop", () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-dispatch-"));
     const { code, out } = await runCli(["market"], { home });
     assert.equal(code, 2);
-    assert.ok(out.includes('Unknown command: market'));
+    assert.ok(out.includes("Unknown command: market"));
     assert.ok(out.includes("Did you mean: polyroot markets?"));
     assert.ok(!out.includes("starting in"));
   });
@@ -83,7 +87,10 @@ describe("unknown commands never boot the loop", () => {
 
 describe("console tolerates a leading polyroot prefix", () => {
   it("strips it, trims, leaves the rest verbatim", () => {
-    assert.equal(normalizeConsoleLine("polyroot logs --follow"), "logs --follow");
+    assert.equal(
+      normalizeConsoleLine("polyroot logs --follow"),
+      "logs --follow",
+    );
     assert.equal(normalizeConsoleLine("  POLYROOT STATUS  "), "STATUS");
     assert.equal(normalizeConsoleLine("status"), "status");
     assert.equal(normalizeConsoleLine("polyroot"), "polyroot");
@@ -117,8 +124,7 @@ describe("console run refusal stays at the prompt", () => {
       portSrv.listen(0, "127.0.0.1", () => resolve());
     });
     const addr = portSrv.address();
-    const port =
-      typeof addr === "object" && addr !== null ? addr.port : 0;
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
     try {
       const { code, out } = await runCli([], {
         home,

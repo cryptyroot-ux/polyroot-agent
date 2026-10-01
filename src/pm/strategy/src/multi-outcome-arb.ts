@@ -32,10 +32,7 @@ export interface MultiOutcomeVerdict {
   edge: number;
   valid: boolean;
   reason:
-    | "OK_YES_SUM_UNDER_ONE"
-    | "OK_NO_SUM_OVER_ONE"
-    | "NO_EDGE"
-    | "BAD_INPUT";
+    "OK_YES_SUM_UNDER_ONE" | "OK_NO_SUM_OVER_ONE" | "NO_EDGE" | "BAD_INPUT";
 }
 
 export function thetaFeePerShare(price: number, theta = 0.05): number {
@@ -75,8 +72,10 @@ export function evaluateMultiOutcomeArb(
   }
   if (!(minEdge > 0)) return fail("BAD_INPUT");
 
-  const yesCost =
-    legs.reduce((s, l) => s + l.yesPrice + thetaFeePerShare(l.yesPrice, theta), 0);
+  const yesCost = legs.reduce(
+    (s, l) => s + l.yesPrice + thetaFeePerShare(l.yesPrice, theta),
+    0,
+  );
   const yesEdge = 1 - yesCost;
   if (yesEdge >= minEdge) {
     return {

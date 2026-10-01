@@ -182,10 +182,7 @@ describe("reasoning-model robustness (SSE + wrapped JSON)", () => {
       "data: [DONE]",
       "",
     ].join("\n");
-    assert.equal(
-      readCompletionContent(sse),
-      '{"p":0.66, "rationale":"ok"}',
-    );
+    assert.equal(readCompletionContent(sse), '{"p":0.66, "rationale":"ok"}');
   });
 
   it("readCompletionContent keeps plain JSON bodies working", () => {
@@ -236,17 +233,15 @@ describe("Responses wire protocol (Codex backend)", () => {
         },
       ],
     });
-    assert.equal(
-      readCompletionContent(body),
-      '{"p":0.44}',
-    );
+    assert.equal(readCompletionContent(body), '{"p":0.44}');
   });
 
   it("stitches response.output_text.delta SSE events", () => {
     const inner = JSON.stringify({ p: 0.5 });
     const sse = [
       "event: response.output_text.delta",
-      "data: " + JSON.stringify({ type: "response.output_text.delta", delta: inner }),
+      "data: " +
+        JSON.stringify({ type: "response.output_text.delta", delta: inner }),
       "event: response.completed",
       "data: " + JSON.stringify({ type: "response.completed" }),
       "",
@@ -263,7 +258,9 @@ describe("Responses wire protocol (Codex backend)", () => {
       seenHeaders = (opts as { headers: Record<string, string> }).headers;
       seenBody = (opts as { body: string }).body;
       return new Response(
-        JSON.stringify({ output_text: '{"p":0.61,"rationale":"r","factors":[]}' }),
+        JSON.stringify({
+          output_text: '{"p":0.61,"rationale":"r","factors":[]}',
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as typeof fetch;
@@ -315,12 +312,15 @@ describe("OpenAI model catalog discovery", () => {
   it("lists live ids, deduped; throws when refused", async () => {
     const okFetch = (async () =>
       new Response(
-        JSON.stringify({ data: [{ id: "gpt-4o" }, { id: "gpt-4o" }, { id: "" }] }),
+        JSON.stringify({
+          data: [{ id: "gpt-4o" }, { id: "gpt-4o" }, { id: "" }],
+        }),
         { status: 200 },
       )) as typeof fetch;
-    assert.deepEqual(await fetchOpenAIModels("https://x.example", "k", okFetch), [
-      "gpt-4o",
-    ]);
+    assert.deepEqual(
+      await fetchOpenAIModels("https://x.example", "k", okFetch),
+      ["gpt-4o"],
+    );
     const badFetch = (async () =>
       new Response("nope", { status: 401 })) as typeof fetch;
     await assert.rejects(fetchOpenAIModels("https://x.example", "k", badFetch));

@@ -93,16 +93,13 @@ export type RulesGateResult =
       currentVersion: string;
     };
 
-
 /* ─── PM-DATA-03: order book with resync ─────────────────────────────── */
-
 
 /* ─── PM-DATA-04: fee gate ───────────────────────────────────────────── */
 
 export type FeeGateResult =
   | { ok: true; settings: MarketFeeSettings }
   | { ok: false; code: "FEE_UNKNOWN" };
-
 
 /* ─── PM-DATA-05: evidence provenance ────────────────────────────────── */
 

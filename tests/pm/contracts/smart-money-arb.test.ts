@@ -170,7 +170,11 @@ describe("arb scan (observation only)", () => {
     );
     assert.equal(grouped.length, 1);
     assert.deepEqual(grouped[0]?.yesTokens, ["t1", "t2"]);
-    assert.equal(groupArbEvents(events([{ closed: false, clobTokenIds: '["t1","t1n"]' }])).length, 0);
+    assert.equal(
+      groupArbEvents(events([{ closed: false, clobTokenIds: '["t1","t1n"]' }]))
+        .length,
+      0,
+    );
     assert.deepEqual(groupArbEvents("nope"), []);
   });
 

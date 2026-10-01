@@ -63,10 +63,7 @@ async function makeTables(client: Client): Promise<void> {
 
 describe("telegram secrets + identities", () => {
   it("detects credential material, never usernames", () => {
-    assert.equal(
-      looksLikeSecret("my key 0x" + "ab".repeat(32)),
-      true,
-    );
+    assert.equal(looksLikeSecret("my key 0x" + "ab".repeat(32)), true);
     assert.equal(looksLikeSecret("sk-abc123XYZ-_"), true);
     assert.equal(looksLikeSecret("api_key = hunter2hunter2"), true);
     assert.equal(looksLikeSecret("-----BEGIN PRIVATE KEY-----"), true);
@@ -112,7 +109,10 @@ describe("telegram secrets + identities", () => {
       command: "mode",
       args: ["SHADOW"],
     });
-    assert.deepEqual(parseTelegramText("status"), { command: "status", args: [] });
+    assert.deepEqual(parseTelegramText("status"), {
+      command: "status",
+      args: [],
+    });
     assert.deepEqual(parseTelegramText("/logs@mybot --follow"), {
       command: "logs",
       args: ["--follow"],
@@ -153,7 +153,11 @@ describe("telegram pairing + allowlist (PG)", () => {
   });
 
   it("challenge, approve, allow, revoke round-trip", async () => {
-    const { code, deduped } = await requestPairing(client as never, "111", "alice");
+    const { code, deduped } = await requestPairing(
+      client as never,
+      "111",
+      "alice",
+    );
     assert.equal(deduped, false);
     assert.equal(code.length, 8);
     const again = await requestPairing(client as never, "111", "alice");
@@ -273,7 +277,10 @@ describe("telegram router tiers", () => {
 
   it("forbidden commands name the terminal instead", async () => {
     const r = await routeTelegramMessage(deps(), { ...msg(), text: "setup" });
-    assert.ok(r.replies[0]?.includes("HANYA via terminal") || r.replies[0]?.includes("terminal"));
+    assert.ok(
+      r.replies[0]?.includes("HANYA via terminal") ||
+        r.replies[0]?.includes("terminal"),
+    );
   });
 
   it("secret-looking input is refused and audited", async () => {
@@ -289,7 +296,10 @@ describe("telegram router tiers", () => {
   });
 
   it("unknown commands list what exists", async () => {
-    const r = await routeTelegramMessage(deps(), { ...msg(), text: "frobnicate" });
+    const r = await routeTelegramMessage(deps(), {
+      ...msg(),
+      text: "frobnicate",
+    });
     assert.ok(r.replies[0]?.includes("status"));
   });
 
@@ -316,11 +326,17 @@ describe("telegram router tiers", () => {
 describe("telegram setup wizard helpers", () => {
   it("isValidBotTokenFormat accepts BotFather shape only", async () => {
     const { isValidBotTokenFormat } = await import("@polyroot/runtime");
-    assert.equal(isValidBotTokenFormat("123456:ABCdefGHIjklMNOpqrSTUvwxYZ123456789"), true);
+    assert.equal(
+      isValidBotTokenFormat("123456:ABCdefGHIjklMNOpqrSTUvwxYZ123456789"),
+      true,
+    );
     assert.equal(isValidBotTokenFormat("abc:short"), false);
     assert.equal(isValidBotTokenFormat("not-a-token"), false);
     assert.equal(isValidBotTokenFormat(""), false);
-    assert.equal(isValidBotTokenFormat("  123456:ABCdefGHIjklMNOpqrSTUvwxYZ123456789  "), true);
+    assert.equal(
+      isValidBotTokenFormat("  123456:ABCdefGHIjklMNOpqrSTUvwxYZ123456789  "),
+      true,
+    );
   });
 
   it("detectOwnerFromUpdates finds the first human DM", async () => {
@@ -339,7 +355,15 @@ describe("telegram setup wizard helpers", () => {
       username: "alice",
     });
     assert.equal(
-      detectOwnerFromUpdates([{ ...dm(111, "alice"), message: { ...dm(111, "alice").message, chat: { id: 1, type: "supergroup" } } }]),
+      detectOwnerFromUpdates([
+        {
+          ...dm(111, "alice"),
+          message: {
+            ...dm(111, "alice").message,
+            chat: { id: 1, type: "supergroup" },
+          },
+        },
+      ]),
       null,
     );
     assert.equal(detectOwnerFromUpdates([dm(222, "SomeBot")]), null);

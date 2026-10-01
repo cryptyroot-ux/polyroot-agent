@@ -56,9 +56,7 @@ export function uiEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env["NO_COLOR"] !== undefined) return false;
   if (env["POLYROOT_NO_COLOR"] !== undefined) return false;
   if (env["TERM"] === "dumb") return false;
-  return (
-    (process.stdout.isTTY ?? false) && (process.stdin.isTTY ?? false)
-  );
+  return (process.stdout.isTTY ?? false) && (process.stdin.isTTY ?? false);
 }
 
 export function theme(env: NodeJS.ProcessEnv = process.env): Theme {
@@ -143,22 +141,18 @@ export function box(
   const bottom = `╰${"─".repeat(width + 2)}╯`;
   return [
     t.dim(top),
-    ...inner.map((l) => `${t.dim("│")}${padEndVisible(l, width + 2)}${t.dim("│")}`),
+    ...inner.map(
+      (l) => `${t.dim("│")}${padEndVisible(l, width + 2)}${t.dim("│")}`,
+    ),
     t.dim(bottom),
   ].join("\n");
 }
 
 /** Left column padded, values untouched. */
-export function kv(
-  rows: Array<[string, string]>,
-  t: Theme = theme(),
-): string {
+export function kv(rows: Array<[string, string]>, t: Theme = theme()): string {
   const labelWidth = Math.max(...rows.map(([k]) => visibleWidth(k)), 0);
   return rows
-    .map(
-      ([k, v]) =>
-        `  ${t.cyan(padEndVisible(k, labelWidth))}  ${v}`,
-    )
+    .map(([k, v]) => `  ${t.cyan(padEndVisible(k, labelWidth))}  ${v}`)
     .join("\n");
 }
 
@@ -170,10 +164,7 @@ export function table(
   t: Theme = theme(),
 ): string {
   const widths = headers.map((h, i) =>
-    Math.max(
-      visibleWidth(h),
-      ...rows.map((r) => visibleWidth(r[i] ?? "")),
-    ),
+    Math.max(visibleWidth(h), ...rows.map((r) => visibleWidth(r[i] ?? ""))),
   );
   const maxWidth = opts.maxWidth ?? 110;
   const total = widths.reduce((a, b) => a + b, 0) + widths.length * 3 + 1;
@@ -192,10 +183,10 @@ export function table(
     return padEndVisible(v, w);
   };
   const head = headers.map((h, i) => t.bold(col(h, i))).join(" │ ");
-  const sep = widths.map((_, i) => "─".repeat(Math.max(Math.floor(widths[i]! * scale), 4))).join("─┼─");
-  const body = rows.map((r) =>
-    r.map((c, i) => col(c ?? "", i)).join(" │ "),
-  );
+  const sep = widths
+    .map((_, i) => "─".repeat(Math.max(Math.floor(widths[i]! * scale), 4)))
+    .join("─┼─");
+  const body = rows.map((r) => r.map((c, i) => col(c ?? "", i)).join(" │ "));
   return [`  ${head}`, `  ${t.dim(sep)}`, ...body.map((l) => `  ${l}`)].join(
     "\n",
   );
@@ -209,8 +200,7 @@ export function progressBar(
 ): string {
   const f = Math.min(Math.max(frac, 0), 1);
   const filled = Math.round(f * width);
-  const bar =
-    t.green("█".repeat(filled)) + t.dim("░".repeat(width - filled));
+  const bar = t.green("█".repeat(filled)) + t.dim("░".repeat(width - filled));
   return `${bar} ${t.bold(`${Math.round(f * 100)}%`)}`;
 }
 
@@ -270,7 +260,9 @@ export function menuFrame(
   }
   if (options.length > pageSize) {
     lines.push(
-      t.dim(`    … ${start + 1}–${Math.min(start + pageSize, options.length)} of ${options.length}`),
+      t.dim(
+        `    … ${start + 1}–${Math.min(start + pageSize, options.length)} of ${options.length}`,
+      ),
     );
   }
   lines.push(
@@ -282,7 +274,18 @@ export function menuFrame(
 }
 
 /** Spinner frames; startSpinner() is a silent no-op off-TTY. */
-export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+export const SPINNER_FRAMES = [
+  "⠋",
+  "⠙",
+  "⠹",
+  "⠸",
+  "⠼",
+  "⠴",
+  "⠦",
+  "⠧",
+  "⠇",
+  "⠏",
+];
 
 export interface Spinner {
   stop: (finalLine?: string) => void;

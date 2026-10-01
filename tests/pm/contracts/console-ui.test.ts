@@ -49,7 +49,11 @@ describe("console UI kit", () => {
   });
 
   it("banner keeps title text contiguous (marker-safe)", () => {
-    const b = banner("Welcome to PolyRoot Agent — First-Time Setup", undefined, theme(OFF));
+    const b = banner(
+      "Welcome to PolyRoot Agent — First-Time Setup",
+      undefined,
+      theme(OFF),
+    );
     assert.ok(b.includes("Welcome to PolyRoot Agent — First-Time Setup"));
     assert.ok(b.includes("═"));
   });
@@ -95,7 +99,14 @@ describe("console UI kit", () => {
   });
 
   it("menuFrame shows identical options in order with cursor + default", () => {
-    const f = menuFrame("Choose mode (Enter = SHADOW):", ["SHADOW — x", "PAPER — y"], 0, 1, {}, theme(OFF));
+    const f = menuFrame(
+      "Choose mode (Enter = SHADOW):",
+      ["SHADOW — x", "PAPER — y"],
+      0,
+      1,
+      {},
+      theme(OFF),
+    );
     assert.ok(f.includes("Choose mode (Enter = SHADOW):"));
     assert.ok(f.indexOf("SHADOW — x") < f.indexOf("PAPER — y"));
     assert.ok(f.includes("▸") && f.includes("→"));
@@ -112,11 +123,12 @@ describe("console UI kit", () => {
   it("startSpinner is a silent no-op off-TTY", () => {
     const seen: string[] = [];
     const orig = process.stdout.write.bind(process.stdout);
-    (process.stdout as unknown as { write: (...a: unknown[]) => boolean }).write =
-      ((...a: unknown[]) => {
-        seen.push(String(a[0]));
-        return true;
-      }) as never;
+    (
+      process.stdout as unknown as { write: (...a: unknown[]) => boolean }
+    ).write = ((...a: unknown[]) => {
+      seen.push(String(a[0]));
+      return true;
+    }) as never;
     try {
       const prev1 = process.env["NO_COLOR"];
       const prev2 = process.env["POLYROOT_NO_COLOR"];

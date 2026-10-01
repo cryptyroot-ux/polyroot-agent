@@ -26,10 +26,7 @@ function jwt(exp: number): string {
 const FAR = 4102444800; // year 2100
 const PAST = 1000000000; // year 2001
 
-function writeAuth(
-  dir: string,
-  doc: unknown,
-): string {
+function writeAuth(dir: string, doc: unknown): string {
   const codexDir = join(dir, ".codex");
   mkdirSync(codexDir, { recursive: true });
   const path = join(codexDir, "auth.json");
@@ -126,11 +123,17 @@ describe("codex-auth (ChatGPT login)", () => {
     const dir = mkdtempSync(join(tmpdir(), "codex-"));
     const freshJwt = jwt(FAR);
     const fetchImpl = (async (_url: unknown, opts: unknown) => {
-      const body = JSON.parse((opts as { body: string }).body) as Record<string, unknown>;
+      const body = JSON.parse((opts as { body: string }).body) as Record<
+        string,
+        unknown
+      >;
       assert.equal(body["grant_type"], "refresh_token");
       assert.equal(body["refresh_token"], "old-refresh");
       return new Response(
-        JSON.stringify({ access_token: freshJwt, refresh_token: "new-refresh" }),
+        JSON.stringify({
+          access_token: freshJwt,
+          refresh_token: "new-refresh",
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as typeof fetch;
@@ -164,12 +167,14 @@ describe("codex-auth (ChatGPT login)", () => {
     assert.equal(h["authorization"], "Bearer tok");
     assert.equal(h["ChatGPT-Account-ID"], "acc");
     assert.ok(h["originator"]);
-    const okFetch = (async () => new Response("{}", { status: 200 })) as typeof fetch;
+    const okFetch = (async () =>
+      new Response("{}", { status: 200 })) as typeof fetch;
     assert.equal(
       await pingCodexBackend("https://x.example", creds, okFetch),
       true,
     );
-    const badFetch = (async () => new Response("{}", { status: 403 })) as typeof fetch;
+    const badFetch = (async () =>
+      new Response("{}", { status: 403 })) as typeof fetch;
     assert.equal(
       await pingCodexBackend("https://x.example", creds, badFetch),
       false,
@@ -217,6 +222,8 @@ describe("codex model catalog (Hermes-aligned discovery)", () => {
     );
     const badFetch = (async () =>
       new Response("nope", { status: 403 })) as typeof fetch;
-    await assert.rejects(fetchCodexModels("https://x.example", creds, badFetch));
+    await assert.rejects(
+      fetchCodexModels("https://x.example", creds, badFetch),
+    );
   });
 });

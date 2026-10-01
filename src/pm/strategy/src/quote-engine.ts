@@ -78,11 +78,13 @@ export class QuoteEngine {
     if (a <= b) return bad("CROSSED_BOOK");
     if (side === "BUY") {
       const improved = b + tickSize;
-      if (improved < a) return { price: improved, valid: true, reason: "IMPROVE_BID" };
+      if (improved < a)
+        return { price: improved, valid: true, reason: "IMPROVE_BID" };
       return { price: b, valid: true, reason: "JOIN_BID" };
     }
     const improved = a - tickSize;
-    if (improved > b) return { price: improved, valid: true, reason: "IMPROVE_ASK" };
+    if (improved > b)
+      return { price: improved, valid: true, reason: "IMPROVE_ASK" };
     return { price: a, valid: true, reason: "JOIN_ASK" };
   }
 
@@ -115,8 +117,7 @@ export class QuoteEngine {
         reason: "SIDE_AMBIGUOUS",
       };
     }
-    const rawBookPrice =
-      tokenSide === "YES" ? book.yes_price : book.no_price;
+    const rawBookPrice = tokenSide === "YES" ? book.yes_price : book.no_price;
     const bookPrice = rawBookPrice ?? 0;
 
     if (!bookPrice || bookPrice <= 0) {
@@ -176,7 +177,7 @@ export class QuoteEngine {
         valid: clampedEdgeAfterCost >= this.config.minEdgeAfterCost,
         reason:
           clampedEdgeAfterCost >= this.config.minEdgeAfterCost
-            ? depthNote ?? "SLIPPAGE_CLAMPED"
+            ? (depthNote ?? "SLIPPAGE_CLAMPED")
             : "MIN_EDGE_AFTER_CLAMP",
       };
     }

@@ -105,7 +105,8 @@ export function evaluateEdge(input: SignalInput, opts: SignalOpts): EdgeResult {
 
   const takerBps = opts.takerFeeBps ?? b.fee_taker_bps ?? 0;
   const flatFeeRate = takerBps / 10_000;
-  const useTheta = opts.takerFeeBps === undefined && opts.feeTheta !== undefined;
+  const useTheta =
+    opts.takerFeeBps === undefined && opts.feeTheta !== undefined;
 
   const candidates: Array<{
     side: SignalSide;

@@ -488,11 +488,11 @@ export interface PaperLoopResult {
 }
 
 /**
-   * Runs one full pass over a set of markets: forecast → size → simulate fill →
-   * book PnL. No venue I/O; fills are simulated. Outcomes MUST be provided
-   * from resolved market data (not derived from forecast) to avoid circular
-   * calibration. This function accepts optional resolved outcomes for calibration.
-   */
+ * Runs one full pass over a set of markets: forecast → size → simulate fill →
+ * book PnL. No venue I/O; fills are simulated. Outcomes MUST be provided
+ * from resolved market data (not derived from forecast) to avoid circular
+ * calibration. This function accepts optional resolved outcomes for calibration.
+ */
 export function runPaperLoop(
   deps: PaperLoopDeps,
   markets: Array<{ market_id: string; bid: number; ask: number }>,
@@ -572,9 +572,18 @@ export function runPaperLoop(
   });
 
   // probQuality only computed when we have resolved outcomes to avoid circular calibration
-  const probQuality = outcomes.length > 0
-    ? computeProbQuality({ probabilities, outcomes })
-    : { brier: NaN, logLoss: NaN, calibrationError: NaN, sharpness: NaN, coverage: NaN, abstentionRate: NaN, n: 0 };
+  const probQuality =
+    outcomes.length > 0
+      ? computeProbQuality({ probabilities, outcomes })
+      : {
+          brier: NaN,
+          logLoss: NaN,
+          calibrationError: NaN,
+          sharpness: NaN,
+          coverage: NaN,
+          abstentionRate: NaN,
+          n: 0,
+        };
 
   return { decisions, probabilities, outcomes, economic, probQuality };
 }

@@ -16,7 +16,9 @@ export interface IsotonicPoint {
  * Pool-adjacent-violators isotonic regression: the non-decreasing stepwise
  * fit of outcomes on predictions. Pure. Returns breakpoints sorted by p.
  */
-export function fitIsotonic(pairs: Array<{ p: number; y: number }>): IsotonicPoint[] {
+export function fitIsotonic(
+  pairs: Array<{ p: number; y: number }>,
+): IsotonicPoint[] {
   const sorted = [...pairs].sort((a, b) => a.p - b.p);
   // Blocks of (weight, sum); merge backwards while monotonicity is violated.
   const blocks: Array<{ ps: number[]; sum: number; n: number }> = [];
@@ -127,9 +129,11 @@ export class PgCalibrationService {
    * no category dimension). Groups under MIN_CALIBRATION_SAMPLES are
    * skipped, never force-trained. Returns the training summary.
    */
-  async trainFromResolvedClusters(input: {
-    limitClusters?: number;
-  } = {}): Promise<{ groupsTrained: number; samplesTotal: number }> {
+  async trainFromResolvedClusters(
+    input: {
+      limitClusters?: number;
+    } = {},
+  ): Promise<{ groupsTrained: number; samplesTotal: number }> {
     const limit = input.limitClusters ?? 500;
     const res = await this.pool.query(
       `SELECT f.probability_yes AS p, f.model AS model, f.horizon_sec AS horizon,
@@ -197,12 +201,15 @@ export class PgCalibrationService {
     if (!Number.isFinite(p) || p < 0 || p > 1) return { p_calibrated: p };
     const res = await this.pool.query(
       `SELECT isotonic_map FROM calibration_models WHERE model_name = $1 AND category = $2 AND horizon_sec = $3 AND regime = $4`,
-      [input.model, input.category, input.horizon_sec, input.regime ?? "default"],
+      [
+        input.model,
+        input.category,
+        input.horizon_sec,
+        input.regime ?? "default",
+      ],
     );
     const map = res.rows[0]?.isotonic_map as
-      | { mapping?: unknown; points?: unknown }
-      | null
-      | undefined;
+      { mapping?: unknown; points?: unknown } | null | undefined;
     if (
       !map ||
       map.mapping !== "isotonic-pav-v1" ||
@@ -210,9 +217,7 @@ export class PgCalibrationService {
     ) {
       return { p_calibrated: p };
     }
-    const points = (
-      map.points as Array<{ p?: unknown; cal?: unknown }>
-    )
+    const points = (map.points as Array<{ p?: unknown; cal?: unknown }>)
       .filter(
         (q): q is { p: number; cal: number } =>
           typeof q?.p === "number" &&
