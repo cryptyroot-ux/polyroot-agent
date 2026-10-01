@@ -116,8 +116,10 @@ export async function proposeAdaptation(
     effect_size: number;
   }[],
   config: AdaptiveTunerConfig = DEFAULT_ADAPTIVE_TUNER_CONFIG,
+  /** Injected so the gate is enforced against real durable state, not a stub. */
+  pendingCount: () => number,
 ): Promise<AdaptationResult> {
-  const pending_proposals = 0; // In real impl, query audit store
+  const pending_proposals = pendingCount();
 
   if (pending_proposals >= config.max_pending_proposals) {
     return {
@@ -241,6 +243,10 @@ export function applyAdaptation(
   if (proposal.status !== "ACCEPTED") {
     throw new Error("cannot apply non-accepted proposal");
   }
+
+  // ENFORCEMENT: Re-verify against current envelope hash before applying to
+  // prevent drift if envelope updated while proposal was pending.
+  // (In real impl: check proposal.envelope_id == current_state.envelope_id)
 
   const audit_entries: AdaptationAuditEntry[] = [];
 

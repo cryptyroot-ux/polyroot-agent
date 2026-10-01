@@ -370,19 +370,29 @@ export function computeEconomicMetrics(input: EconomicInput): EconomicMetrics {
 
 /* ─── PR-VAL-08: Experiment registry (preregistration, no cherry-picking) ─── */
 
+export {
+  type ExperimentSpec as StrategyExperimentSpec,
+  type GateResult,
+  type GateReport,
+  type ExperimentStatus,
+  type ExperimentRecord,
+  ExperimentRegistry as StrategyExperimentRegistry,
+  EXPERIMENTS_SCHEMA,
+} from "@polyroot/strategy";
+
+/** Lightweight in-memory adapter for tests only — NOT for production use. */
 export interface ExperimentSpec {
   id: string;
   name: string;
   version: string;
   description: string;
   preregisteredAt: number;
-  /** Predicted effect / stopping rule recorded BEFORE running. */
   preregisteredRule: string;
-  status: "PREREGISTERED" | "RUNNING" | "CONCLUDED" | "WITHDRAWN";
+  status: "PREREGISTERED" | "LIVE_QUALIFIED" | "REJECTED" | "ARCHIVED";
   result?: ProbQuality;
 }
 
-/** Append-only registry. A preregistered spec can never be edited after creation. */
+/** Test-only in-memory registry. Production MUST use StrategyExperimentRegistry. */
 export class ExperimentRegistry {
   private readonly specs: ExperimentSpec[] = [];
 
@@ -402,7 +412,7 @@ export class ExperimentRegistry {
   conclude(id: string, result: ProbQuality): ExperimentSpec | undefined {
     const s = this.specs.find((x) => x.id === id);
     if (!s) return undefined;
-    s.status = "CONCLUDED";
+    s.status = "LIVE_QUALIFIED";
     s.result = result;
     return s;
   }
@@ -410,7 +420,7 @@ export class ExperimentRegistry {
   withdraw(id: string): ExperimentSpec | undefined {
     const s = this.specs.find((x) => x.id === id);
     if (!s) return undefined;
-    s.status = "WITHDRAWN";
+    s.status = "REJECTED";
     return s;
   }
 
@@ -426,8 +436,9 @@ export class ExperimentRegistry {
     const out: Record<ExperimentSpec["status"], number> = {
       PREREGISTERED: 0,
       RUNNING: 0,
-      CONCLUDED: 0,
-      WITHDRAWN: 0,
+      LIVE_QUALIFIED: 0,
+      REJECTED: 0,
+      ARCHIVED: 0,
     };
     for (const s of this.specs) out[s.status]++;
     return out;
@@ -470,15 +481,17 @@ export interface PaperLoopResult {
 }
 
 /**
- * Runs one full pass over a set of markets: forecast → size → simulate fill →
- * book PnL. No venue I/O; fills are simulated. Outcomes array is populated
- * with the paper decision treated as a 1 for a BUY (a proxy for calibration
- * checks only — real SHADOW uses resolved market outcomes).
- */
+   * Runs one full pass over a set of markets: forecast → size → simulate fill →
+   * book PnL. No venue I/O; fills are simulated. Outcomes MUST be provided
+   * from resolved market data (not derived from forecast) to avoid circular
+   * calibration. This function accepts optional resolved outcomes for calibration.
+   */
 export function runPaperLoop(
   deps: PaperLoopDeps,
   markets: Array<{ market_id: string; bid: number; ask: number }>,
   feeInput: Omit<FillModelInput, "size" | "bid" | "ask">,
+  /** Optional resolved outcomes for calibration (1=YES, 0=NO, undefined=unresolved) */
+  resolvedOutcomes?: Map<string, number>,
 ): PaperLoopResult {
   const decisions: PaperDecision[] = [];
   const probabilities: number[] = [];
@@ -513,7 +526,14 @@ export function runPaperLoop(
         : (p - 0.5) * fill.filledSize - (fill.makerFee + fill.takerFee);
 
     probabilities.push(p);
-    outcomes.push(p > 0.5 ? 1 : 0);
+    // Use resolved outcome if available; otherwise skip calibration for this market
+    const resolved = resolvedOutcomes?.get(m.market_id);
+    if (resolved !== undefined) {
+      outcomes.push(resolved);
+    } else {
+      // No resolved outcome = skip this market for calibration
+      // Still record the probability for internal tracking but don't pollute outcomes
+    }
     perMarketPnl.push(pnl);
     grossPnl += pnl + (fill.makerFee + fill.takerFee);
     turnover += fill.filledSize * fill.fillPrice;
@@ -544,10 +564,9 @@ export function runPaperLoop(
     totalFilledQty,
   });
 
-  const probQuality = computeProbQuality({
-    probabilities,
-    outcomes,
-  });
+  const probQuality = outcomes.length > 0
+    ? computeProbQuality({ probabilities, outcomes })
+    : { brier: NaN, logLoss: NaN, calibrationError: NaN, sharpness: NaN, coverage: NaN, abstentionRate: NaN, n: 0 };
 
   return { decisions, probabilities, outcomes, economic, probQuality };
 }
