@@ -2859,6 +2859,7 @@ const TELEGRAM_READ = new Set([
   "logs",
   "help",
   "start",
+  "wallet",
 ]);
 
 const TELEGRAM_CONFIRM = new Set([
@@ -3121,54 +3122,39 @@ export function buildTelegramHandlers(
       return `✅ Model → ${chosen} tersimpan. Restart manual untuk berlaku.`;
     },
 
-    provider: async (args) => {
+    wallet: async (args) => {
       loadDotEnv();
       const env = process.env;
-      const current = (
-        env["POLYROOT_FORECAST_PROVIDER"] ?? "openai"
-      ).toLowerCase();
-      const { readCodexLogin } = await import("@polyroot/intelligence");
-      const options: Array<{ id: string; label: string; ready: boolean }> = [
-        {
-          id: "openai",
-          label: `openai (API key ${env["OPENAI_API_KEY"] ? "terpasang" : "BELUM ADA — via terminal"})`,
-          ready: Boolean(env["OPENAI_API_KEY"]),
-        },
-        {
-          id: "codex",
-          label: `codex (ChatGPT login ${readCodexLogin() ? "terdeteksi" : "BELUM ADA — codex login dulu"})`,
-          ready: readCodexLogin() !== null,
-        },
-        {
-          id: "ollama",
-          label: "ollama (lokal, tanpa key — butuh daemon Ollama)",
-          ready: true,
-        },
-      ];
-      const pick = (args[0] ?? "").trim().toLowerCase();
-      if (!pick) {
+      const sub = (args[0] ?? "").toLowerCase();
+      if (!sub) {
+        const addr = env["WALLET_ADDRESS"] ?? "(unset)";
+        const account = env["WALLET_ACCOUNT"] ?? "(unset)";
+        const funder = env["WALLET_FUNDER"] ?? "(unset)";
         return (
-          `Provider aktif: ${current}\n` +
-          options.map((o, i) => `${i + 1}. ${o.label}`).join("\n") +
-          "\nBalas: provider <nomor/nama> — lalu YA, lalu /model. Tanpa input secret di sini, selamanya."
+          `🔐 **Wallet Status (WAL-03)**\n` +
+          `• Signer Address: \`${addr}\`\n` +
+          `• Account Address: \`${account}\`\n` +
+          `• Funder Address: \`${funder}\`\n\n` +
+          `Gunakan: \`/wallet import <0x_private_key>\` untuk ganti signer.`
         );
       }
-      const idx = Number.parseInt(pick, 10) - 1;
-      const chosen: { id: string; label: string; ready: boolean } | undefined =
-        Number.isInteger(idx) && idx >= 0 && idx < options.length
-          ? options[idx]
-          : options.find((o) => o.id === pick);
-      if (!chosen) throw new Error(`Provider "${pick}" tidak dikenal.`);
-      if (!chosen.ready) {
-        throw new Error(
-          `Provider "${chosen.id}" belum punya kredensial — konfigurasi via terminal dulu.`,
-        );
+      if (sub === "import") {
+        const pk = (args[1] ?? "").trim();
+        if (!/^(0x)?[0-9a-fA-F]{64}$/.test(pk)) {
+          throw new Error("Format private key salah — harus 64 karakter hex (diawali 0x atau tidak).");
+        }
+        const formattedPk = pk.startsWith("0x") ? pk : "0x" + pk;
+        const derived = deriveAddressFromPrivateKey(formattedPk);
+        const passphrase = env["POLYROOT_KEYSTORE_PASSPHRASE"] ?? "polyroot-default-pass";
+        const keystore = sealPrivateKey(formattedPk, passphrase);
+        ensurePolyrootHome();
+        writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", { mode: 0o600 });
+        chmodSync(KEYSTORE_PATH, 0o600);
+        writeEnvKey("WALLET_ADDRESS", derived);
+        writeEnvKey("POLYROOT_KEYSTORE_JSON", JSON.stringify(keystore));
+        return `✅ Wallet signer diperbarui!\nAlamat baru: \`${derived}\`. Keystore di-seal aman.`;
       }
-      writeEnvKey("POLYROOT_FORECAST_PROVIDER", chosen.id);
-      if (chosen.id === "ollama" && !env["OPENAI_BASE_URL"]) {
-        writeEnvKey("OPENAI_BASE_URL", "http://localhost:11434/v1");
-      }
-      return `✅ Provider → ${chosen.id} tersimpan. Lanjut: /model untuk pilih model.`;
+      throw new Error("Subcommand /wallet tidak dikenal. Gunakan: /wallet atau /wallet import <pk>");
     },
   };
 }

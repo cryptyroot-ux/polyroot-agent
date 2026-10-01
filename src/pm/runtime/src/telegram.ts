@@ -337,7 +337,6 @@ export const FORBIDDEN_COMMANDS = new Set([
   "guard",
   "run",
   "start",
-  "wallet",
   "onboard",
   "backup",
   "restore",
