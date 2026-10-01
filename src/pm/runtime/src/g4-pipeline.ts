@@ -319,17 +319,27 @@ export class G4Pipeline {
         }
         // Real per-pass universe report for observers (Telegram stream).
         // Fire-and-forget: observer failure never breaks the pass.
+        const byId = new Map(inputs.map((i) => [i.market_id, i] as const));
         try {
           this.deps.onUniversePass?.({
             scanned: inputs.length,
             selected: selected.length,
             deferred: deferred.length,
             mode: this.config.mode,
+            evaluated: selected
+              .map((id) => {
+                const hit = byId.get(id);
+                const q = hit?.question;
+                return {
+                  id,
+                  question: typeof q === "string" && q.length > 0 ? q : id,
+                };
+              })
+              .slice(0, 5),
           });
         } catch {
           // observability is never load-bearing
         }
-        const byId = new Map(inputs.map((i) => [i.market_id, i] as const));
 
         for (const id of selected) {
           const loopInput = byId.get(id);

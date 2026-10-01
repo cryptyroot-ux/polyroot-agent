@@ -56,6 +56,30 @@ describe("stream v2 builders", () => {
     assert.ok(text.includes("52.0"));
   });
 
+  it("formatMarketReport renders unknown funds as em-dash, never $0", () => {
+    const text = formatMarketReport({
+      question: "Fed cuts rates in September?",
+      bid: 0.6,
+      ask: 0.62,
+      spread: 0.02,
+      pYes: 0.8,
+      confidence: 0.6,
+      rationale: "Strong consensus.",
+      factors: [],
+      decision: "TRADE",
+      reason: "edge above floor",
+      edgePct: 15.0,
+      floorPct: 3.0,
+      sizeShares: 12,
+      notionalUsd: 6.6,
+      bankrollUsd: null,
+      exposureUsd: null,
+    });
+    assert.ok(text.includes("TRADE"));
+    assert.ok(text.includes("Bankroll —"));
+    assert.ok(!text.includes("Bankroll $0"));
+  });
+
   it("ReportDedupe sends once per reason, resends on change", () => {
     const d = new ReportDedupe();
     assert.equal(d.shouldSend("m1", "NO_TRADE:spread"), true);

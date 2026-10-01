@@ -34,6 +34,10 @@ import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
 import {
   getTelegramEmitter,
+  formatPassDigest,
+  formatMarketReport,
+  confidenceOf,
+  ReportDedupe,
   type TelegramStreamEmitter,
   type AgentStreamEventType,
 } from "@polyroot/observability";
@@ -312,6 +316,7 @@ export async function bootstrapAgent(
     string,
     { rationale: string | null; factors: string[]; model: string }
   >();
+  const reportDedupe = new ReportDedupe();
   let warnedNoProvider = false;
   if (forecastProvider) {
     const model = process.env["POLYROOT_FORECAST_MODEL"] ?? "unknown";
@@ -552,46 +557,119 @@ export async function bootstrapAgent(
         safeObserve(() => stepPersistence.emitStepComplete(input, result));
         const isExecuted =
           result.decision !== "NO_TRADE" && result.fill?.status === "FILLED";
-        const eventType = isExecuted
-          ? "ORDER_FILL"
-          : result.decision === "NO_TRADE"
-            ? "NO_TRADE"
-            : "ORDER_SUBMIT";
-        emitStream(
-          eventType,
-          isExecuted
-            ? `✅ Eksekusi Berhasil: Order terisi penuh di market.`
-            : `⚠️ Selesai dengan status [${result.decision}]. Alasan: ${result.reason ?? "Tidak ada keterangan"}`,
-          input.market_id,
-          {
-            decision: result.decision,
-            reason: result.reason,
-            fillStatus: result.fill?.status,
-            fillPrice: result.fill?.fillPrice,
-            filledSize: result.fill?.filledSize,
-            edge: result.edge,
-          },
-        );
+        if (isExecuted) {
+          emitStream(
+            "ORDER_FILL",
+            `✅ Eksekusi Berhasil: Order terisi penuh di market.`,
+            input.market_id,
+            {
+              decision: result.decision,
+              reason: result.reason,
+              fillStatus: result.fill?.status,
+              fillPrice: result.fill?.fillPrice,
+              filledSize: result.fill?.filledSize,
+              edge: result.edge,
+            },
+          );
+        }
+        void (async () => {
+          try {
+            const question =
+              typeof input.question === "string" && input.question.length > 0
+                ? input.question
+                : input.market_id;
+            const volume24h =
+              typeof input.volume24h === "number" &&
+              Number.isFinite(input.volume24h)
+                ? input.volume24h
+                : undefined;
+            const reasoning = lastReasoning.get(input.market_id);
+            const rationale = reasoning?.rationale ?? "";
+            const factors = reasoning?.factors ?? [];
+            const pYes = result.p ?? null;
+            const confidence =
+              result.p === undefined || result.p === null
+                ? 0
+                : confidenceOf(result.p);
+            const decision =
+              result.decision === "BUY" || result.decision === "SELL"
+                ? "TRADE"
+                : "NO_TRADE";
+            const reason = result.reason ?? "no reason recorded";
+            const edgePct = (result.edge ?? 0) * 100;
+            // floorPct 3.0 mirrors minEdgeAfterCost: 0.03 in the pipeline config above (single source of truth).
+            const floorPct = 3.0;
+            const sizeShares =
+              typeof result.size === "number" && Number.isFinite(result.size)
+                ? result.size
+                : 0;
+            const fillPrice = result.fill?.fillPrice;
+            const touchPrice = Number.isFinite(input.ask) ? input.ask : 0;
+            const priceForNotional =
+              typeof fillPrice === "number" && Number.isFinite(fillPrice)
+                ? fillPrice
+                : touchPrice;
+            const notionalUsd = sizeShares * priceForNotional;
+            // Unknown funds stay null and render as "—": never fabricate $0.
+            let bankrollUsd: number | null = null;
+            let exposureUsd: number | null = null;
+            try {
+              const funds = await getFunds();
+              if (
+                typeof funds.bankrollUsd === "number" &&
+                Number.isFinite(funds.bankrollUsd)
+              ) {
+                bankrollUsd = funds.bankrollUsd;
+              }
+              if (
+                typeof funds.lockedUsd === "number" &&
+                Number.isFinite(funds.lockedUsd)
+              ) {
+                exposureUsd = funds.lockedUsd;
+              }
+            } catch {
+              // display-only: missing funds stay null, never break the loop
+            }
+            const reasonKey = `${result.decision}:${result.reason ?? "noreason"}`;
+            if (!reportDedupe.shouldSend(input.market_id, reasonKey)) return;
+            const body = formatMarketReport({
+              question,
+              bid: input.bid,
+              ask: input.ask,
+              spread: Math.abs(input.ask - input.bid),
+              ...(volume24h !== undefined ? { volume24h } : {}),
+              pYes,
+              confidence,
+              rationale,
+              factors,
+              decision,
+              reason,
+              edgePct,
+              floorPct,
+              sizeShares,
+              notionalUsd,
+              bankrollUsd,
+              exposureUsd,
+            });
+            // No metadata footer: the body already carries decision +
+            // reason, and a generic footer would only duplicate lines.
+            emitStream("MARKET_REPORT", body, input.market_id);
+          } catch {
+            // observability is never load-bearing
+          }
+        })();
       },
       emitFinancialGate: (gate, gateMode, venue) =>
         emitStream(
           "RISK_GATE",
-          `Risk Gate Evaluasi: [${gate}] (Mode: ${gateMode}, Venue: ${venue})`,
+          `Risk gate: [${gate}] (mode ${gateMode}, venue ${venue})`,
         ),
       emitError: (error, context) =>
-        emitStream(
-          "ERROR",
-          `Error terdeteksi di Agent Loop: ${error.message}`,
-          undefined,
-          {
-            context: String(context),
-          },
-        ),
+        emitStream("ERROR", `Agent loop error: ${error.message}`, undefined, {
+          context: String(context),
+        }),
       emitModeTransition: (from, to, reason) =>
-        emitStream(
-          "RESEARCH_INGEST",
-          `Mode Transition: ${from} ➡️ ${to} | Alasan: ${reason}`,
-        ),
+        emitStream("RESEARCH_INGEST", `Mode: ${from} → ${to} — ${reason}`),
     },
     kernel,
     signer,
@@ -639,19 +717,18 @@ export async function bootstrapAgent(
     getReasoning: (marketId: string) => lastReasoning.get(marketId),
     getFunds,
     // Real per-pass universe report: scanned (priced) → selected for
-    // evaluation → deferred. This is the only UNIVERSE_SCAN the owner
+    // evaluation → deferred. This is the only PASS_DIGEST the owner
     // ever sees — real counts, never a placeholder line.
     onUniversePass: (s) =>
       emitStream(
-        "UNIVERSE_SCAN",
-        `Pass [Mode: ${s.mode}]: ${s.scanned} market berlikuiditas dipindai → ${s.selected} dievaluasi, ${s.deferred} ditunda`,
-        undefined,
-        {
-          scanned: s.scanned,
-          selected: s.selected,
-          deferred: s.deferred,
+        "PASS_DIGEST",
+        formatPassDigest({
           mode: s.mode,
-        },
+          clock: new Date().toISOString().slice(11, 19),
+          scanned: s.scanned,
+          evaluating: s.evaluated,
+          deferredCount: s.deferred,
+        }),
       ),
     forecast: async (market) => {
       if (!forecastProvider) {

@@ -324,9 +324,12 @@ export function formatMarketReport(input: {
   floorPct: number;
   sizeShares: number;
   notionalUsd: number;
-  bankrollUsd: number;
-  exposureUsd: number;
+  bankrollUsd: number | null;
+  exposureUsd: number | null;
 }): string {
+  // Unknown money renders as "—": never fabricate $0 for a missing ledger.
+  const money = (v: number | null): string =>
+    v === null ? "—" : `$${v.toFixed(2)}`;
   const head = input.question.length > 0 ? input.question : "Untitled market";
   const lines = [
     `🧠 "${head}"`,
@@ -357,7 +360,7 @@ export function formatMarketReport(input: {
       `🚀 TRADE: ${input.sizeShares} shares ≈ $${input.notionalUsd.toFixed(2)}`,
       `"${head}"`,
       `Edge +${input.edgePct.toFixed(1)}% > floor +${input.floorPct.toFixed(1)}%`,
-      `Bankroll $${input.bankrollUsd.toFixed(2)} · exposure $${input.exposureUsd.toFixed(2)}`,
+      `Bankroll ${money(input.bankrollUsd)} · exposure ${money(input.exposureUsd)}`,
     );
   } else {
     lines.push(

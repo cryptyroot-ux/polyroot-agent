@@ -148,6 +148,7 @@ export interface G4CoreDeps {
         selected: number;
         deferred: number;
         mode: string;
+        evaluated: Array<{ id: string; question: string }>;
       }) => void)
     | undefined;
 }
@@ -185,6 +186,12 @@ export interface G4CoreInput {
    * Feeds the expiry edge premium; absent = no premium (never blocks).
    */
   daysToExpiry?: number | null;
+  /**
+   * Human question + 24h volume for display only (threaded from discovery
+   * through LiveMarketInput). Never influence the decision path.
+   */
+  question?: string;
+  volume24h?: number;
 }
 
 export interface G4CoreResult {
@@ -544,6 +551,7 @@ export interface CreateG4CoreOptions {
         selected: number;
         deferred: number;
         mode: string;
+        evaluated: Array<{ id: string; question: string }>;
       }) => void)
     | undefined;
 }
