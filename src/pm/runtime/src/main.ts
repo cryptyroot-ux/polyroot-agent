@@ -33,11 +33,11 @@ import { ModeWatcher } from "./mode-watcher.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
 import {
-  getTelegramEmitter,
-  formatPassDigest,
-  formatMarketReport,
-  confidenceOf,
+  formatBatchedDigest,
+  formatTradeAlert,
+  DigestThrottle,
   ReportDedupe,
+  getTelegramEmitter,
   type TelegramStreamEmitter,
   type AgentStreamEventType,
 } from "@polyroot/observability";
@@ -559,6 +559,29 @@ export async function bootstrapAgent(
   // `--once` and other dry runs stay silent: only the continuous loop may
   // push to the owner's DM (a mock_market_1 test ping is spam, not signal).
   const streamOn = opts.streamEnabled !== false && telegramStream.isEnabled();
+  // Digest window: per-market chatter is accumulated and flushed as ONE
+  // summary per interval. This is the anti-spam fix — the raw loop emits a
+  // step-complete for every market every pass, which at 3s/pass is ~20
+  // Telegram messages per minute of pure NO_TRADE noise.
+  const digestIntervalMinutes = (() => {
+    const raw = process.env["POLYROOT_DIGEST_INTERVAL_MINUTES"];
+    const parsed = raw === undefined ? Number.NaN : Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
+  })();
+  const digestThrottle = new DigestThrottle(digestIntervalMinutes * 60_000);
+  // Accumulated per-window state for the batched digest.
+  let windowScanned = 0;
+  let _windowEvaluated = 0;
+  let _windowDeferred = 0;
+  let windowTrades = 0;
+  let windowGatesPassed = 0;
+  const windowMarkets: Array<{
+    question: string;
+    side?: string;
+    edgePct?: number;
+    floorPct?: number;
+    reason?: string;
+  }> = [];
   const emitStream = (
     type: AgentStreamEventType,
     message: string,
@@ -604,110 +627,87 @@ export async function bootstrapAgent(
         safeObserve(() => stepPersistence.emitStepComplete(input, result));
         const isExecuted =
           result.decision !== "NO_TRADE" && result.fill?.status === "FILLED";
+        // Per-step accumulation for the batched digest. Every evaluated
+        // market contributes one line; nothing is sent yet.
+        const question =
+          typeof input.question === "string" && input.question.length > 0
+            ? input.question
+            : input.market_id;
+        const side =
+          input.side === "YES" || input.side === "NO" ? input.side : undefined;
+        _windowEvaluated += 1;
+        if (isExecuted) windowTrades += 1;
+        // "Gates passed" = the decision path ran to a real verdict, i.e. the
+        // book cleared DUST/TIGHT_CONSENSUS and produced an actual edge read.
+        const clearedRegime = !/book regime/.test(result.reason ?? "");
+        const hasForecast = result.p !== undefined && result.p !== null;
+        if (clearedRegime && hasForecast) windowGatesPassed += 1;
+        windowMarkets.push({
+          question,
+          ...(side ? { side } : {}),
+          edgePct: (result.edge ?? 0) * 100,
+          floorPct: 1.0,
+          ...(result.reason ? { reason: result.reason } : {}),
+        });
+
         if (isExecuted) {
-          emitStream(
-            "ORDER_FILL",
-            `✅ Eksekusi Berhasil: Order terisi penuh di market.`,
-            input.market_id,
-            {
-              decision: result.decision,
-              reason: result.reason,
-              fillStatus: result.fill?.status,
-              fillPrice: result.fill?.fillPrice,
-              filledSize: result.fill?.filledSize,
-              edge: result.edge,
-            },
-          );
-        }
-        void (async () => {
-          try {
-            const question =
-              typeof input.question === "string" && input.question.length > 0
-                ? input.question
-                : input.market_id;
-            const volume24h =
-              typeof input.volume24h === "number" &&
-              Number.isFinite(input.volume24h)
-                ? input.volume24h
-                : undefined;
-            const reasoning = lastReasoning.get(input.market_id);
-            const rationale = reasoning?.rationale ?? "";
-            const factors = reasoning?.factors ?? [];
-            const pYes = result.p ?? null;
-            const confidence =
-              result.p === undefined || result.p === null
-                ? 0
-                : confidenceOf(result.p);
-            const decision =
-              result.decision === "BUY" || result.decision === "SELL"
-                ? "TRADE"
-                : "NO_TRADE";
-            const reason = result.reason ?? "no reason recorded";
-            const edgePct = (result.edge ?? 0) * 100;
-            // floorPct 3.0 mirrors minEdgeAfterCost: 0.01 in the pipeline config above (single source of truth).
-            const floorPct = 3.0;
-            const sizeShares =
-              typeof result.size === "number" && Number.isFinite(result.size)
-                ? result.size
+          const reasoning = lastReasoning.get(input.market_id);
+          const fillPrice =
+            typeof result.fill?.fillPrice === "number" &&
+            Number.isFinite(result.fill.fillPrice)
+              ? result.fill.fillPrice
+              : Number.isFinite(input.ask)
+                ? input.ask
                 : 0;
-            const fillPrice = result.fill?.fillPrice;
-            const touchPrice = Number.isFinite(input.ask) ? input.ask : 0;
-            const priceForNotional =
-              typeof fillPrice === "number" && Number.isFinite(fillPrice)
-                ? fillPrice
-                : touchPrice;
-            const notionalUsd = sizeShares * priceForNotional;
-            // Unknown funds stay null and render as "—": never fabricate $0.
-            let bankrollUsd: number | null = null;
-            let exposureUsd: number | null = null;
+          const sizeShares =
+            typeof result.size === "number" && Number.isFinite(result.size)
+              ? result.size
+              : 0;
+          const price = Number.isFinite(fillPrice) ? fillPrice : input.ask;
+          void (async () => {
             try {
-              const funds = await getFunds();
-              if (
-                typeof funds.bankrollUsd === "number" &&
-                Number.isFinite(funds.bankrollUsd)
-              ) {
-                bankrollUsd = funds.bankrollUsd;
+              let bankrollUsd: number | null = null;
+              let exposureUsd: number | null = null;
+              try {
+                const funds = await getFunds();
+                if (
+                  typeof funds.bankrollUsd === "number" &&
+                  Number.isFinite(funds.bankrollUsd)
+                ) {
+                  bankrollUsd = funds.bankrollUsd;
+                }
+                if (
+                  typeof funds.lockedUsd === "number" &&
+                  Number.isFinite(funds.lockedUsd)
+                ) {
+                  exposureUsd = funds.lockedUsd;
+                }
+              } catch {
+                // display-only: missing funds stay null
               }
-              if (
-                typeof funds.lockedUsd === "number" &&
-                Number.isFinite(funds.lockedUsd)
-              ) {
-                exposureUsd = funds.lockedUsd;
-              }
+              emitStream(
+                "TRADE_ALERT",
+                formatTradeAlert({
+                  question,
+                  ...(side ? { side } : {}),
+                  sizeShares,
+                  notionalUsd: sizeShares * price,
+                  fillPrice: price,
+                  pYes: result.p ?? null,
+                  edgePct: (result.edge ?? 0) * 100,
+                  floorPct: 1.0,
+                  rationale: reasoning?.rationale ?? "",
+                  bankrollUsd,
+                  exposureUsd,
+                  pnlUsd: metrics.getCounter("totalPnl") ?? 0,
+                }),
+                input.market_id,
+              );
             } catch {
-              // display-only: missing funds stay null, never break the loop
+              // observability is never load-bearing
             }
-            const reasonKey = `${result.decision}:${result.reason ?? "noreason"}`;
-            if (!reportDedupe.shouldSend(input.market_id, reasonKey)) return;
-            const body = formatMarketReport({
-              question,
-              ...(input.side === "YES" || input.side === "NO"
-                ? { side: input.side }
-                : {}),
-              bid: input.bid,
-              ask: input.ask,
-              spread: Math.abs(input.ask - input.bid),
-              ...(volume24h !== undefined ? { volume24h } : {}),
-              pYes,
-              confidence,
-              rationale,
-              factors,
-              decision,
-              reason,
-              edgePct,
-              floorPct,
-              sizeShares,
-              notionalUsd,
-              bankrollUsd,
-              exposureUsd,
-            });
-            // No metadata footer: the body already carries decision +
-            // reason, and a generic footer would only duplicate lines.
-            emitStream("MARKET_REPORT", body, input.market_id);
-          } catch {
-            // observability is never load-bearing
-          }
-        })();
+          })();
+        }
       },
       // Gate state is deduped like reports: first ALLOW goes out once,
       // repeats stay silent until the gate actually changes state.
@@ -773,17 +773,53 @@ export async function bootstrapAgent(
     // Real per-pass universe report: scanned (priced) → selected for
     // evaluation → deferred. This is the only PASS_DIGEST the owner
     // ever sees — real counts, never a placeholder line.
-    onUniversePass: (s) =>
-      emitStream(
-        "PASS_DIGEST",
-        formatPassDigest({
-          mode: s.mode,
-          clock: new Date().toISOString().slice(11, 19),
-          scanned: s.scanned,
-          evaluating: s.evaluated,
-          deferredCount: s.deferred,
-        }),
-      ),
+    onUniversePass: (s) => {
+      // 1. Digest scheduling
+      if (digestThrottle.shouldFlush(Date.now())) {
+        void (async () => {
+          let bankrollUsd: number | null = null;
+          let exposureUsd: number | null = null;
+          let pnlUsd: number | null = null;
+          try {
+            const funds = await getFunds();
+            if (
+              typeof funds.bankrollUsd === "number" &&
+              Number.isFinite(funds.bankrollUsd)
+            ) {
+              bankrollUsd = funds.bankrollUsd;
+            }
+            if (
+              typeof funds.lockedUsd === "number" &&
+              Number.isFinite(funds.lockedUsd)
+            ) {
+              exposureUsd = funds.lockedUsd;
+            }
+            pnlUsd = metrics.getCounter("totalPnl") ?? 0;
+          } catch {
+            // display-only: missing funds stay null
+          }
+          emitStream(
+            "BATCHED_DIGEST",
+            formatBatchedDigest({
+              clock: new Date().toISOString().slice(11, 19),
+              mode: s.mode,
+              scanned: windowScanned + s.scanned,
+              gatesPassed: windowGatesPassed + 0, // fix: accumulated count
+              trades: windowTrades,
+              evaluated: windowMarkets,
+              bankrollUsd,
+              exposureUsd,
+              pnlUsd,
+            }),
+          );
+          windowMarkets.length = 0;
+          windowScanned = 0;
+          windowGatesPassed = 0;
+          windowTrades = 0;
+        })();
+      }
+      windowScanned += s.scanned;
+    },
     forecast: async (market) => {
       if (!forecastProvider) {
         if (!warnedNoProvider) {

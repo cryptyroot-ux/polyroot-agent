@@ -4,6 +4,10 @@ import {
   confidenceOf,
   formatPassDigest,
   formatMarketReport,
+  formatBatchedDigest,
+  formatTradeAlert,
+  formatRiskGateAlert,
+  DigestThrottle,
   ReportDedupe,
 } from "@polyroot/observability";
 
@@ -50,7 +54,7 @@ describe("stream v2 builders", () => {
       bankrollUsd: 100,
       exposureUsd: 0,
     });
-    assert.ok(text.includes("NO_TRADE"));
+    assert.ok(text.includes("NO TRADE"));
     assert.ok(text.includes("edge +1.0%"));
     assert.ok(text.includes("At stake:"));
     assert.ok(text.includes("52.0"));
@@ -91,8 +95,8 @@ describe("stream v2 builders", () => {
       ],
       deferredCount: 1,
     });
-    assert.ok(digest.includes('Putin [YES]'));
-    assert.ok(digest.includes('Putin [NO]'));
+    assert.ok(digest.includes("Putin [YES]"));
+    assert.ok(digest.includes("Putin [NO]"));
     const report = formatMarketReport({
       question: "Putin",
       side: "NO",
@@ -121,5 +125,160 @@ describe("stream v2 builders", () => {
     assert.equal(d.shouldSend("m1", "NO_TRADE:spread"), false);
     assert.equal(d.shouldSend("m1", "NO_TRADE:edge"), true);
     assert.equal(d.shouldSend("m1", "TRADE:submitted"), true);
+  });
+});
+
+describe("batched digest + instant alerts", () => {
+  it("formatBatchedDigest shows counts, markets, and portfolio once", () => {
+    const text = formatBatchedDigest({
+      clock: "14:30:00",
+      mode: "SHADOW",
+      scanned: 12,
+      gatesPassed: 2,
+      trades: 0,
+      evaluated: [
+        {
+          question: "Bitcoin >$100k 2026",
+          side: "YES",
+          edgePct: 1.2,
+          floorPct: 1.0,
+        },
+        {
+          question: "Fed cut Sept",
+          side: "NO",
+          reason: "spread 1¢, too tight",
+        },
+      ],
+      bankrollUsd: 100,
+      exposureUsd: 0,
+      pnlUsd: 0,
+    });
+    assert.ok(text.includes("14:30:00 UTC · SHADOW"));
+    assert.ok(text.includes("Scanned 12 | gates passed 2 | trades 0"));
+    assert.ok(text.includes("Bitcoin >$100k 2026 [YES]"));
+    assert.ok(text.includes("edge +1.2% (floor +1.0%)"));
+    assert.ok(text.includes("spread 1¢, too tight"));
+    assert.equal(
+      text.split("Portfolio:").length - 1,
+      1,
+      "portfolio summary must appear exactly once",
+    );
+    assert.ok(text.includes("Portfolio: $100.00 | PnL $0.00 | Exposure $0.00"));
+  });
+
+  it("formatBatchedDigest says so when nothing was evaluated", () => {
+    const text = formatBatchedDigest({
+      clock: "14:30:00",
+      mode: "SHADOW",
+      scanned: 0,
+      gatesPassed: 0,
+      trades: 0,
+      evaluated: [],
+      bankrollUsd: null,
+      exposureUsd: null,
+      pnlUsd: null,
+    });
+    assert.ok(text.includes("(none this cycle)"));
+    assert.ok(text.includes("Portfolio: — | PnL — | Exposure —"));
+    assert.ok(!text.includes("$0"));
+  });
+
+  it("formatBatchedDigest caps the market list and counts the rest", () => {
+    const text = formatBatchedDigest({
+      clock: "14:30:00",
+      mode: "SHADOW",
+      scanned: 9,
+      gatesPassed: 7,
+      trades: 0,
+      evaluated: Array.from({ length: 7 }, (_, i) => ({
+        question: `Market ${i + 1}`,
+        side: "YES" as const,
+      })),
+      bankrollUsd: 100,
+      exposureUsd: 0,
+      pnlUsd: 0,
+    });
+    assert.ok(text.includes("• Market 5 [YES]"));
+    assert.ok(!text.includes("• Market 6"));
+    assert.ok(text.includes("… and 2 more"));
+  });
+
+  it("formatTradeAlert names the market, size, price, and edge", () => {
+    const text = formatTradeAlert({
+      question: "Bitcoin >$100k 2026",
+      side: "YES",
+      sizeShares: 42,
+      notionalUsd: 23.1,
+      fillPrice: 0.55,
+      pYes: 0.67,
+      edgePct: 12,
+      floorPct: 1,
+      rationale: "tren naik, inflow ETF melambat",
+      bankrollUsd: 100,
+      exposureUsd: 23.1,
+      pnlUsd: 0,
+    });
+    assert.ok(text.includes("🚀 TRADE · Bitcoin >$100k 2026 [YES]"));
+    assert.ok(text.includes("Beli 42 shares @ $0.55 = $23.10"));
+    assert.ok(text.includes("AI 67% · edge +12.0% (floor +1.0%)"));
+    assert.ok(text.includes("Alasan: tren naik, inflow ETF melambat"));
+    assert.ok(text.includes("Portfolio: $100.00"));
+  });
+
+  it("formatTradeAlert never invents a probability it does not have", () => {
+    const text = formatTradeAlert({
+      question: "Bitcoin >$100k 2026",
+      side: "YES",
+      sizeShares: 42,
+      notionalUsd: 23.1,
+      fillPrice: 0.55,
+      pYes: null,
+      edgePct: 0,
+      floorPct: 1,
+      rationale: "",
+      bankrollUsd: 100,
+      exposureUsd: 23.1,
+      pnlUsd: 0,
+    });
+    assert.ok(text.includes("AI abstained"));
+    assert.ok(!text.includes("edge +"));
+    assert.ok(!text.includes("Alasan:"));
+  });
+
+  it("formatRiskGateAlert reads as one clean line", () => {
+    const text = formatRiskGateAlert(
+      "RISK_FEE_RATE",
+      "PRODUCER",
+      "POLYMARKET_CLOB_CTF_V2",
+    );
+    assert.equal(
+      text.split("\n").length,
+      1,
+      "gate alert must be a single line",
+    );
+    assert.ok(text.includes("[RISK_FEE_RATE]"));
+    assert.ok(text.includes("POLYMARKET_CLOB_CTF_V2"));
+  });
+
+  it("DigestThrottle emits once per window, then flushes on schedule", () => {
+    const t = new DigestThrottle(15 * 60_000);
+    const start = 1_000_000;
+    assert.equal(t.shouldFlush(start), false, "first pass primes, never sends");
+    assert.equal(t.shouldFlush(start + 60_000), false);
+    assert.equal(t.shouldFlush(start + 14 * 60_000), false);
+    assert.equal(t.shouldFlush(start + 15 * 60_000), true);
+    assert.equal(t.shouldFlush(start + 15 * 60_000 + 1), false);
+    assert.equal(t.shouldFlush(start + 30 * 60_000), true);
+  });
+
+  it("DigestThrottle collapses a hot loop into one digest per window", () => {
+    const t = new DigestThrottle(15 * 60_000);
+    const start = 0;
+    t.shouldFlush(start);
+    let flushes = 0;
+    for (let i = 1; i <= 900; i++) {
+      if (t.shouldFlush(start + i * 1000)) flushes++;
+    }
+    assert.equal(flushes, 1, "900 one-second passes must yield one digest");
   });
 });

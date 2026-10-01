@@ -24,7 +24,10 @@ export type AgentStreamEventType =
   | "NO_TRADE"
   | "PASS_DIGEST"
   | "MARKET_REPORT"
-  | "ERROR";
+  | "ERROR"
+  | "BATCHED_DIGEST"
+  | "TRADE_ALERT"
+  | "RISK_GATE_ALERT";
 
 export interface AgentStreamEvent {
   eventId: string;
@@ -54,6 +57,9 @@ const EVENT_STYLE: Record<AgentStreamEventType, EventStyle> = {
   PASS_DIGEST: { icon: "🌐", stage: "PASS" },
   MARKET_REPORT: { icon: "🧠", stage: "MARKET" },
   ERROR: { icon: "❌", stage: "ERROR" },
+  BATCHED_DIGEST: { icon: "📊", stage: "DIGEST" },
+  TRADE_ALERT: { icon: "🚀", stage: "TRADE" },
+  RISK_GATE_ALERT: { icon: "🔒", stage: "GATE" },
 };
 
 /** Metadata keys that read better as a labelled value than a raw dump. */
@@ -383,5 +389,121 @@ export class ReportDedupe {
     if (prev === reasonKey) return false;
     this.lastReason.set(marketId, reasonKey);
     return true;
+  }
+}
+
+const DOLLAR = (v: number | null): string =>
+  v === null ? "—" : `$${v.toFixed(2)}`;
+
+export interface BatchedDigestInput {
+  clock: string;
+  mode: string;
+  scanned: number;
+  gatesPassed: number;
+  trades: number;
+  evaluated: Array<{
+    question: string;
+    side?: string;
+    edgePct?: number;
+    floorPct?: number;
+    reason?: string;
+  }>;
+  bankrollUsd: number | null;
+  exposureUsd: number | null;
+  pnlUsd: number | null;
+}
+
+export function formatBatchedDigest(input: BatchedDigestInput): string {
+  const lines = [
+    `${input.clock} UTC · ${input.mode}`,
+    `Scanned ${input.scanned} | gates passed ${input.gatesPassed} | trades ${input.trades}`,
+    "",
+    "Markets evaluated:",
+  ];
+  for (const m of input.evaluated.slice(0, 5)) {
+    const tag = m.side === "YES" || m.side === "NO" ? ` [${m.side}]` : "";
+    const detail =
+      m.edgePct !== undefined && m.floorPct !== undefined
+        ? ` — edge +${m.edgePct.toFixed(1)}% (floor +${m.floorPct.toFixed(1)}%)`
+        : m.reason !== undefined && m.reason.length > 0
+          ? ` — ${m.reason}`
+          : "";
+    lines.push(`• ${m.question}${tag}${detail}`);
+  }
+  if (input.evaluated.length > 5) {
+    lines.push(`… and ${input.evaluated.length - 5} more`);
+  }
+  if (input.evaluated.length === 0) {
+    lines.push("(none this cycle)");
+  }
+  lines.push("");
+  lines.push(
+    `Portfolio: ${DOLLAR(input.bankrollUsd)} | PnL ${DOLLAR(input.pnlUsd)} | Exposure ${DOLLAR(input.exposureUsd)}`,
+  );
+  return lines.join("\n");
+}
+
+export interface TradeAlertInput {
+  question: string;
+  side?: string;
+  sizeShares: number;
+  notionalUsd: number;
+  fillPrice: number;
+  pYes: number | null;
+  edgePct: number;
+  floorPct: number;
+  rationale: string;
+  bankrollUsd: number | null;
+  exposureUsd: number | null;
+  pnlUsd: number | null;
+}
+
+export function formatTradeAlert(input: TradeAlertInput): string {
+  const tag =
+    input.side === "YES" || input.side === "NO" ? ` [${input.side}]` : "";
+  const lines = [
+    `🚀 TRADE · ${input.question}${tag}`,
+    `Beli ${input.sizeShares} shares @ $${input.fillPrice.toFixed(2)} = ${DOLLAR(input.notionalUsd)}`,
+    input.pYes === null
+      ? `AI abstained`
+      : `AI ${(input.pYes * 100).toFixed(0)}% · edge +${input.edgePct.toFixed(1)}% (floor +${input.floorPct.toFixed(1)}%)`,
+  ];
+  if (input.rationale.length > 0) {
+    lines.push(`Alasan: ${input.rationale}`);
+  }
+  lines.push("");
+  lines.push(
+    `Portfolio: ${DOLLAR(input.bankrollUsd)} | PnL ${DOLLAR(input.pnlUsd)} | Exposure ${DOLLAR(input.exposureUsd)}`,
+  );
+  return lines.join("\n");
+}
+
+export function formatRiskGateAlert(
+  gate: string,
+  gateMode: string,
+  venue: string,
+): string {
+  return `🔒 RISK_GATE [${gate}] (mode ${gateMode}) — venue ${venue}`;
+}
+
+/**
+ * Rolling-window throttle for batched digests. Returns true only when the
+ * interval has elapsed since the last flush, so the loop can call it on every
+ * pass and still emit at most one digest per window.
+ */
+export class DigestThrottle {
+  private lastFlush: number | null = null;
+  constructor(private readonly intervalMs: number) {}
+
+  shouldFlush(now: number): boolean {
+    if (this.lastFlush === null) {
+      this.lastFlush = now;
+      return false;
+    }
+    if (now - this.lastFlush >= this.intervalMs) {
+      this.lastFlush = now;
+      return true;
+    }
+    return false;
   }
 }

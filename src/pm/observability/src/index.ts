@@ -200,3 +200,10 @@ export class HealthCheck implements HealthCheckEngine {
 
 export * from "./status-board.js";
 export * from "./telegram-stream.js";
+
+export {
+  formatBatchedDigest,
+  formatTradeAlert,
+  formatRiskGateAlert,
+  DigestThrottle,
+} from "./telegram-stream.js";
