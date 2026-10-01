@@ -293,6 +293,7 @@ describe("G4: full autonomous paper loop", () => {
         partialFraction: 0.5,
         rng: () => 0.5,
       },
+      new Map([["m1", 1], ["m2", 0], ["m3", 1]]),
     );
 
     assert.equal(result.decisions.length, 3);

@@ -81,6 +81,18 @@ const REDACT_KEYS = new Set([
   "privatekey",
 ]);
 
+function deepRedact(meta: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(meta)) {
+    const redact = REDACT_KEYS.has(k.toLowerCase()) ? redactValue(v) :
+      typeof v === "object" && v !== null && !Array.isArray(v)
+        ? deepRedact(v as Record<string, unknown>)
+        : v;
+    result[k] = redact;
+  }
+  return result;
+}
+
 export interface LogEntry {
   level: LogLevel;
   msg: string;
@@ -107,10 +119,7 @@ export class Logger {
     msg: string,
     meta: Record<string, unknown> = {},
   ): void {
-    const redacted: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(meta)) {
-      redacted[k] = REDACT_KEYS.has(k.toLowerCase()) ? redactValue(v) : v;
-    }
+    const redacted: Record<string, unknown> = deepRedact(meta);
     this.logs.push({ level, msg, meta: redacted, at: Date.now() });
   }
 
@@ -177,19 +186,80 @@ export interface HealthCheckEngine {
   isHealthy(deps?: { metrics?: Metrics }): boolean;
 }
 
+export interface HealthCheckDependencies {
+  metrics?: Metrics;
+  /** Check DB connectivity and latency */
+  db?: { healthy: boolean; latencyMs?: number };
+  /** Check venue (Polymarket CLOB) connectivity */
+  venue?: { healthy: boolean; orderbookAgeMs?: number };
+  /** Check forecast freshness */
+  forecast?: { healthy: boolean; maxAgeSec?: number };
+  /** Check signer availability */
+  signer?: { healthy: boolean };
+  /** Check reconciliation state */
+  reconciliation?: { healthy: boolean; unknownOrders?: number };
+  /** Check lease/fencing */
+  lease?: { healthy: boolean; epoch?: number };
+  /** Check clock sync */
+  clock?: { healthy: boolean; skewMs?: number };
+  /** Check live guard state */
+  liveGuard?: { healthy: boolean; mode?: string };
+  /** Check risk latch */
+  riskLatch?: { healthy: boolean };
+}
+
 export class HealthCheck implements HealthCheckEngine {
-  isHealthy(opts?: { metrics?: Metrics }): boolean {
-    const metrics = opts?.metrics;
-    if (!metrics) return true;
+  isHealthy(deps?: HealthCheckDependencies): boolean {
+    // Backward compat: if only metrics passed (legacy tests), just check errors/jobs
+    const hasExplicitDeps = !!(deps && (
+      deps.db !== undefined || deps.venue !== undefined || deps.forecast !== undefined ||
+      deps.signer !== undefined || deps.reconciliation !== undefined || deps.lease !== undefined ||
+      deps.clock !== undefined || deps.liveGuard !== undefined || deps.riskLatch !== undefined
+    ));
+
+    const metrics = deps?.metrics;
+    if (!metrics) return false;
     const errors = metrics.getCounter("errors");
     const jobFailures = metrics.getCounter("jobs.failed");
-    return errors === 0 && jobFailures === 0;
+    if (errors > 0 || jobFailures > 0) return false;
+
+    // If only metrics provided (legacy), consider healthy
+    if (!hasExplicitDeps) return true;
+
+    // All critical dependencies must be healthy
+    if (!deps.db?.healthy) return false;
+    if (!deps.venue?.healthy) return false;
+    if (!deps.forecast?.healthy) return false;
+    if (!deps.signer?.healthy) return false;
+    if (!deps.reconciliation?.healthy) return false;
+    if (!deps.lease?.healthy) return false;
+    if (!deps.clock?.healthy) return false;
+    if (!deps.liveGuard?.healthy) return false;
+    if (!deps.riskLatch?.healthy) return false;
+
+    // Additional thresholds
+    if (deps.forecast && deps.forecast.maxAgeSec !== undefined && deps.forecast.maxAgeSec > 300) return false;
+    if (deps.clock && deps.clock.skewMs !== undefined && deps.clock.skewMs > 500) return false;
+    if (deps.reconciliation && deps.reconciliation.unknownOrders !== undefined && deps.reconciliation.unknownOrders > 10) return false;
+
+    return true;
   }
 
-  check(opts?: { metrics?: Metrics }): HealthResult {
-    const ok = this.isHealthy(opts);
+  check(deps?: HealthCheckDependencies): HealthResult {
+    const ok = this.isHealthy(deps);
     const details: Record<string, unknown> = {
-      metrics: opts?.metrics?.snapshot() ?? {},
+      metrics: deps?.metrics?.snapshot() ?? {},
+      checks: {
+        db: deps?.db ?? { healthy: false, reason: "not provided" },
+        venue: deps?.venue ?? { healthy: false, reason: "not provided" },
+        forecast: deps?.forecast ?? { healthy: false, reason: "not provided" },
+        signer: deps?.signer ?? { healthy: false, reason: "not provided" },
+        reconciliation: deps?.reconciliation ?? { healthy: false, reason: "not provided" },
+        lease: deps?.lease ?? { healthy: false, reason: "not provided" },
+        clock: deps?.clock ?? { healthy: false, reason: "not provided" },
+        liveGuard: deps?.liveGuard ?? { healthy: false, reason: "not provided" },
+        riskLatch: deps?.riskLatch ?? { healthy: false, reason: "not provided" },
+      },
     };
     return {
       status: ok ? "healthy" : "unhealthy",

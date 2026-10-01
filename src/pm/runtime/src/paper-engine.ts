@@ -380,7 +380,15 @@ export {
   EXPERIMENTS_SCHEMA,
 } from "@polyroot/strategy";
 
-/** Lightweight in-memory adapter for tests only — NOT for production use. */
+/**
+ * In-memory lifecycle for the PAPER simulator's experiment bookkeeping.
+ *
+ * NOTE: this enum is intentionally distinct from the durable
+ * `@polyroot/strategy` ExperimentRegistry (which uses
+ * PREREGISTERED/LIVE_QUALIFIED/REJECTED/ARCHIVED). This class is a
+ * simulator aid for preregistration discipline; production qualification
+ * MUST use StrategyExperimentRegistry against PostgreSQL.
+ */
 export interface ExperimentSpec {
   id: string;
   name: string;
@@ -388,7 +396,7 @@ export interface ExperimentSpec {
   description: string;
   preregisteredAt: number;
   preregisteredRule: string;
-  status: "PREREGISTERED" | "LIVE_QUALIFIED" | "REJECTED" | "ARCHIVED";
+  status: "PREREGISTERED" | "RUNNING" | "CONCLUDED" | "WITHDRAWN";
   result?: ProbQuality;
 }
 
@@ -412,7 +420,7 @@ export class ExperimentRegistry {
   conclude(id: string, result: ProbQuality): ExperimentSpec | undefined {
     const s = this.specs.find((x) => x.id === id);
     if (!s) return undefined;
-    s.status = "LIVE_QUALIFIED";
+    s.status = "CONCLUDED";
     s.result = result;
     return s;
   }
@@ -420,7 +428,7 @@ export class ExperimentRegistry {
   withdraw(id: string): ExperimentSpec | undefined {
     const s = this.specs.find((x) => x.id === id);
     if (!s) return undefined;
-    s.status = "REJECTED";
+    s.status = "WITHDRAWN";
     return s;
   }
 
@@ -436,9 +444,8 @@ export class ExperimentRegistry {
     const out: Record<ExperimentSpec["status"], number> = {
       PREREGISTERED: 0,
       RUNNING: 0,
-      LIVE_QUALIFIED: 0,
-      REJECTED: 0,
-      ARCHIVED: 0,
+      CONCLUDED: 0,
+      WITHDRAWN: 0,
     };
     for (const s of this.specs) out[s.status]++;
     return out;
@@ -564,6 +571,7 @@ export function runPaperLoop(
     totalFilledQty,
   });
 
+  // probQuality only computed when we have resolved outcomes to avoid circular calibration
   const probQuality = outcomes.length > 0
     ? computeProbQuality({ probabilities, outcomes })
     : { brier: NaN, logLoss: NaN, calibrationError: NaN, sharpness: NaN, coverage: NaN, abstentionRate: NaN, n: 0 };

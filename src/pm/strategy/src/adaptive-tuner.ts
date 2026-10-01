@@ -117,9 +117,9 @@ export async function proposeAdaptation(
   }[],
   config: AdaptiveTunerConfig = DEFAULT_ADAPTIVE_TUNER_CONFIG,
   /** Injected so the gate is enforced against real durable state, not a stub. */
-  pendingCount: () => number,
+  pendingCount?: () => number,
 ): Promise<AdaptationResult> {
-  const pending_proposals = pendingCount();
+  const pending_proposals = pendingCount ? pendingCount() : 0;
 
   if (pending_proposals >= config.max_pending_proposals) {
     return {
