@@ -50,9 +50,9 @@ describe("stream v2 builders", () => {
       bankrollUsd: 100,
       exposureUsd: 0,
     });
-    assert.ok(text.includes("NO_TRADE"));
-    assert.ok(text.includes("Why not:"));
-    assert.ok(text.includes("At stake: $0"));
+    assert.ok(text.includes("⏭️ NO_TRADE"));
+    assert.ok(text.includes("<b>Why not:</b>"));
+    assert.ok(text.includes("<b>At stake:</b> $0.00 (held)"));
     assert.ok(text.includes("52.0"));
   });
 
@@ -75,8 +75,8 @@ describe("stream v2 builders", () => {
       bankrollUsd: null,
       exposureUsd: null,
     });
-    assert.ok(text.includes("TRADE"));
-    assert.ok(text.includes("Bankroll —"));
+    assert.ok(text.includes("<b>TRADE</b>"));
+    assert.ok(text.includes("<b>Bankroll:</b> —"));
     assert.ok(!text.includes("Bankroll $0"));
   });
 
@@ -91,8 +91,8 @@ describe("stream v2 builders", () => {
       ],
       deferredCount: 1,
     });
-    assert.ok(digest.includes('"Putin out as President?" [YES]'));
-    assert.ok(digest.includes('"Putin out as President?" [NO]'));
+    assert.ok(digest.includes('<b>"Putin out as President?"</b> [YES]'));
+    assert.ok(digest.includes('<b>"Putin out as President?"</b> [NO]'));
     const report = formatMarketReport({
       question: "Putin out as President?",
       side: "NO",
@@ -112,7 +112,7 @@ describe("stream v2 builders", () => {
       bankrollUsd: 100,
       exposureUsd: 0,
     });
-    assert.ok(report.includes('"Putin out as President?" [NO]'));
+    assert.ok(report.includes("<b>Putin out as President?</b> [NO]"));
   });
 
   it("ReportDedupe sends once per reason, resends on change", () => {
