@@ -81,14 +81,20 @@ const REDACT_KEYS = new Set([
   "privatekey",
 ]);
 
+function deepRedactValue(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(deepRedactValue);
+  if (typeof v === "object" && v !== null) {
+    return deepRedact(v as Record<string, unknown>);
+  }
+  return v;
+}
+
 function deepRedact(meta: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(meta)) {
-    const redact = REDACT_KEYS.has(k.toLowerCase()) ? redactValue(v) :
-      typeof v === "object" && v !== null && !Array.isArray(v)
-        ? deepRedact(v as Record<string, unknown>)
-        : v;
-    result[k] = redact;
+    result[k] = REDACT_KEYS.has(k.toLowerCase())
+      ? redactValue(v)
+      : deepRedactValue(v);
   }
   return result;
 }
@@ -107,6 +113,15 @@ function redactValue(value: unknown): unknown {
       return `${value.slice(0, 4)}****${value.slice(-4)}`;
     }
     return "****";
+  }
+  if (Array.isArray(value)) return value.map(redactValue);
+  if (typeof value === "object" && value !== null) {
+    // A sensitive key holding a nested object must not leak any leaf.
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = redactValue(v);
+    }
+    return out;
   }
   return value;
 }
@@ -211,11 +226,18 @@ export interface HealthCheckDependencies {
 export class HealthCheck implements HealthCheckEngine {
   isHealthy(deps?: HealthCheckDependencies): boolean {
     // Backward compat: if only metrics passed (legacy tests), just check errors/jobs
-    const hasExplicitDeps = !!(deps && (
-      deps.db !== undefined || deps.venue !== undefined || deps.forecast !== undefined ||
-      deps.signer !== undefined || deps.reconciliation !== undefined || deps.lease !== undefined ||
-      deps.clock !== undefined || deps.liveGuard !== undefined || deps.riskLatch !== undefined
-    ));
+    const hasExplicitDeps = !!(
+      deps &&
+      (deps.db !== undefined ||
+        deps.venue !== undefined ||
+        deps.forecast !== undefined ||
+        deps.signer !== undefined ||
+        deps.reconciliation !== undefined ||
+        deps.lease !== undefined ||
+        deps.clock !== undefined ||
+        deps.liveGuard !== undefined ||
+        deps.riskLatch !== undefined)
+    );
 
     const metrics = deps?.metrics;
     if (!metrics) return false;
@@ -238,9 +260,24 @@ export class HealthCheck implements HealthCheckEngine {
     if (!deps.riskLatch?.healthy) return false;
 
     // Additional thresholds
-    if (deps.forecast && deps.forecast.maxAgeSec !== undefined && deps.forecast.maxAgeSec > 300) return false;
-    if (deps.clock && deps.clock.skewMs !== undefined && deps.clock.skewMs > 500) return false;
-    if (deps.reconciliation && deps.reconciliation.unknownOrders !== undefined && deps.reconciliation.unknownOrders > 10) return false;
+    if (
+      deps.forecast &&
+      deps.forecast.maxAgeSec !== undefined &&
+      deps.forecast.maxAgeSec > 300
+    )
+      return false;
+    if (
+      deps.clock &&
+      deps.clock.skewMs !== undefined &&
+      deps.clock.skewMs > 500
+    )
+      return false;
+    if (
+      deps.reconciliation &&
+      deps.reconciliation.unknownOrders !== undefined &&
+      deps.reconciliation.unknownOrders > 10
+    )
+      return false;
 
     return true;
   }
@@ -254,11 +291,20 @@ export class HealthCheck implements HealthCheckEngine {
         venue: deps?.venue ?? { healthy: false, reason: "not provided" },
         forecast: deps?.forecast ?? { healthy: false, reason: "not provided" },
         signer: deps?.signer ?? { healthy: false, reason: "not provided" },
-        reconciliation: deps?.reconciliation ?? { healthy: false, reason: "not provided" },
+        reconciliation: deps?.reconciliation ?? {
+          healthy: false,
+          reason: "not provided",
+        },
         lease: deps?.lease ?? { healthy: false, reason: "not provided" },
         clock: deps?.clock ?? { healthy: false, reason: "not provided" },
-        liveGuard: deps?.liveGuard ?? { healthy: false, reason: "not provided" },
-        riskLatch: deps?.riskLatch ?? { healthy: false, reason: "not provided" },
+        liveGuard: deps?.liveGuard ?? {
+          healthy: false,
+          reason: "not provided",
+        },
+        riskLatch: deps?.riskLatch ?? {
+          healthy: false,
+          reason: "not provided",
+        },
       },
     };
     return {

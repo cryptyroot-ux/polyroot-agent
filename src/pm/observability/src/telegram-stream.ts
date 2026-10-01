@@ -332,6 +332,8 @@ export function formatMarketReport(input: {
   notionalUsd: number;
   bankrollUsd: number | null;
   exposureUsd: number | null;
+  /** Realized PnL. Null renders as "—"; never substitute exposure here. */
+  pnlUsd?: number | null;
 }): string {
   // Unknown money renders as "—": never fabricate $0 for a missing ledger.
   const money = (v: number | null): string =>
@@ -376,9 +378,8 @@ export function formatMarketReport(input: {
     );
   }
   lines.push("", `Balance: ${money(input.bankrollUsd)}`);
-  lines.push(
-    `PnL: ${input.bankrollUsd === null ? "—" : money(input.exposureUsd)}`,
-  );
+  const pnl = input.pnlUsd ?? null;
+  lines.push(`PnL: ${pnl === null ? "—" : money(pnl)}`);
   return lines.join("\n");
 }
 
@@ -446,6 +447,8 @@ export function formatBatchedDigest(input: BatchedDigestInput): string {
 export interface TradeAlertInput {
   question: string;
   side?: string;
+  /** Venue action. Defaults to BUY (spot markets only buy); SELL must render as Jual, never Beli. */
+  action?: "BUY" | "SELL";
   sizeShares: number;
   notionalUsd: number;
   fillPrice: number;
@@ -461,9 +464,10 @@ export interface TradeAlertInput {
 export function formatTradeAlert(input: TradeAlertInput): string {
   const tag =
     input.side === "YES" || input.side === "NO" ? ` [${input.side}]` : "";
+  const verb = input.action === "SELL" ? "Jual" : "Beli";
   const lines = [
     `🚀 TRADE · ${input.question}${tag}`,
-    `Beli ${input.sizeShares} shares @ $${input.fillPrice.toFixed(2)} = ${DOLLAR(input.notionalUsd)}`,
+    `${verb} ${input.sizeShares} shares @ $${input.fillPrice.toFixed(2)} = ${DOLLAR(input.notionalUsd)}`,
     input.pYes === null
       ? `AI abstained`
       : `AI ${(input.pYes * 100).toFixed(0)}% · edge +${input.edgePct.toFixed(1)}% (floor +${input.floorPct.toFixed(1)}%)`,

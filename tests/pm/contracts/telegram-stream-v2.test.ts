@@ -225,6 +225,26 @@ describe("batched digest + instant alerts", () => {
     assert.ok(text.includes("Portfolio: $100.00"));
   });
 
+  it("formatTradeAlert renders SELL as Jual, never Beli", () => {
+    const text = formatTradeAlert({
+      question: "Ethereum <$2k 2026",
+      side: "NO",
+      action: "SELL",
+      sizeShares: 10,
+      notionalUsd: 4.5,
+      fillPrice: 0.45,
+      pYes: 0.3,
+      edgePct: 5,
+      floorPct: 1,
+      rationale: "",
+      bankrollUsd: 100,
+      exposureUsd: 4.5,
+      pnlUsd: 1.2,
+    });
+    assert.ok(text.includes("Jual 10 shares"));
+    assert.ok(!text.includes("Beli"));
+  });
+
   it("formatTradeAlert never invents a probability it does not have", () => {
     const text = formatTradeAlert({
       question: "Bitcoin >$100k 2026",

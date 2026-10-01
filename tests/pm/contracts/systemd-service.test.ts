@@ -1,12 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,9 +9,21 @@ const TEMPLATE = join(process.cwd(), "scripts", "polyroot.service.template");
 const INSTALLER = join(process.cwd(), "scripts", "install-systemd.sh");
 
 function render(home: string, user: string): string {
+  // Portability: feed the runner's real node binary — the installer
+  // fail-closes on non-executable --node paths, and /usr/bin/node does
+  // not exist on all CI runners.
   return execFileSync(
     "bash",
-    [INSTALLER, "--print", "--home", home, "--user", user, "--node", "/usr/bin/node"],
+    [
+      INSTALLER,
+      "--print",
+      "--home",
+      home,
+      "--user",
+      user,
+      "--node",
+      process.execPath,
+    ],
     { encoding: "utf8" },
   );
 }
@@ -57,7 +64,7 @@ describe("systemd 24/7 supervisor (template)", () => {
     assert.ok(out.includes("WorkingDirectory=/home/ops/.polyroot"));
     assert.ok(
       out.includes(
-        "ExecStart=/usr/bin/node /home/ops/.polyroot/src/pm/runtime/dist/cli.js run",
+        `ExecStart=${process.execPath} /home/ops/.polyroot/src/pm/runtime/dist/cli.js run`,
       ),
     );
     assert.ok(!out.includes("{{"));
@@ -65,9 +72,21 @@ describe("systemd 24/7 supervisor (template)", () => {
 
   it("installs into SYSTEMD_DIR without touching real systemd (test mode)", () => {
     const dir = mkdtempSync(join(tmpdir(), "polyroot-systemd-"));
-    execFileSync("bash", [INSTALLER, "--home", "/home/ops/.polyroot", "--user", "ops", "--node", "/usr/bin/node"], {
-      env: { ...process.env, SYSTEMD_DIR: dir },
-    });
+    execFileSync(
+      "bash",
+      [
+        INSTALLER,
+        "--home",
+        "/home/ops/.polyroot",
+        "--user",
+        "ops",
+        "--node",
+        process.execPath,
+      ],
+      {
+        env: { ...process.env, SYSTEMD_DIR: dir },
+      },
+    );
     const unitPath = join(dir, "polyroot.service");
     assert.equal(existsSync(unitPath), true);
     const unit = readFileSync(unitPath, "utf8");
@@ -78,7 +97,10 @@ describe("systemd 24/7 supervisor (template)", () => {
   it("installer + template stay in sync (installer consumes this template)", () => {
     const installer = readFileSync(INSTALLER, "utf8");
     assert.ok(installer.includes("polyroot.service.template"));
-    assert.ok(installer.includes("{{POLYROOT_HOME}}") || installer.includes("POLYROOT_HOME"));
+    assert.ok(
+      installer.includes("{{POLYROOT_HOME}}") ||
+        installer.includes("POLYROOT_HOME"),
+    );
     assert.ok(installer.includes("daemon-reload"));
     assert.ok(installer.includes("reset-failed"));
   });
@@ -99,7 +121,10 @@ describe("systemd 24/7 supervisor (template)", () => {
 // Keep install.sh honest: the systemd step must run on every fresh install.
 describe("install.sh wires the 24/7 service", () => {
   it("calls install-systemd.sh best-effort after linking the binary", () => {
-    const sh = readFileSync(join(process.cwd(), "scripts", "install.sh"), "utf8");
+    const sh = readFileSync(
+      join(process.cwd(), "scripts", "install.sh"),
+      "utf8",
+    );
     const linkIdx = sh.indexOf("link_binary");
     const sysIdx = sh.indexOf("install-systemd.sh");
     assert.ok(linkIdx >= 0 && sysIdx >= 0 && sysIdx > linkIdx);
@@ -157,11 +182,15 @@ describe("polyroot update refreshes the supervisor unit", () => {
     const { spawn } = await import("node:child_process");
     const cli = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
     const out = await new Promise<string>((resolve) => {
-      const child = spawn(process.execPath, ["--import", "tsx", cli, "status"], {
-        cwd: process.cwd(),
-        env: { ...process.env, POLYROOT_NO_SYSTEMD: "1" },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      const child = spawn(
+        process.execPath,
+        ["--import", "tsx", cli, "status"],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env, POLYROOT_NO_SYSTEMD: "1" },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
       let text = "";
       child.stdout.on("data", (d: Buffer) => {
         text += d.toString();

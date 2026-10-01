@@ -37,6 +37,29 @@ describe("PR-OPS-05: real observability (no placeholder)", () => {
     assert.ok(entry.meta.secret.includes("****"));
   });
 
+  it("Logger: redacts secrets nested in objects and arrays (recursive)", () => {
+    const logger = new Logger();
+    const raw = "sk_live_abcdef1234567890"; // gitleaks:allow
+    logger.info("nested", {
+      request: { api_key: raw },
+      batch: [{ token: raw }, "plain"],
+    });
+    const logs = logger.getLogs("info");
+    const entry = logs[logs.length - 1];
+    const req = entry.meta.request as Record<string, unknown>;
+    assert.ok(
+      typeof req.api_key === "string" && !req.api_key.includes("abcdef12"),
+      "nested api_key must be redacted",
+    );
+    const batch = entry.meta.batch as unknown[];
+    const first = batch[0] as Record<string, unknown>;
+    assert.ok(
+      typeof first.token === "string" && !first.token.includes("abcdef12"),
+      "api_key/token inside arrays must be redacted",
+    );
+    assert.equal(batch[1], "plain");
+  });
+
   it("HealthCheck: returns healthy when no issues; unhealthy when failures logged", () => {
     const h = new HealthCheck();
     const metrics = new Metrics();

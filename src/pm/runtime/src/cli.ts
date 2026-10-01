@@ -1301,83 +1301,87 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     0,
   );
   let mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" = "SHADOW";
-    let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
-    let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
-    let walletAccount = "";
-    let walletFunder = "";
+  let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
+  let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
+  let walletAccount = "";
+  let walletFunder = "";
 
-    // SHADOW, MICRO_LIVE and LIVE need capital/loss caps (SHADOW simulates with
-    // real data; PAPER ignores caps and runs the mock fixture).
-    const needsCapitalConfig =
-      modeChoice.startsWith("SHADOW") ||
-      modeChoice.startsWith("MICRO") ||
-      modeChoice.startsWith("LIVE");
-    if (needsCapitalConfig) {
-      const isLive = modeChoice.startsWith("LIVE");
-      const isMicro = modeChoice.startsWith("MICRO");
-      if (isLive || isMicro) {
-        const label = isLive ? "LIVE" : "MICRO_LIVE";
-        mode = label;
+  // SHADOW, MICRO_LIVE and LIVE need capital/loss caps (SHADOW simulates with
+  // real data; PAPER ignores caps and runs the mock fixture).
+  const needsCapitalConfig =
+    modeChoice.startsWith("SHADOW") ||
+    modeChoice.startsWith("MICRO") ||
+    modeChoice.startsWith("LIVE");
+  if (needsCapitalConfig) {
+    const isLive = modeChoice.startsWith("LIVE");
+    const isMicro = modeChoice.startsWith("MICRO");
+    if (isLive || isMicro) {
+      const label = isLive ? "LIVE" : "MICRO_LIVE";
+      mode = label;
+      console.log(
+        `\n${label} uses REAL MONEY. The daily loss cap shuts the system`,
+        "down automatically when reached (needs your manual reset).",
+      );
+      if (isMicro || isLive) {
+        const signerAddress = deriveAddressFromPrivateKey(privateKey!);
         console.log(
-          `\n${label} uses REAL MONEY. The daily loss cap shuts the system`,
-          "down automatically when reached (needs your manual reset).",
+          `\n${label} also needs: Polymarket API keys + 3 distinct wallet`,
+          "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
         );
-        if (isMicro || isLive) {
-          const signerAddress = deriveAddressFromPrivateKey(privateKey!);
-          console.log(
-            `\n${label} also needs: Polymarket API keys + 3 distinct wallet`,
-            "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
+        console.log(
+          "\n📍 WAL-03 requires 3 distinct addresses for live trading: Signer, Account, and Funder.",
+        );
+        console.log(`   Your Signer address is: ${signerAddress}`);
+        for (;;) {
+          walletAccount = await askText(
+            "Wallet Account address (0x...) — must differ from Signer:",
+            { defaultValue: "" },
           );
-          console.log(
-            "\n📍 WAL-03 requires 3 distinct addresses for live trading: Signer, Account, and Funder.",
-          );
-          console.log(`   Your Signer address is: ${signerAddress}`);
-          for (;;) {
-            walletAccount = await askText(
-              "Wallet Account address (0x...) — must differ from Signer:",
-              { defaultValue: "" },
-            );
-            if (!walletAccount) {
-              console.log("WALLET_ACCOUNT is required for LIVE/MICRO_LIVE mode.");
-              continue;
-            }
-            if (!/^0x[0-9a-fA-F]{40}$/.test(walletAccount)) {
-              console.log("Invalid address format — expected 0x followed by 40 hex characters.");
-              continue;
-            }
-            if (walletAccount.toLowerCase() === signerAddress.toLowerCase()) {
-              console.log("Wallet Account must differ from Signer address.");
-              continue;
-            }
-            break;
+          if (!walletAccount) {
+            console.log("WALLET_ACCOUNT is required for LIVE/MICRO_LIVE mode.");
+            continue;
           }
-          for (;;) {
-            walletFunder = await askText(
-              "Wallet Funder address (0x...) — must differ from Signer and Account:",
-              { defaultValue: "" },
+          if (!/^0x[0-9a-fA-F]{40}$/.test(walletAccount)) {
+            console.log(
+              "Invalid address format — expected 0x followed by 40 hex characters.",
             );
-            if (!walletFunder) {
-              console.log("WALLET_FUNDER is required for LIVE/MICRO_LIVE mode.");
-              continue;
-            }
-            if (!/^0x[0-9a-fA-F]{40}$/.test(walletFunder)) {
-              console.log("Invalid address format — expected 0x followed by 40 hex characters.");
-              continue;
-            }
-            if (walletFunder.toLowerCase() === signerAddress.toLowerCase()) {
-              console.log("Wallet Funder must differ from Signer address.");
-              continue;
-            }
-            if (walletFunder.toLowerCase() === walletAccount.toLowerCase()) {
-              console.log("Wallet Funder must differ from Account address.");
-              continue;
-            }
-            break;
+            continue;
           }
+          if (walletAccount.toLowerCase() === signerAddress.toLowerCase()) {
+            console.log("Wallet Account must differ from Signer address.");
+            continue;
+          }
+          break;
         }
-        const confirm = await askText(
-          `Type ${label} to continue (anything else stays SHADOW)`,
-        );
+        for (;;) {
+          walletFunder = await askText(
+            "Wallet Funder address (0x...) — must differ from Signer and Account:",
+            { defaultValue: "" },
+          );
+          if (!walletFunder) {
+            console.log("WALLET_FUNDER is required for LIVE/MICRO_LIVE mode.");
+            continue;
+          }
+          if (!/^0x[0-9a-fA-F]{40}$/.test(walletFunder)) {
+            console.log(
+              "Invalid address format — expected 0x followed by 40 hex characters.",
+            );
+            continue;
+          }
+          if (walletFunder.toLowerCase() === signerAddress.toLowerCase()) {
+            console.log("Wallet Funder must differ from Signer address.");
+            continue;
+          }
+          if (walletFunder.toLowerCase() === walletAccount.toLowerCase()) {
+            console.log("Wallet Funder must differ from Account address.");
+            continue;
+          }
+          break;
+        }
+      }
+      const confirm = await askText(
+        `Type ${label} to continue (anything else stays SHADOW)`,
+      );
       if (confirm.trim() !== label) {
         mode = "SHADOW";
         console.log("Staying on SHADOW.");
@@ -1471,7 +1475,9 @@ function writeEnv(config: OnboardingConfig): void {
     ...(config.walletFunder ? [`WALLET_FUNDER=${config.walletFunder}`] : []),
     ...((config.mode === "LIVE" || config.mode === "MICRO_LIVE") &&
     (!config.walletAccount || !config.walletFunder)
-      ? [`# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`]
+      ? [
+          `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
+        ]
       : []),
     `RPC_URL=https://polygon-rpc.com`,
     // The brain wire protocol follows the provider choice: most speak
@@ -3141,20 +3147,27 @@ export function buildTelegramHandlers(
       if (sub === "import") {
         const pk = (args[1] ?? "").trim();
         if (!/^(0x)?[0-9a-fA-F]{64}$/.test(pk)) {
-          throw new Error("Format private key salah — harus 64 karakter hex (diawali 0x atau tidak).");
+          throw new Error(
+            "Format private key salah — harus 64 karakter hex (diawali 0x atau tidak).",
+          );
         }
         const formattedPk = pk.startsWith("0x") ? pk : "0x" + pk;
         const derived = deriveAddressFromPrivateKey(formattedPk);
-        const passphrase = env["POLYROOT_KEYSTORE_PASSPHRASE"] ?? "polyroot-default-pass";
+        const passphrase =
+          env["POLYROOT_KEYSTORE_PASSPHRASE"] ?? "polyroot-default-pass";
         const keystore = sealPrivateKey(formattedPk, passphrase);
         ensurePolyrootHome();
-        writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", { mode: 0o600 });
+        writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", {
+          mode: 0o600,
+        });
         chmodSync(KEYSTORE_PATH, 0o600);
         writeEnvKey("WALLET_ADDRESS", derived);
         writeEnvKey("POLYROOT_KEYSTORE_JSON", JSON.stringify(keystore));
         return `✅ Wallet signer diperbarui!\nAlamat baru: \`${derived}\`. Keystore di-seal aman.`;
       }
-      throw new Error("Subcommand /wallet tidak dikenal. Gunakan: /wallet atau /wallet import <pk>");
+      throw new Error(
+        "Subcommand /wallet tidak dikenal. Gunakan: /wallet atau /wallet import <pk>",
+      );
     },
   };
 }
