@@ -86,15 +86,15 @@ describe("stream v2 builders", () => {
       clock: "10:58:04",
       scanned: 4,
       evaluating: [
-        { id: "yes-id", question: "Putin out as President?", side: "YES" },
-        { id: "no-id", question: "Putin out as President?", side: "NO" },
+        { id: "yes-id", question: "Putin", side: "YES" },
+        { id: "no-id", question: "Putin", side: "NO" },
       ],
       deferredCount: 1,
     });
-    assert.ok(digest.includes('Putin out as President? [YES]'));
-    assert.ok(digest.includes('Putin out as President? [NO]'));
+    assert.ok(digest.includes('Putin [YES]'));
+    assert.ok(digest.includes('Putin [NO]'));
     const report = formatMarketReport({
-      question: "Putin out as President?",
+      question: "Putin",
       side: "NO",
       bid: 0.972,
       ask: 0.973,
@@ -112,7 +112,7 @@ describe("stream v2 builders", () => {
       bankrollUsd: 100,
       exposureUsd: 0,
     });
-    assert.ok(report.includes('Putin out as President? [NO]'));
+    assert.ok(report.includes("Putin [NO]"));
   });
 
   it("ReportDedupe sends once per reason, resends on change", () => {
