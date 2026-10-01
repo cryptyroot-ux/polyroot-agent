@@ -552,7 +552,7 @@ export async function bootstrapAgent(
     pool,
     mode,
     model: process.env["POLYROOT_FORECAST_MODEL"],
-    baseMinEdge: 0.03,
+    baseMinEdge: 0.01,
     getReasoning: (marketId: string) => lastReasoning.get(marketId),
   });
   const telegramStream: TelegramStreamEmitter = getTelegramEmitter();
@@ -591,7 +591,7 @@ export async function bootstrapAgent(
   const pipeline = createG4Pipeline({
     config: {
       mode,
-      minEdgeAfterCost: 0.03,
+      minEdgeAfterCost: 0.01,
       maxConcurrentMarkets,
       ...(microLiveCapUsd !== undefined ? { microLiveCapUsd } : {}),
       ...(liveLossCapPusd !== undefined ? { liveLossCapPusd } : {}),
@@ -644,7 +644,7 @@ export async function bootstrapAgent(
                 : "NO_TRADE";
             const reason = result.reason ?? "no reason recorded";
             const edgePct = (result.edge ?? 0) * 100;
-            // floorPct 3.0 mirrors minEdgeAfterCost: 0.03 in the pipeline config above (single source of truth).
+            // floorPct 3.0 mirrors minEdgeAfterCost: 0.01 in the pipeline config above (single source of truth).
             const floorPct = 3.0;
             const sizeShares =
               typeof result.size === "number" && Number.isFinite(result.size)

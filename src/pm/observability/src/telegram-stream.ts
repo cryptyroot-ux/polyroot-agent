@@ -341,7 +341,7 @@ export function formatMarketReport(input: {
         : ""),
   ];
   if (input.pYes === null) {
-    lines.push(`AI abstained — ${input.reason}`);
+    lines.push(`⚠️ AI abstained — ${input.reason}`);
   } else {
     lines.push(
       `AI: YES ${(input.pYes * 100).toFixed(1)}%  confidence ${(input.confidence * 100).toFixed(0)}%`,
@@ -365,10 +365,14 @@ export function formatMarketReport(input: {
     );
   } else {
     lines.push(
-      `⏭️ NO_TRADE: ${input.reason}`,
+      `⏭️ NO TRADE: ${input.reason}`,
       `💰 At stake: $${input.notionalUsd.toFixed(2)}`,
     );
   }
+  lines.push("", `Balance: ${money(input.bankrollUsd)}`);
+  lines.push(
+    `PnL: ${input.bankrollUsd === null ? "—" : money(input.exposureUsd)}`,
+  );
   return lines.join("\n");
 }
 
