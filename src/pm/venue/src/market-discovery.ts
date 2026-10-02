@@ -322,6 +322,8 @@ export interface SpreadCheckedMarket {
  * (network/empty book) drop the token, never fabricate it. `touch` is
  * injectable for tests.
  */
+export type DiscoveryStrictness = "permissive" | "standard" | "strict";
+
 export interface TouchGuards {
   /** Minimum touch-depth notional in USD (default 25, 0 disables). */
   minTouchDepthUsd?: number;
@@ -331,6 +333,14 @@ export interface TouchGuards {
   minHoursToExpiry?: number;
   /** Clock override (tests). */
   nowMs?: number;
+  /**
+   * Fail-open policy for incomplete data (default "standard" = historic
+   * behavior). "strict" (LIVE/MICRO_LIVE) blocks unknown expiries and
+   * price-only touches without depth: real money never trades what it
+   * cannot see. "permissive" equals standard today and stays reserved
+   * for PAPER experimentation.
+   */
+  strictness?: DiscoveryStrictness;
 }
 
 export async function filterTightSpreadTokens(
@@ -344,16 +354,19 @@ export async function filterTightSpreadTokens(
   const minDepth = guards.minTouchDepthUsd ?? 25;
   const maxChurn = guards.maxChurnRatio ?? 2000;
   const minExpMs = (guards.minHoursToExpiry ?? 2) * 3_600_000;
+  const strict = guards.strictness === "strict";
   await Promise.all(
     markets.map(async (market) => {
       // Expiry gate first: no network spent on resolution gambles.
-      // Unknown expiry never blocks (fail-open on missing data).
-      if (
-        minExpMs > 0 &&
-        market.endDateMs !== undefined &&
-        market.endDateMs - nowMs < minExpMs
-      ) {
-        return;
+      // Unknown expiry never blocks (fail-open on missing data) — except
+      // under strictness "strict", where an unknowable horizon is itself
+      // disqualifying for real-money books.
+      if (minExpMs > 0) {
+        if (market.endDateMs === undefined) {
+          if (strict) return;
+        } else if (market.endDateMs - nowMs < minExpMs) {
+          return;
+        }
       }
       const [yes, no] = await Promise.all([
         touch(market.yesTokenId),
@@ -372,8 +385,12 @@ export async function filterTightSpreadTokens(
         }
         // Depth + churn gates only when size data exists (legacy stubs and
         // partial books carry price-only touches — judged by spread alone).
+        // Under "strict", a touch without depth is unpriceable slippage:
+        // block it instead of judging by spread alone.
         const depth = touchDepthNotionalUsd(t);
-        if (depth !== null) {
+        if (depth === null) {
+          if (strict) continue;
+        } else {
           if (minDepth > 0 && depth < minDepth) continue;
           if (
             maxChurn > 0 &&

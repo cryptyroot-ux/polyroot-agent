@@ -122,6 +122,39 @@ describe("market discovery (pick by name)", () => {
     assert.deepEqual(out[0]?.tokenIds, ["1"]);
   });
 
+  it("P1: strict blocks unknown expiries that standard lets through", async () => {
+    const markets = [mk("no-expiry")]; // endDateMs absent
+    const touch = async (id: string) => ({
+      tokenId: id,
+      bid: 0.5,
+      ask: 0.55,
+      bidSizeShares: 100,
+      askSizeShares: 100,
+    });
+    const std = await filterTightSpreadTokens(markets, 0.1, touch, {
+      minHoursToExpiry: 2,
+      nowMs: 1_000_000,
+    });
+    assert.equal(std.length, 1, "standard fail-open on missing expiry");
+    const strict = await filterTightSpreadTokens(markets, 0.1, touch, {
+      minHoursToExpiry: 2,
+      nowMs: 1_000_000,
+      strictness: "strict",
+    });
+    assert.equal(strict.length, 0, "strict blocks unknowable horizon");
+  });
+
+  it("P1: strict blocks depthless touches judged by spread alone", async () => {
+    const markets = [mk("thin")];
+    const touch = async (id: string) => ({ tokenId: id, bid: 0.5, ask: 0.55 });
+    const std = await filterTightSpreadTokens(markets, 0.1, touch);
+    assert.equal(std.length, 1, "standard judges price-only by spread");
+    const strict = await filterTightSpreadTokens(markets, 0.1, touch, {
+      strictness: "strict",
+    });
+    assert.equal(strict.length, 0, "strict requires visible depth");
+  });
+
   it("manual mode still uses curated ids (no network)", async () => {
     const out = await resolveMarketUniverse({
       POLYROOT_MARKET_IDS: "123,456",
