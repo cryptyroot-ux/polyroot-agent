@@ -120,7 +120,7 @@ export async function runMenu(): Promise<void> {
               .join(" › ")}`
           : POLYROOT_MENU.label;
       console.log("");
-      console.log(banner(title, "↑↓ navigate · Enter select · Esc back"));
+      console.log(banner(title, "↑↓ navigate · Enter/Space select · Esc back"));
       let picked: string;
       try {
         picked = await askChoice("Menu:", labels, 0);

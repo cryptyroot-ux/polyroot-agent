@@ -223,7 +223,7 @@ export function pill(
 }
 
 export interface MenuFrameOpts {
-  /** Extra footer line (e.g. "↑↓ navigate · Enter select"). */
+  /** Extra footer line (e.g. "↑↓ navigate · Enter/Space select"). */
   hint?: string;
   /** Max options before the list scrolls in interactive mode. */
   pageSize?: number;

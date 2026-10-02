@@ -868,7 +868,7 @@ async function askChoiceArrows(
     const render = (): void => {
       const frame = menuFrame(message, options, defaultIdx, cursor, {
         pageSize: PAGE,
-        hint: "↑↓ move · Enter select · 1-9 jump · Esc cancel",
+        hint: "↑↓ move · Enter/Space select · 1-9 jump · Esc cancel",
       });
       process.stdout.write(`${frame}\n`);
       frameLines = frame.split("\n").length + 1;
@@ -924,9 +924,15 @@ async function askChoiceArrows(
         render();
         return;
       }
-      if (name === "return" || name === "enter" || name === "linefeed") {
+      if (
+        name === "return" ||
+        name === "enter" ||
+        name === "linefeed" ||
+        name === "space"
+      ) {
         // linefeed (\n): piped/scripted input and some terminals send LF
         // instead of CR — without this, piped selections hang to EOF.
+        // space: selectable like Enter (menu concept: "ENTER/SPACE select").
         const picked = options[cursor];
         clearFrame();
         if (picked === undefined) {
