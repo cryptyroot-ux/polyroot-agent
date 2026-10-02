@@ -22,7 +22,6 @@ import {
 import { type RuntimeMode } from "./mode-watcher.js";
 import type {
   OnboardFacts as TelegramOnboardFacts,
-  OnboardState as TelegramOnboardState,
 } from "./telegram-onboard.js";
 import {
   uiEnabled,
