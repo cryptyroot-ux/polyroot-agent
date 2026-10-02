@@ -13,6 +13,22 @@ import crypto from "crypto";
 import path from "path";
 import { execSync } from "child_process";
 
+/** Pinned Polymarket SDK version from the venue workspace (single source of truth). */
+function pinnedPolymarketClient() {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync("src/pm/venue/package.json", "utf8"),
+    );
+    const v =
+      pkg.dependencies?.["@polymarket/client"] ??
+      pkg.devDependencies?.["@polymarket/client"];
+    if (typeof v === "string" && v.length > 0) return v;
+  } catch {
+    // fall through to TBD
+  }
+  return "TBD-pinned-at-G0";
+}
+
 function git(args) {
   try {
     return execSync(`git ${args}`, { encoding: "utf8" }).trim();
@@ -157,13 +173,13 @@ const manifest = {
     lockfile_sha256: lockHash,
   },
   dependencies: {
-    "@polymarket/client": "TBD-pinned-at-G0",
+    "@polymarket/client": pinnedPolymarketClient(),
     zod: "^3.22.4",
   },
   image: { repository: "polyroot/trader", tag: tag, digest: imageDigest },
   sdk: {
     package: "@polymarket/client",
-    version: "TBD-pinned-at-G0-after-contract-checks",
+    version: pinnedPolymarketClient(),
   },
   contracts: { chain_id: 137, registry_version: "v0-bootstrap" },
   schema_migrations: {

@@ -1,5 +1,19 @@
 # GATE STATUS AUDIT — PolyRoot v1.1 (G0–G7 FINAL TAXONOMY)
 
+> [!CAUTION]
+> **HISTORICAL ARTIFACT — DO NOT READ AS CURRENT TRUTH.**
+> This audit predates the PostgreSQL Money Authority, atomic permit claims,
+> executor fencing/leases, recovery ledger, settlement accounting, and the
+> Batch 1–3 lifecycle fixes (PARTIAL resolution, cancel settlement, fill
+> deltas, LIVE admission path). Its "CRITICAL FAIL" rows for Money Kernel /
+> atomic reservation / persistent authority are **stale and contradicted by
+> current source** (`src/pm/risk/src/money-kernel-pg.ts`,
+> `src/pm/risk/src/reservation-manager.ts`, `src/pm/venue/src/recovery-ledger.ts`).
+> Current gate truth: CI (`npx prettier --check .`, typecheck, contract +
+> property suites), `node scripts/check-traceability.mjs` against
+> `docs/implementation/FINAL_96_REQUIREMENTS.json`, and `release_manifest.json`
+> regenerated per release. This file is kept for provenance only.
+
 ## Gate Definitions (from FINAL PRD/Blueprint v1.1)
 
 | Gate | Name | Requirements (Area) | Promotion Criteria |

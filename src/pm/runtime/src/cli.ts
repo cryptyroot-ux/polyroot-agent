@@ -1322,12 +1322,21 @@ async function runOnboarding(): Promise<OnboardingConfig> {
         `\n${label} uses REAL MONEY. The daily loss cap shuts the system`,
         "down automatically when reached (needs your manual reset).",
       );
-      if (isMicro || isLive) {
+      console.log(
+        `${label} also needs: Polymarket API keys + 3 distinct wallet`,
+        "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
+      );
+      const confirm = await askText(
+        `Type ${label} to continue (anything else stays SHADOW)`,
+      );
+      if (confirm.trim() !== label) {
+        mode = "SHADOW";
+        console.log("Staying on SHADOW.");
+      } else {
+        mode = label;
+        // WAL-03 addresses are asked ONLY after explicit real-money
+        // confirmation — decliners must never be interrogated for them.
         const signerAddress = deriveAddressFromPrivateKey(privateKey!);
-        console.log(
-          `\n${label} also needs: Polymarket API keys + 3 distinct wallet`,
-          "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
-        );
         console.log(
           "\n📍 WAL-03 requires 3 distinct addresses for live trading: Signer, Account, and Funder.",
         );
@@ -1378,15 +1387,6 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           }
           break;
         }
-      }
-      const confirm = await askText(
-        `Type ${label} to continue (anything else stays SHADOW)`,
-      );
-      if (confirm.trim() !== label) {
-        mode = "SHADOW";
-        console.log("Staying on SHADOW.");
-      } else {
-        mode = label;
       }
     } else {
       mode = "SHADOW";

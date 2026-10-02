@@ -295,6 +295,8 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
         "test-pass-123", // repeat vault password
         "3", // mode: MICRO_LIVE
         "MICRO_LIVE", // typed confirmation (real money)
+        "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
+        "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "100", // capital cap
         "500", // loss cap bps
         "n", // demo trade offer (never asked without DB)
@@ -309,6 +311,8 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
         "Repeat the vault password",
         "Choose mode (Enter = SHADOW):",
         "Type MICRO_LIVE to continue",
+        "Wallet Account address",
+        "Wallet Funder address",
         "Capital cap in USD",
         "Daily loss cap in bps",
       ],
@@ -317,6 +321,12 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
     const env = readFileSync(join(home, ".polyroot", ".env"), "utf8");
     assert.ok(env.includes("RUNTIME_MODE=MICRO_LIVE"));
     assert.ok(env.includes("POLYROOT_MICRO_LIVE_CAP_USD=100"));
+    assert.ok(
+      env.includes("WALLET_ACCOUNT=0x1111111111111111111111111111111111111111"),
+    );
+    assert.ok(
+      env.includes("WALLET_FUNDER=0x2222222222222222222222222222222222222222"),
+    );
     assert.ok(!out.includes("files.pango.fun"));
   });
 

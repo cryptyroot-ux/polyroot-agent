@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT license" />
-  <img src="https://img.shields.io/badge/version-v1.11.5--stable-blue?style=for-the-badge" alt="version" />
-  <img src="https://img.shields.io/badge/tests-848%2B12-passing-success?style=for-the-badge" alt="tests" />
+  <img src="https://img.shields.io/badge/version-v1.14.2--stable-blue?style=for-the-badge" alt="version" />
+  <img src="https://img.shields.io/badge/tests-919%2B12-passing-success?style=for-the-badge" alt="tests" />
   <img src="https://img.shields.io/badge/node-%3E%3D24-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="node" />
 </p>
 
@@ -24,7 +24,7 @@
 ---
 
 > **Status: v1.14.2-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
-> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 894 passing tests (882 contract + 12 property).
+> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 931 passing tests (919 contract + 12 property).
 > Default onboarding mode is `SHADOW`. Live trading requires explicit Autonomy Charter commissioning.
 
 > [!CAUTION]

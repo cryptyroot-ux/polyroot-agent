@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0.0",
-  "release_id": "ff8f9d98-e5cb-0767-c4f7-40dabd26f88d",
-  "timestamp_utc": "2026-09-21T12:37:57.478Z",
+  "release_id": "6eb3ab46-255e-f276-a774-fa9d65a57412",
+  "timestamp_utc": "2026-10-02T05:07:16.848Z",
   "git": {
     "repo": "https://github.com/cryptyroot-ux/polyroot-agent.git",
     "branch": "main",
-    "commit_sha": "ff8f9d98e5cb0767c4f740dabd26f88d1ddeee60",
-    "tag": "safety-pre-finalization",
+    "commit_sha": "6eb3ab46255ef276a774fa9d65a5741275d4d5ef",
+    "tag": "v1.14.2",
     "dirty": true
   },
   "upstream": {
@@ -19,20 +19,20 @@
     "node_version": "24.18.0",
     "node_engine_range": ">=24.0.0",
     "npm_version": "11.16.0",
-    "lockfile_sha256": "0cc68ffd08f95a3645b97c7114e833eda71371437fe7811426a1e8d59b9a6c5a"
+    "lockfile_sha256": "e7273702c5ea3906dfcf51e9c255216612134e423256e30fe6610c1833843e39"
   },
   "dependencies": {
-    "@polymarket/client": "TBD-pinned-at-G0",
+    "@polymarket/client": "0.9.0",
     "zod": "^3.22.4"
   },
   "image": {
     "repository": "polyroot/trader",
-    "tag": "safety-pre-finalization",
-    "digest": "sha256:095af0ca8a0ca9282e9f8d4ac81e5febde75a2485f1667dad28acdf538a1a112"
+    "tag": "v1.14.2",
+    "digest": "sha256:793956d4d9319b2afda80fe0db9d54d98bf1bf1efee56598fd7df71738f707de"
   },
   "sdk": {
     "package": "@polymarket/client",
-    "version": "TBD-pinned-at-G0-after-contract-checks"
+    "version": "0.9.0"
   },
   "contracts": {
     "chain_id": 137,
@@ -55,11 +55,18 @@
       "0012_reservations_active_intent_unique.sql",
       "0013_reservation_lifecycle_accounting.sql",
       "0014_risk_decision_extra_fields.sql",
-      "0015_market_event_graph.sql",
-      "0016_source_records.sql",
-      "0017_catalyst_bus.sql",
-      "0018_calibration_ensemble.sql",
-      "0019_research_budget.sql"
+      "0015_live_guard.sql",
+      "0016_market_event_graph.sql",
+      "0017_source_records.sql",
+      "0018_catalyst_bus.sql",
+      "0019_calibration_ensemble.sql",
+      "0020_research_budget.sql",
+      "0021_shadow_g5_infrastructure.sql",
+      "0022_seen_orders.sql",
+      "0023_runtime_mode_hot_reload.sql",
+      "0024_arb_observations.sql",
+      "0025_telegram.sql",
+      "0026_recovery_fill_tracking.sql"
     ]
   },
   "strategies": {},
@@ -71,6 +78,6 @@
   "fork_disposition": "docs/ARTEFAK/fork_disposition.csv (TBD — required before G1)",
   "sbom": {
     "format": "spdx-json",
-    "sha256": "0b347ba907318d48389de9cad9b768cb7f2d6d13c7abe231c91e5d4b1f0a375b"
+    "sha256": "b8193d53266c4e306bdee700a47082db9c3b873b5e61419b758ad646442142fd"
   }
 }
