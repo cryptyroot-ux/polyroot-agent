@@ -278,6 +278,12 @@ export class PolymarketVenueAdapter {
       venue_mode: this._mode,
       yes_price: bestBid,
       no_price: bestAsk,
+      // P1: execution-grade levels with explicit token identity. yes/no_price
+      // above are the legacy dual-display convention (same single-token
+      // book); consumers must not read no_price as the buy price of NO.
+      ...(bestBid !== undefined ? { best_bid: bestBid } : {}),
+      ...(bestAsk !== undefined ? { best_ask: bestAsk } : {}),
+      quote_token_id: marketId,
       source_at: bestTimestamp,
       received_at: bestTimestamp,
     };

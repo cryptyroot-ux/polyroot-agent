@@ -373,8 +373,19 @@ export const MarketSnapshotSchema = z.object({
   status: z.string().min(1),
   is_neg_risk: z.boolean(),
   venue_mode: VenueModeSchema,
+  // Legacy dual-display prices (YES-bid / NO-ask convention). Display and
+  // spread-gate use only — NEVER execution prices: both levels come from a
+  // single token's book, so no_price is NOT the buy price of NO. Execution
+  // paths must use best_bid/best_ask (+ quote_side when known).
   yes_price: z.number().min(0).max(1).optional(),
   no_price: z.number().min(0).max(1).optional(),
+  /** Best bid/ask of the quoted token's book (execution-grade levels). */
+  best_bid: z.number().min(0).max(1).optional(),
+  best_ask: z.number().min(0).max(1).optional(),
+  /** Which token's book this quote is (asset/token id as queried). */
+  quote_token_id: z.string().min(1).optional(),
+  /** YES/NO side of the quoted token, when the producer knows it. */
+  quote_side: z.enum(["YES", "NO"]).optional(),
   spread: z.number().nonnegative().optional(),
   quote_hash: z.string().min(1).optional(),
   book_hash: z.string().min(1).optional(),

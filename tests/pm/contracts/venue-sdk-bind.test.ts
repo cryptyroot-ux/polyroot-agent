@@ -28,6 +28,15 @@ describe("PR-EXE-02: Polymarket VenueAdapter binds the pinned official SDK", () 
     assert.ok(snap.received_at instanceof Date);
   });
 
+  it("P1: snapshot carries execution-grade best_bid/best_ask with token identity", async () => {
+    const adapter = new PolymarketVenueAdapter(makeFakeClient());
+    const snap = await adapter.getOrderBook("0xabc");
+    // Same single-token book levels, unambiguous names for execution paths.
+    assert.equal(snap.best_bid, 0.4);
+    assert.equal(snap.best_ask, 0.6);
+    assert.equal(snap.quote_token_id, "0xabc");
+  });
+
   it("fetches the order book by assetId (SDK 0.9.0 shape)", async () => {
     let seen: unknown;
     const client: PolymarketClientLike = {
