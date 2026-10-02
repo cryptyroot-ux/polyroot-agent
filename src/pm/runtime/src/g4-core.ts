@@ -50,6 +50,12 @@ export interface G4CoreConfig {
   /** Minimum edge after costs for entry. */
   minEdgeAfterCost?: number;
   /**
+   * Explicit LIVE admission (promotion artifact + charter + evidence +
+   * guards, verified by the owner-governed startup path). Absent means
+   * LIVE stays FINANCIAL_BLOCKED. No caller grants this yet.
+   */
+  liveAdmission?: LiveAdmission;
+  /**
    * Owner wall: max markets evaluated per pass (default
    * MAX_CONCURRENT_ORDERS). The allocator ranks by previous-pass score
    * and defers the rest — the agent decides WHICH and HOW MANY up to
@@ -637,16 +643,33 @@ export function getDefaultModeConfig(
   };
 }
 
+/**
+ * Explicit LIVE admission. Absent (or admitted:false) keeps LIVE hard-blocked
+ * — the fail-closed default. Admission must come from the owner-governed
+ * promotion path (promotion artifact + charter + G0-G6 evidence + loss guard
+ * + clean reconciliation + venue/signer gates); this gate only *consumes*
+ * the decision, it never manufactures it. No caller grants admission yet —
+ * wiring the admission source is tracked separately.
+ */
+export interface LiveAdmission {
+  admitted: boolean;
+  /** Provenance pointer (e.g. promotion record id) for forensics. */
+  promotionId?: string;
+}
+
 export function computeFinancialGate(
   mode: G4Mode,
   venueMode: () => VenueMode,
   minEdgeAfterCost?: number,
+  liveAdmission?: LiveAdmission,
 ): "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED" {
-  if (mode === "LIVE") {
+  // LIVE without explicit admission is hard-blocked (fail-closed default).
+  // An admitted LIVE run faces exactly the MICRO_LIVE venue/edge checks.
+  if (mode === "LIVE" && liveAdmission?.admitted !== true) {
     return "FINANCIAL_BLOCKED";
   }
 
-  if (mode === "MICRO_LIVE" || mode === "SHADOW") {
+  if (mode === "MICRO_LIVE" || mode === "SHADOW" || mode === "LIVE") {
     const venue = venueMode();
     if (
       venue === "UNAVAILABLE" ||
@@ -708,6 +731,7 @@ export async function executeG4Step(
     config.mode,
     deps.venueMode,
     config.minEdgeAfterCost,
+    config.liveAdmission,
   );
   core.deps.observability?.emitFinancialGate?.(
     gate,

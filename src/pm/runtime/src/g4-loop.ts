@@ -162,6 +162,7 @@ export class G4AutonomousLoop {
       this.config.mode,
       this.deps.venueMode,
       this.config.minEdgeAfterCost,
+      this.config.liveAdmission,
     );
   }
 

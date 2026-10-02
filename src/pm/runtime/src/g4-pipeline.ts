@@ -266,6 +266,7 @@ export class G4Pipeline {
       this.config.mode,
       this.deps.venueMode,
       this.config.minEdgeAfterCost,
+      this.config.liveAdmission,
     );
   }
 
