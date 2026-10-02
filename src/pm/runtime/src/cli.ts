@@ -20,6 +20,10 @@ import {
   decideGuardReset,
 } from "./live-guard-store.js";
 import { type RuntimeMode } from "./mode-watcher.js";
+import type {
+  OnboardFacts as TelegramOnboardFacts,
+  OnboardState as TelegramOnboardState,
+} from "./telegram-onboard.js";
 import {
   uiEnabled,
   theme,
@@ -2867,6 +2871,7 @@ const TELEGRAM_READ = new Set([
   "help",
   "start",
   "wallet",
+  "onboard",
 ]);
 
 const TELEGRAM_CONFIRM = new Set([
@@ -2930,7 +2935,7 @@ export interface TelegramRuntime {
 function telegramHelpText(): string {
   return [
     "Perintah yang tersedia:",
-    "status, explain [--last N], insight, health, markets, logs, wallet — baca, bebas",
+    "status, explain [--last N], insight, health, markets, logs, wallet, onboard — baca/bebas",
     "halt, restart, update, mode, model, provider — butuh konfirmasi YA",
     "wallet create — buat signer baru (konfirmasi 2 langkah di chat)",
     "import key, mode naik (ke MICRO_LIVE/LIVE), setup, guard reset — HANYA via terminal",
@@ -3198,12 +3203,17 @@ export function buildTelegramHandlers(
         const envPath = `${home}/.env`;
         const keystorePath = `${home}/keystore.json`;
         mkdirSync(home, { recursive: true, mode: 0o700 });
-        const privateKey = "0x" + randomBytes(32).toString("hex");
-        const derived = deriveAddressFromPrivateKey(privateKey);
-        const keystore = sealPrivateKey(privateKey, passphrase);
-        writeFileSync(keystorePath, JSON.stringify(keystore, null, 2) + "\n", {
-          mode: 0o600,
-        });
+        const { mintSealedSigner } = await import("./telegram-onboard.js");
+        const minted = mintSealedSigner(passphrase);
+        const derived = minted.address;
+        const keystoreJson = minted.keystoreJson;
+        writeFileSync(
+          keystorePath,
+          JSON.stringify(JSON.parse(keystoreJson), null, 2) + "\n",
+          {
+            mode: 0o600,
+          },
+        );
         chmodSync(keystorePath, 0o600);
         const existing = existsSync(envPath)
           ? readFileSync(envPath, "utf8")
@@ -3212,7 +3222,7 @@ export function buildTelegramHandlers(
           envPath,
           upsertEnvLines(existing, [
             `WALLET_ADDRESS=${derived}`,
-            `POLYROOT_KEYSTORE_JSON=${JSON.stringify(keystore)}`,
+            `POLYROOT_KEYSTORE_JSON=${keystoreJson}`,
           ]) + "\n",
           { mode: 0o600 },
         );
@@ -3227,6 +3237,76 @@ export function buildTelegramHandlers(
       throw new Error(
         "Subcommand /wallet tidak dikenal. Gunakan: /wallet atau /wallet create",
       );
+    },
+
+    onboard: async (args, ctx) => {
+      loadDotEnv();
+      const userId = ctx?.userId ?? "unknown";
+      const ob = await import("./telegram-onboard.js");
+      const env = process.env;
+      const text = args.join(" ").trim();
+      let state = ob.onboardSessionGet(userId);
+      if (!state) {
+        const fresh = ob.onboardSessionReset(userId);
+        if (!text) {
+          return ob.onboardIntro(await onboardFacts());
+        }
+        state = fresh;
+      }
+      const facts = await onboardFacts();
+      // Wallet creation needs crypto + fs: mint here, feed the address in.
+      // Keystore JSON reaches .env via the turn writes below (never chat).
+      let createdAddress: string | undefined;
+      let keystoreLine: [string, string] | undefined;
+      if (state.step === "wallet_confirm" && text.toLowerCase() === "ya") {
+        const passphrase = env["POLYROOT_KEYSTORE_PASSPHRASE"];
+        if (!passphrase) {
+          throw new Error(
+            "POLYROOT_KEYSTORE_PASSPHRASE belum ada — jalankan `polyroot telegram setup` di server dulu.",
+          );
+        }
+        const minted = ob.mintSealedSigner(passphrase);
+        const { home } = ob.onboardPaths();
+        mkdirSync(home, { recursive: true, mode: 0o700 });
+        writeFileSync(
+          `${home}/keystore.json`,
+          JSON.stringify(JSON.parse(minted.keystoreJson), null, 2) + "\n",
+          { mode: 0o600 },
+        );
+        chmodSync(`${home}/keystore.json`, 0o600);
+        createdAddress = minted.address;
+        keystoreLine = ["POLYROOT_KEYSTORE_JSON", minted.keystoreJson];
+      }
+      const turn = ob.onboardNext(state, text || "", facts, createdAddress);
+      if (keystoreLine) {
+        turn.writes.push(keystoreLine);
+      }
+      ob.applyOnboardWrites(turn.writes);
+      // Refresh facts-visible env for the rest of this process.
+      if (createdAddress) {
+        process.env["WALLET_ADDRESS"] =
+          turn.state.newSignerAddress ?? createdAddress;
+      }
+      ob.onboardSessionSet(userId, turn.state);
+      return turn.reply;
+
+      async function onboardFacts(): Promise<TelegramOnboardFacts> {
+        let codexReady = false;
+        try {
+          const { readCodexLogin } = await import("@polyroot/intelligence");
+          codexReady = readCodexLogin() !== null;
+        } catch {
+          codexReady = false;
+        }
+        const facts: TelegramOnboardFacts = {
+          passphraseSet: Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]),
+          codexReady,
+        };
+        if (env["WALLET_ADDRESS"]) {
+          facts.signerAddress = env["WALLET_ADDRESS"];
+        }
+        return facts;
+      }
     },
   };
 }
@@ -3519,6 +3599,35 @@ async function runTelegramSetupInner(): Promise<void> {
 
   console.log("\nLangkah 3/3: simpan konfigurasi");
   loadDotEnv();
+  // Optional vault passphrase (terminal-only secret): enables server-side
+  // wallet creation later (`/wallet create`, `/onboard`) without any secret
+  // ever transiting chat. Skipped silently when already configured.
+  let vaultPassphrase = "";
+  if (!process.env["POLYROOT_KEYSTORE_PASSPHRASE"]) {
+    console.log(
+      "\nLangkah 4/4 (opsional): passphrase vault — mengunci keystore wallet.",
+    );
+    console.log(
+      "  Dibutuhkan agar `/wallet create` / `/onboard` bisa buat wallet dari Telegram.",
+    );
+    console.log(
+      "  Kosongkan untuk lewati (bisa diisi kapan saja via `polyroot`).",
+    );
+    try {
+      const p1 = (await askSecret("Passphrase vault (kosong = lewati)")).trim();
+      if (p1) {
+        const p2 = (await askSecret("Ulangi passphrase vault")).trim();
+        if (p1 !== p2) {
+          console.log("  Tidak cocok — passphrase dilewati.");
+        } else {
+          vaultPassphrase = p1;
+        }
+      }
+    } catch (e) {
+      if (e instanceof OnboardingCancelled) throw e;
+      console.log("  Dilewati.");
+    }
+  }
   const prevOwners = (process.env["TELEGRAM_OWNER_IDS"] ?? "")
     .split(",")
     .map((s) => tg.normalizeTelegramId(s))
@@ -3530,6 +3639,9 @@ async function runTelegramSetupInner(): Promise<void> {
     upsertEnvLines(existing, [
       `TELEGRAM_BOT_TOKEN=${token}`,
       `TELEGRAM_OWNER_IDS=${owners.join(",")}`,
+      ...(vaultPassphrase
+        ? [`POLYROOT_KEYSTORE_PASSPHRASE=${vaultPassphrase}`]
+        : []),
     ]) + "\n",
     { mode: 0o600 },
   );
