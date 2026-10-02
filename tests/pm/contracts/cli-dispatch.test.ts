@@ -147,9 +147,6 @@ describe("console run refusal stays at the prompt", () => {
 describe("telegram setup wizard (dry-run, no network needed)", () => {
   it("rejects bad token shape, fails gracefully offline, aborts clean", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-dispatch-"));
-    // Paced stdin (a line every 800ms): the shared readline session races
-    // pre-ended pipes on back-to-back prompts, so upfront writes flake —
-    // humans type after each prompt appears, and so does this harness.
     const lines = [
       "bad-token",
       "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh",
@@ -175,12 +172,20 @@ describe("telegram setup wizard (dry-run, no network needed)", () => {
       child.stdout.resume();
       child.stderr.resume();
       let i = 0;
+      let waitingForPrompt = false;
       const feeder = setInterval(() => {
-        if (i < lines.length) {
-          try {
-            child.stdin.write(`${lines[i++] as string}\n`);
-          } catch {
-            clearInterval(feeder);
+        if (i < lines.length && !waitingForPrompt) {
+          if (text.includes("Tempel token bot dari BotFather") || text.includes("Tempel token")) {
+            waitingForPrompt = true;
+            try {
+              child.stdin.write(`${lines[i++]}\n`);
+            } catch {
+              clearInterval(feeder);
+            }
+          }
+        } else if (i < lines.length && waitingForPrompt) {
+          if (text.includes("Tempel token bot dari BotFather") || text.includes("Coba token lain") || text.includes("Terhubung sebagai") || text.includes("Setup dibatalkan")) {
+            waitingForPrompt = false;
           }
         } else {
           clearInterval(feeder);
@@ -190,7 +195,7 @@ describe("telegram setup wizard (dry-run, no network needed)", () => {
             // already closed
           }
         }
-      }, 800);
+      }, 500);
       const killer = setTimeout(() => {
         clearInterval(feeder);
         child.kill("SIGKILL");
