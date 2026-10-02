@@ -9,6 +9,8 @@ import {
   extractJsonObject,
   readCompletionContent,
   fetchOpenAIModels,
+  fetchAnthropicModels,
+  AnthropicMessagesForecastProvider,
 } from "@polyroot/intelligence";
 
 function stubFetch(content: unknown): typeof fetch {
@@ -324,5 +326,119 @@ describe("OpenAI model catalog discovery", () => {
     const badFetch = (async () =>
       new Response("nope", { status: 401 })) as typeof fetch;
     await assert.rejects(fetchOpenAIModels("https://x.example", "k", badFetch));
+  });
+});
+
+describe("Anthropic official API (Messages protocol, official key)", () => {
+  it("catalog uses x-api-key header and lists live ids", async () => {
+    let seenHeaders: Record<string, string> = {};
+    let seenUrl = "";
+    const okFetch = (async (url: unknown, init: unknown) => {
+      seenUrl = String(url);
+      seenHeaders = ((init as { headers: Record<string, string> }).headers ??
+        {}) as Record<string, string>;
+      return new Response(
+        JSON.stringify({
+          data: [{ id: "claude-sonnet-4-5" }, { id: "claude-sonnet-4-5" }],
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    assert.deepEqual(
+      await fetchAnthropicModels(
+        "https://api.anthropic.com",
+        "sk-ant-x",
+        okFetch,
+      ),
+      ["claude-sonnet-4-5"],
+    );
+    assert.ok(seenUrl.endsWith("/v1/models"));
+    assert.equal(seenHeaders["x-api-key"], "sk-ant-x");
+    assert.equal(seenHeaders["anthropic-version"], "2023-06-01");
+    assert.ok(!("authorization" in seenHeaders));
+  });
+
+  it("forecast posts messages format and parses probability", async () => {
+    let seenBody = "";
+    let seenHeaders: Record<string, string> = {};
+    const okFetch = (async (_url: unknown, init: unknown) => {
+      const i = init as {
+        headers: Record<string, string>;
+        body: string;
+      };
+      seenHeaders = i.headers;
+      seenBody = i.body;
+      return new Response(
+        JSON.stringify({
+          content: [{ type: "text", text: '{"p":0.68,"rationale":"r"}' }],
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const p = new AnthropicMessagesForecastProvider({
+      baseUrl: "https://api.anthropic.com",
+      apiKey: "sk-ant-x",
+      model: "claude-sonnet-4-5",
+      fetchImpl: okFetch,
+    });
+    assert.equal(
+      await p.forecast({ market_id: "m", bid: 0.4, ask: 0.6 }),
+      0.68,
+    );
+    const body = JSON.parse(seenBody) as {
+      model: string;
+      system: string;
+      messages: Array<{ role: string }>;
+    };
+    assert.equal(body.model, "claude-sonnet-4-5");
+    assert.ok(typeof body.system === "string" && body.system.length > 0);
+    assert.equal(body.messages[0]?.role, "user");
+    assert.equal(seenHeaders["x-api-key"], "sk-ant-x");
+  });
+
+  it("abstains (null) on HTTP error, garbage, or transport failure", async () => {
+    const badFetch = (async () =>
+      new Response("nope", { status: 401 })) as typeof fetch;
+    const p1 = new AnthropicMessagesForecastProvider({
+      baseUrl: "https://api.anthropic.com",
+      apiKey: "k",
+      model: "m",
+      fetchImpl: badFetch,
+    });
+    assert.equal(
+      await p1.forecast({ market_id: "m", bid: 0.4, ask: 0.6 }),
+      null,
+    );
+    const downFetch = (async () => {
+      throw new Error("boom");
+    }) as typeof fetch;
+    const p2 = new AnthropicMessagesForecastProvider({
+      baseUrl: "https://api.anthropic.com",
+      apiKey: "k",
+      model: "m",
+      fetchImpl: downFetch,
+    });
+    assert.equal(
+      await p2.forecast({ market_id: "m", bid: 0.4, ask: 0.6 }),
+      null,
+    );
+  });
+
+  it("env factory builds anthropic branch on official key, refuses without", () => {
+    const p = createForecastProviderFromEnv({
+      POLYROOT_FORECAST_PROVIDER: "anthropic",
+      ANTHROPIC_API_KEY: "sk-ant-x",
+      POLYROOT_FORECAST_MODEL: "claude-sonnet-4-5",
+    });
+    assert.ok(p !== null);
+    assert.equal(p?.name, "anthropic-messages");
+    assert.throws(
+      () =>
+        createForecastProviderFromEnv({
+          POLYROOT_FORECAST_PROVIDER: "anthropic",
+          POLYROOT_FORECAST_MODEL: "m",
+        }),
+      /ANTHROPIC_API_KEY/,
+    );
   });
 });

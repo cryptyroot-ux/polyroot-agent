@@ -280,6 +280,130 @@ export async function fetchOpenAIModels(
   }
 }
 
+/* ─── Anthropic official API (Messages protocol) ─────────────────────── */
+
+export const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+const ANTHROPIC_VERSION = "2023-06-01";
+
+/**
+ * Live model catalog for the official Anthropic API: GET {base}/v1/models
+ * with x-api-key. Same contract as fetchOpenAIModels (deduped ids, throws
+ * on failure) so onboarding picks from what the key actually serves.
+ */
+export async function fetchAnthropicModels(
+  baseUrl: string,
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 15_000,
+): Promise<string[]> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/v1/models`, {
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`model catalog HTTP ${res.status}`);
+    const data = (await res.json()) as {
+      data?: Array<{ id?: unknown }>;
+    };
+    const ids = Array.isArray(data.data)
+      ? data.data
+          .map((m) => (typeof m?.id === "string" ? m.id : ""))
+          .filter((id) => id.length > 0)
+      : [];
+    return [...new Set(ids)];
+  } catch (err) {
+    throw new Error(
+      `model catalog unreachable (${(err as Error).message ?? err})`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export interface AnthropicMessagesProviderConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+  maxTokens?: number;
+}
+
+/**
+ * Forecast provider speaking the Anthropic Messages API with the owner's
+ * official key. Same prompt contract and fail-closed parsing as the
+ * OpenAI-compatible provider; only the wire format differs.
+ */
+export class AnthropicMessagesForecastProvider implements ForecastProvider {
+  readonly name = "anthropic-messages";
+  private readonly baseUrl: string;
+  private readonly apiKey: string;
+  private readonly model: string;
+  private readonly timeoutMs: number;
+  private readonly fetchImpl: typeof fetch;
+  private readonly maxTokens: number;
+
+  constructor(config: AnthropicMessagesProviderConfig) {
+    if (!config.apiKey) {
+      throw new Error("FORECAST_CONFIG: apiKey required");
+    }
+    if (!config.model) throw new Error("FORECAST_CONFIG: model required");
+    this.baseUrl = config.baseUrl.replace(/\/+$/, "");
+    this.apiKey = config.apiKey;
+    this.model = config.model;
+    this.timeoutMs = config.timeoutMs ?? 15000;
+    this.fetchImpl = config.fetchImpl ?? fetch;
+    this.maxTokens = config.maxTokens ?? 1024;
+  }
+
+  async forecast(input: ForecastInput): Promise<number | null> {
+    return (await this.forecastDetailed(input)).p;
+  }
+
+  async forecastDetailed(input: ForecastInput): Promise<DetailedForecast> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const res = await this.fetchImpl(`${this.baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": this.apiKey,
+          "anthropic-version": ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          max_tokens: this.maxTokens,
+          system: FORECAST_SYSTEM_PROMPT,
+          messages: [{ role: "user", content: buildForecastUserPrompt(input) }],
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) return { p: null, rationale: null, factors: [] };
+      const data = (await res.json()) as {
+        content?: Array<{ type?: unknown; text?: unknown }>;
+      };
+      const text = Array.isArray(data.content)
+        ? data.content
+            .filter((b) => b?.type === "text" && typeof b.text === "string")
+            .map((b) => b.text as string)
+            .join("\n")
+        : "";
+      if (!text.trim()) return { p: null, rationale: null, factors: [] };
+      return parseDetailedForecast(text);
+    } catch {
+      return { p: null, rationale: null, factors: [] };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
 export class OpenAICompatibleForecastProvider implements ForecastProvider {
   readonly name = "openai-compatible";
   private readonly baseUrl: string;
@@ -425,6 +549,28 @@ export function createForecastProviderFromEnv(
       // Measured 9Router latency 0.5–14s; the 15s default amputates
       // slow-but-good responses into abstains during gateway slow spells.
       timeoutMs: 30_000,
+    });
+  }
+  if (provider === "anthropic") {
+    // Anthropic official API (Messages protocol, NOT chat-completions).
+    // Uses its own key: never the OpenAI-compatible one.
+    const apiKey = env["ANTHROPIC_API_KEY"] ?? "";
+    const model = env["POLYROOT_FORECAST_MODEL"] ?? "";
+    if (!apiKey) {
+      throw new Error(
+        "FORECAST_CONFIG: ANTHROPIC_API_KEY required when POLYROOT_FORECAST_PROVIDER=anthropic",
+      );
+    }
+    if (!model) {
+      throw new Error(
+        "FORECAST_CONFIG: POLYROOT_FORECAST_MODEL required when POLYROOT_FORECAST_PROVIDER=anthropic",
+      );
+    }
+    return new AnthropicMessagesForecastProvider({
+      baseUrl:
+        (env["ANTHROPIC_BASE_URL"] ?? "").trim() || DEFAULT_ANTHROPIC_BASE_URL,
+      apiKey,
+      model,
     });
   }
   if (provider !== "openai") {

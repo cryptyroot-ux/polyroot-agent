@@ -66,7 +66,7 @@ describe("telegram /onboard wizard (pure machine)", () => {
 
   it("SHADOW path completes end to end (terminal key noted, never asked)", () => {
     const r = scripted([
-      "1", // openai
+      "5", // openai
       "1", // gpt-4o-mini
       "2", // keep existing wallet
       "1", // SHADOW
@@ -87,14 +87,14 @@ describe("telegram /onboard wizard (pure machine)", () => {
   });
 
   it("codex without login instructs terminal login instead of dying", () => {
-    const r = turn(start(), "2");
+    const r = turn(start(), "1");
     assert.equal(r.state.step, "provider");
     assert.match(r.reply, /codex login/);
   });
 
   it("wallet create requires YA, then records the minted address", () => {
     let s = start();
-    let r = turn(s, "3"); // ollama
+    let r = turn(s, "6"); // ollama
     s = r.state;
     r = turn(s, "1", FACTS); // llama3.1
     s = r.state;
@@ -120,7 +120,7 @@ describe("telegram /onboard wizard (pure machine)", () => {
   it("wallet create without stored passphrase teaches terminal setup", () => {
     const noPass: OnboardFacts = { ...FACTS, passphraseSet: false };
     let s = start();
-    let r = turn(s, "1", noPass);
+    let r = turn(s, "5", noPass);
     s = r.state;
     r = turn(s, "1", noPass);
     s = r.state;
@@ -131,7 +131,7 @@ describe("telegram /onboard wizard (pure machine)", () => {
 
   it("MICRO_LIVE demands typed confirm + 3 distinct addresses", () => {
     let s = start();
-    const seq = ["1", "1", "2"]; // openai, model, keep wallet
+    const seq = ["5", "1", "2"]; // openai, model, keep wallet
     for (const t of seq) s = turn(s, t).state;
     let r = turn(s, "3"); // MICRO_LIVE
     assert.equal(r.state.step, "mode_confirm");
@@ -144,7 +144,7 @@ describe("telegram /onboard wizard (pure machine)", () => {
   it("MICRO_LIVE full path validates distinctness", () => {
     let s = start();
     const seen: Array<[string, string]> = [];
-    for (const t of ["1", "1", "2", "3", "MICRO_LIVE"]) {
+    for (const t of ["5", "1", "2", "3", "MICRO_LIVE"]) {
       const r0 = turn(s, t);
       s = r0.state;
       seen.push(...r0.writes);
@@ -217,7 +217,7 @@ describe("telegram /onboard wizard (pure machine)", () => {
         }) as Promise<string>;
       const intro = await say([]);
       assert.match(intro, /Langkah 1/);
-      await say(["1"]); // openai
+      await say(["5"]); // openai
       await say(["1"]); // gpt-4o-mini
       await say(["2"]); // keep wallet
       const m = await say(["1"]); // SHADOW

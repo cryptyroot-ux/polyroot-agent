@@ -14,6 +14,70 @@ import { join } from "node:path";
 
 const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
 
+function runCliLikeHuman(
+  home: string,
+  cliArgs: string[],
+  lines: string[],
+  markers: string[],
+): Promise<{ code: number; out: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      ["--import", "tsx", CLI, ...cliArgs],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, HOME: home },
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
+    let out = "";
+    child.stdout.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
+    child.stderr.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
+    child.stdout.resume();
+    child.stderr.resume();
+    let i = 0;
+    let lastLen = 0;
+    let lastChange = Date.now();
+    const timer = setInterval(() => {
+      if (child.exitCode !== null || child.killed) {
+        clearInterval(timer);
+        return;
+      }
+      if (i >= lines.length) {
+        clearInterval(timer);
+        return;
+      }
+      if (out.length !== lastLen) {
+        lastLen = out.length;
+        lastChange = Date.now();
+        return;
+      }
+      if (Date.now() - lastChange < 300) return;
+      const marker = markers[i] as string;
+      if (!out.includes(marker)) return;
+      try {
+        child.stdin.write((lines[i++] as string) + "\n");
+      } catch {
+        clearInterval(timer);
+      }
+    }, 100);
+    const killer = setTimeout(() => {
+      clearInterval(timer);
+      child.kill("SIGKILL");
+      resolve({ code: 99, out });
+    }, 55_000);
+    child.on("close", (code) => {
+      clearTimeout(killer);
+      clearInterval(timer);
+      resolve({ code: code ?? 1, out });
+    });
+  });
+}
+
 describe("onboarding contains zero maintainer-owned provider defaults", () => {
   it("never ships files.pango.fun in the onboarding path", () => {
     const src = readFileSync(
@@ -182,7 +246,7 @@ describe("super-easy onboarding E2E (ChatGPT login via Codex OAuth)", () => {
     const { code, out } = await runOnboardLikeHuman(
       home,
       [
-        "2", // provider: OpenAI (ChatGPT login via Codex OAuth)
+        "1", // provider: Codex (ChatGPT login via OAuth)
         "", // backend base URL (default)
         "", // model (default)
         "", // wallet: create new (default)
@@ -222,10 +286,11 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
     const { code, out } = await runOnboardLikeHuman(
       home,
       [
-        "28", // provider: custom (direct API)
+        "10", // provider: Custom endpoint (always last)
         "https://gateway.example/v1", // gateway base URL (valid first try, no retry)
-        "gpt-4o-mini", // model name
-        "sk-custom-1", // gateway API key
+        "sk-custom-1", // gateway API key (asked BEFORE model: key→catalog contract)
+        "", // model: live discovery offline → default (gpt-4o-mini)
+        "mygw", // save endpoint for reuse under this name
         "y", // reachability check: continue anyway (example host never pings)
         "", // wallet: create new (default)
         "test-pass-123", // vault password
@@ -238,8 +303,9 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
       [
         "Choose AI provider",
         "Your gateway base URL",
-        "Model name",
         "Paste your gateway API key",
+        "Model name",
+        "Save this endpoint for reuse?",
         "Continue anyway?",
         "Wallet (Enter = create new):",
         "Create a vault password",
@@ -258,6 +324,16 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
     assert.ok(env.includes("POLYROOT_FORECAST_MODEL=gpt-4o-mini"));
     assert.ok(env.includes("OPENAI_API_KEY=sk-custom-1"));
     assert.ok(!out.includes("files.pango.fun"));
+    const savedPath = join(home, ".polyroot", "custom-providers.json");
+    assert.equal(existsSync(savedPath), true);
+    const saved = JSON.parse(readFileSync(savedPath, "utf8")) as Array<{
+      name: string;
+      baseUrl: string;
+    }>;
+    assert.deepEqual(saved, [
+      { name: "mygw", baseUrl: "https://gateway.example/v1" },
+    ]);
+    assert.equal(statSync(savedPath).mode & 0o777, 0o600);
   });
 });
 
@@ -404,5 +480,90 @@ describe("onboarding finish is resilient without a database", () => {
       readFileSync(envPath, "utf8").includes("127.0.0.1:1/nodb"),
       "writeEnv must respect a pre-configured DATABASE_URL instead of clobbering it",
     );
+  });
+});
+
+describe("onboarding E2E (Anthropic official key: key→live-catalog contract)", () => {
+  it("writes anthropic provider + ANTHROPIC_API_KEY, never OPENAI_API_KEY", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
+    const { code, out } = await runOnboardLikeHuman(
+      home,
+      [
+        "7", // provider: Claude (Anthropic official API key)
+        "sk-ant-test-1", // official key (asked BEFORE catalog: key→catalog contract)
+        "", // model: live catalog offline → curated default (claude-sonnet-4-5)
+        "y", // reachability check: continue anyway (offline)
+        "", // wallet: create new (default)
+        "test-pass-123", // vault password
+        "test-pass-123", // repeat vault password
+        "1", // mode: SHADOW (default)
+        "10000", // capital cap
+        "500", // loss cap bps
+        "n", // no demo trade
+      ],
+      [
+        "Choose AI provider",
+        "Paste your Anthropic API key",
+        "Select model",
+        "Continue anyway?",
+        "Wallet (Enter = create new):",
+        "Create a vault password",
+        "Repeat the vault password",
+        "Choose mode (Enter = SHADOW):",
+        "Capital cap in USD",
+        "Daily loss cap in bps",
+      ],
+    );
+    assert.equal(code, 0);
+    const env = readFileSync(join(home, ".polyroot", ".env"), "utf8");
+    assert.ok(env.includes("POLYROOT_FORECAST_PROVIDER=anthropic"));
+    assert.ok(env.includes("ANTHROPIC_API_KEY=sk-ant-test-1"));
+    assert.ok(env.includes("POLYROOT_FORECAST_MODEL=claude-sonnet-4-5"));
+    assert.ok(!env.includes("OPENAI_API_KEY="));
+    assert.ok(!out.includes("files.pango.fun"));
+  });
+});
+
+describe("polyroot set-key (hidden prompt, never argv)", () => {
+  it("stores an OpenAI-compatible key then refuses silent overwrite", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-setkey-"));
+    const first = await runCliLikeHuman(
+      home,
+      ["set-key"],
+      ["1", "sk-test-openai-1"],
+      ["Which API key", "Paste your OPENAI_API_KEY"],
+    );
+    assert.equal(first.code, 0);
+    const envPath = join(home, ".polyroot", ".env");
+    assert.ok(
+      readFileSync(envPath, "utf8").includes("OPENAI_API_KEY=sk-test-openai-1"),
+    );
+    assert.equal(statSync(envPath).mode & 0o777, 0o600);
+    assert.ok(!first.out.includes("sk-test-openai-1"), "key must never echo");
+    const second = await runCliLikeHuman(
+      home,
+      ["set-key"],
+      ["1", "n"],
+      ["Which API key", "Overwrite it?"],
+    );
+    assert.equal(second.code, 0);
+    assert.ok(
+      readFileSync(envPath, "utf8").includes("OPENAI_API_KEY=sk-test-openai-1"),
+      "declined overwrite keeps the old key",
+    );
+  });
+
+  it("stores an Anthropic key under its own variable", async () => {
+    const home = mkdtempSync(join(tmpdir(), "polyroot-setkey-"));
+    const r = await runCliLikeHuman(
+      home,
+      ["set-key"],
+      ["2", "sk-ant-test-2"],
+      ["Which API key", "Paste your ANTHROPIC_API_KEY"],
+    );
+    assert.equal(r.code, 0);
+    const env = readFileSync(join(home, ".polyroot", ".env"), "utf8");
+    assert.ok(env.includes("ANTHROPIC_API_KEY=sk-ant-test-2"));
+    assert.ok(!r.out.includes("sk-ant-test-2"), "key must never echo");
   });
 });

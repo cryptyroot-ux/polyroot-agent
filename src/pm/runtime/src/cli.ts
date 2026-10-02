@@ -297,6 +297,7 @@ export function printHelp(): void {
     "  polyroot doctor          Basic health check\n" +
     "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
     "  polyroot wallet verify   Check wallet with no network\n" +
+    "  polyroot set-key         Store a provider API key (hidden prompt, never argv)\n" +
     "  polyroot live-promote [grant|list|revoke]  Owner-signed LIVE admission (terminal only)\n" +
     "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
     "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
@@ -369,6 +370,8 @@ interface OnboardingConfig {
   baseUrl?: string;
   /** Brain wire protocol: "openai" (/chat/completions) or "codex" (Codex Responses backend via ChatGPT OAuth). */
   forecastProvider: string;
+  /** Which .env variable holds the provider key (default OPENAI_API_KEY). */
+  keyEnvVar?: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
   walletType: "create" | "import";
   privateKey?: string;
   passphrase: string;
@@ -537,10 +540,15 @@ async function pickOpenAIModel(
   apiKey: string,
   fallbackModels: string[],
   fallbackDefault: string | undefined,
+  catalog: "openai" | "anthropic" = "openai",
 ): Promise<string> {
   try {
-    const { fetchOpenAIModels } = await import("@polyroot/intelligence");
-    const live = await fetchOpenAIModels(baseUrl, apiKey);
+    const { fetchOpenAIModels, fetchAnthropicModels } =
+      await import("@polyroot/intelligence");
+    const live =
+      catalog === "anthropic"
+        ? await fetchAnthropicModels(baseUrl, apiKey)
+        : await fetchOpenAIModels(baseUrl, apiKey);
     if (live.length > 0) {
       console.log(`\n📋 ${live.length} models found on your endpoint.`);
       return await askChoice("Select model:", live, 0);
@@ -767,6 +775,113 @@ async function askChoiceArrows(
   });
 }
 
+/**
+ * Legacy provider menu, original relative order. Shown only under
+ * "More providers (full list)" — the shortlist above is the default path.
+ */
+const LEGACY_PROVIDER_LABELS: string[] = [
+  "OpenAI API key (models auto-detected from your endpoint)",
+  "OpenAI (ChatGPT login via Codex OAuth — your Plus/Pro subscription, no API key)",
+  "Qwen (Qwen Cloud / DashScope, Coding Plan, Token Plan & Qwen CLI OAuth)",
+  "xAI Grok (Direct API or SuperGrok / Premium+ OAuth)",
+  "Xiaomi MiMo (MiMo-V2.5 and V2 models: pro, omni, flash)",
+  "Tencent Hy (Hy4 / Hy3 via TokenHub & TokenPlan)",
+  "NVIDIA NIM (Nemotron models via build.nvidia.com or local NIM)",
+  "GitHub Copilot ACP (Spawns copilot --acp --stdio)",
+  "Hugging Face Inference Providers",
+  "Google AI Studio (Native Gemini API)",
+  "Google Vertex AI (Gemini via GCP; OAuth2 service account or ADC, GCP billing/quotas)",
+  "DeepSeek (V3, R1, coder, direct API)",
+  "Z.AI / GLM (Zhipu direct API)",
+  "Kimi / Moonshot (Coding Plan, Moonshot global & China endpoints)",
+  "StepFun Step Plan (Agent / coding models via Step Plan API)",
+  "MiniMax (Global, OAuth Coding Plan & China endpoints)",
+  "Ollama Cloud (Cloud-hosted open models, ollama.com)",
+  "Arcee AI (Trinity models, direct API)",
+  "GMI Cloud (Multi-model direct API)",
+  "Kilo Code (Kilo Gateway API)",
+  "OpenCode Go (Open models subscription)",
+  "AWS Bedrock (Claude, Nova, Llama, DeepSeek; IAM or API key)",
+  "Azure Foundry (OpenAI-style or Anthropic-style endpoint, your Azure AI deployment)",
+  "Vercel AI Gateway (Multi-model aggregator)",
+  "Actual Computer - hosted inference via api.actual.inc, or local offline inference",
+  "CommandCode — 20+ models via OpenAI-compatible API",
+  "CommandCode — Claude models via Anthropic Messages API",
+  "custom (direct API)",
+  "DeepInfra — 100+ open models, pay-per-use",
+  "Meta Muse Spark family (Meta Superintelligence Labs)",
+  "Nebius Token Factory — OpenAI-compatible inference",
+  "Ramp Router (router.com) — routes each request to the cheapest model that clears you",
+  "Upstage (Solar API)",
+  "Ollama (runs on this machine)",
+];
+
+/** Named custom endpoints (name + URL only — keys always live in .env). */
+export interface SavedCustomProvider {
+  name: string;
+  baseUrl: string;
+}
+
+function customProvidersPath(): string {
+  const home = process.env["HOME"]
+    ? `${process.env["HOME"]}/.polyroot`
+    : "/tmp/.polyroot";
+  return `${home}/custom-providers.json`;
+}
+
+export function loadCustomProviders(): SavedCustomProvider[] {
+  try {
+    const raw = readFileSync(customProvidersPath(), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (c): c is SavedCustomProvider =>
+          typeof c === "object" &&
+          c !== null &&
+          typeof (c as { name?: unknown }).name === "string" &&
+          typeof (c as { baseUrl?: unknown }).baseUrl === "string" &&
+          /^https?:\/\/.+/.test((c as { baseUrl: string }).baseUrl),
+      )
+      .slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomProviders(list: SavedCustomProvider[]): void {
+  const home = process.env["HOME"]
+    ? `${process.env["HOME"]}/.polyroot`
+    : "/tmp/.polyroot";
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  writeFileSync(customProvidersPath(), JSON.stringify(list, null, 2) + "\n", {
+    mode: 0o600,
+  });
+  chmodSync(customProvidersPath(), 0o600);
+}
+
+async function removeSavedCustomProvider(): Promise<void> {
+  const saved = loadCustomProviders();
+  if (saved.length === 0) {
+    console.log("No saved custom providers.");
+    return;
+  }
+  const pick = await askChoice(
+    "Remove which saved custom provider?",
+    [...saved.map((c) => `${c.name} — ${c.baseUrl}`), "Cancel"],
+    saved.length,
+  );
+  if (pick === "Cancel") {
+    console.log("Kept everything.");
+    return;
+  }
+  const name = pick.split(" — ")[0] as string;
+  saveCustomProviders(saved.filter((c) => c.name !== name));
+  console.log(
+    `✅ Removed saved custom provider "${name}". Keys in .env are untouched.`,
+  );
+}
+
 async function runOnboarding(): Promise<OnboardingConfig> {
   console.log(banner("Welcome to PolyRoot Agent — First-Time Setup"));
   console.log("  3 steps. Every step has a safe default: just press Enter.\n");
@@ -776,46 +891,57 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   // supplies their own base URL + key; this repo ships no gateway default.
   console.log(stepper(1, 3, "AI brain"));
   console.log("📡 Step 1/3: AI brain (reads the markets)");
-  const provider = await askChoice(
+  // Shortlist first (owner order); the full legacy list lives one level
+  // down under "More providers"; Custom endpoint is always last.
+  // After you pick, the endpoint itself lists its models (live catalog,
+  // curated fallback offline) — you never pick from a stale printed list.
+  const SHORTLIST_KEYS = [
+    "Codex",
+    "Google Gemini",
+    "OpenRouter",
+    "DeepSeek",
+    "OpenAI",
+    "Ollama",
+    "Claude",
+    "Kimi / Moonshot",
+  ];
+  const SHORTLIST_LABELS: Record<string, string> = {
+    Codex: "Codex (ChatGPT login — Plus/Pro subscription, no API key)",
+    "Google Gemini": "Google Gemini (AI Studio — free tier, API key)",
+    OpenRouter: "OpenRouter (one key, many models — pay-per-use)",
+    DeepSeek: "DeepSeek (V3, R1 — cheapest at scale, API key)",
+    OpenAI: "OpenAI (api.openai.com, API key)",
+    Ollama: "Ollama (runs on this machine, no key)",
+    Claude: "Claude (Anthropic official API key)",
+    "Kimi / Moonshot": "Kimi / Moonshot (API key)",
+  };
+  const MORE_LABEL = "More providers (full list)";
+  const CUSTOM_LABEL = "Custom endpoint (enter URL manually)";
+  const REMOVE_LABEL = "Remove a saved custom provider";
+  const savedCustoms = loadCustomProviders();
+  const shortlist: string[] = [
+    ...SHORTLIST_KEYS.map((k) => SHORTLIST_LABELS[k] as string),
+    ...savedCustoms.map((c) => `${c.name} (saved custom)`),
+    MORE_LABEL,
+    CUSTOM_LABEL,
+  ];
+  if (savedCustoms.length > 0) shortlist.push(REMOVE_LABEL);
+  let provider = await askChoice(
     "Choose AI provider (Enter = default):",
-    [
-      "OpenAI API key (models auto-detected from your endpoint)",
-      "OpenAI (ChatGPT login via Codex OAuth — your Plus/Pro subscription, no API key)",
-      "Qwen (Qwen Cloud / DashScope, Coding Plan, Token Plan & Qwen CLI OAuth)",
-      "xAI Grok (Direct API or SuperGrok / Premium+ OAuth)",
-      "Xiaomi MiMo (MiMo-V2.5 and V2 models: pro, omni, flash)",
-      "Tencent Hy (Hy4 / Hy3 via TokenHub & TokenPlan)",
-      "NVIDIA NIM (Nemotron models via build.nvidia.com or local NIM)",
-      "GitHub Copilot ACP (Spawns copilot --acp --stdio)",
-      "Hugging Face Inference Providers",
-      "Google AI Studio (Native Gemini API)",
-      "Google Vertex AI (Gemini via GCP; OAuth2 service account or ADC, GCP billing/quotas)",
-      "DeepSeek (V3, R1, coder, direct API)",
-      "Z.AI / GLM (Zhipu direct API)",
-      "Kimi / Moonshot (Coding Plan, Moonshot global & China endpoints)",
-      "StepFun Step Plan (Agent / coding models via Step Plan API)",
-      "MiniMax (Global, OAuth Coding Plan & China endpoints)",
-      "Ollama Cloud (Cloud-hosted open models, ollama.com)",
-      "Arcee AI (Trinity models, direct API)",
-      "GMI Cloud (Multi-model direct API)",
-      "Kilo Code (Kilo Gateway API)",
-      "OpenCode Go (Open models subscription)",
-      "AWS Bedrock (Claude, Nova, Llama, DeepSeek; IAM or API key)",
-      "Azure Foundry (OpenAI-style or Anthropic-style endpoint, your Azure AI deployment)",
-      "Vercel AI Gateway (Multi-model aggregator)",
-      "Actual Computer - hosted inference via api.actual.inc, or local offline inference",
-      "CommandCode — 20+ models via OpenAI-compatible API",
-      "CommandCode — Claude models via Anthropic Messages API",
-      "custom (direct API)",
-      "DeepInfra — 100+ open models, pay-per-use",
-      "Meta Muse Spark family (Meta Superintelligence Labs)",
-      "Nebius Token Factory — OpenAI-compatible inference",
-      "Ramp Router (router.com) — routes each request to the cheapest model that clears you",
-      "Upstage (Solar API)",
-      "Ollama (runs on this machine)",
-    ],
-    0,
+    shortlist,
+    4,
   );
+  if (provider === MORE_LABEL) {
+    // Legacy menu, original relative order, for provider connoisseurs.
+    provider = await askChoice("All providers:", LEGACY_PROVIDER_LABELS, 0);
+  } else if (provider === REMOVE_LABEL) {
+    await removeSavedCustomProvider();
+    provider = await askChoice(
+      "Choose AI provider (Enter = default):",
+      shortlist.filter((l) => l !== REMOVE_LABEL),
+      4,
+    );
+  }
 
   let model = "";
   let baseUrl = "";
@@ -825,7 +951,12 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   let forecastProvider = "openai";
   let isCodexProvider = false;
 
-  // Provider configurations
+  // Provider configurations.
+  // Uniform contract per entry: pick a key → paste that key → the endpoint
+  // itself lists its models (live catalog, curated fallback offline).
+  // `catalog` selects the catalog wire format; `keyEnvVar` selects which
+  // .env variable holds the key; `forecast` selects the runtime wire
+  // protocol ("openai" = chat-completions, "anthropic" = Messages API).
   const providerConfig: Record<
     string,
     {
@@ -833,6 +964,9 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       defaultModel?: string;
       models?: string[];
       apiKeyRequired?: boolean;
+      catalog?: "openai" | "anthropic";
+      keyEnvVar?: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
+      forecast?: "openai" | "codex" | "anthropic";
       specialHandling?:
         | "ollama"
         | "vertex"
@@ -843,10 +977,37 @@ async function runOnboarding(): Promise<OnboardingConfig> {
         | "codex";
     }
   > = {
+    Codex: {
+      specialHandling: "codex",
+      forecast: "codex",
+    },
+    "Google Gemini": {
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+      models: ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"],
+      defaultModel: "gemini-2.5-flash",
+    },
+    OpenRouter: {
+      baseUrl: "https://openrouter.ai/api/v1",
+      models: [
+        "anthropic/claude-sonnet-4.5",
+        "google/gemini-2.5-flash",
+        "deepseek/deepseek-chat",
+        "openai/gpt-4o-mini",
+      ],
+      defaultModel: "anthropic/claude-sonnet-4.5",
+    },
     OpenAI: {
       baseUrl: "https://api.openai.com/v1",
-      models: ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+      models: ["gpt-4o-mini", "gpt-5-mini", "gpt-4o"],
       defaultModel: "gpt-4o-mini",
+    },
+    Claude: {
+      baseUrl: "https://api.anthropic.com",
+      catalog: "anthropic",
+      keyEnvVar: "ANTHROPIC_API_KEY",
+      forecast: "anthropic",
+      models: ["claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-1"],
+      defaultModel: "claude-sonnet-4-5",
     },
     Qwen: {
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -976,6 +1137,9 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     "custom (direct API)": {
       specialHandling: "custom",
     },
+    "Custom endpoint": {
+      specialHandling: "custom",
+    },
     DeepInfra: {
       baseUrl: "https://api.deepinfra.com/v1/openai",
       models: [
@@ -1027,9 +1191,32 @@ async function runOnboarding(): Promise<OnboardingConfig> {
         provider.startsWith(`${k} `) ||
         provider.startsWith(`${k} (`),
     );
-  const config = (configKey ? providerConfig[configKey] : undefined) || {};
+  // Saved customs resolve to their stored URL (standard key→catalog flow).
+  const savedMatch = loadCustomProviders().find(
+    (c) => provider === `${c.name} (saved custom)`,
+  );
+  interface ProviderEntry {
+    baseUrl?: string;
+    defaultModel?: string;
+    models?: string[];
+    apiKeyRequired?: boolean;
+    catalog?: "openai" | "anthropic";
+    keyEnvVar?: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
+    forecast?: "openai" | "codex" | "anthropic";
+    specialHandling?: string;
+  }
+  const config: ProviderEntry = savedMatch
+    ? { baseUrl: savedMatch.baseUrl }
+    : (configKey ? providerConfig[configKey] : undefined) || {};
 
   const specialHandling = config.specialHandling;
+  // Uniform contract: every key-based entry declares its catalog wire
+  // format, its .env key variable, and its runtime forecast protocol.
+  // Defaults preserve the historical OpenAI-compatible behavior.
+  const catalogKind: "openai" | "anthropic" = config.catalog ?? "openai";
+  const keyEnvVar: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY" =
+    config.keyEnvVar ?? "OPENAI_API_KEY";
+  if (config.forecast) forecastProvider = config.forecast;
 
   if (specialHandling === "ollama") {
     model = await askText("Model name", { defaultValue: "llama3.1" });
@@ -1165,8 +1352,31 @@ async function runOnboarding(): Promise<OnboardingConfig> {
         throw new Error("A valid gateway base URL is required");
       }
     }
-    model = await askText("Model name (example: gpt-4o-mini)");
     apiKey = await askRequiredSecret("Paste your gateway API key");
+    // Same uniform contract as every provider: the endpoint lists its own
+    // models once the key is in; free text only when unreachable.
+    model = await pickOpenAIModel(
+      "custom endpoint",
+      baseUrl,
+      apiKey,
+      [],
+      "gpt-4o-mini",
+    );
+    const saveIt = await askText(
+      "Save this endpoint for reuse? (name, empty = skip)",
+    );
+    if (saveIt.trim()) {
+      const existing = loadCustomProviders().filter(
+        (c) => c.name !== saveIt.trim(),
+      );
+      saveCustomProviders([
+        ...existing,
+        { name: saveIt.trim().slice(0, 40), baseUrl },
+      ]);
+      console.log(
+        `✅ Saved "${saveIt.trim()}" — it appears in the provider list next time.`,
+      );
+    }
   } else if (specialHandling === undefined) {
     // Standard OpenAI-compatible providers: authenticate FIRST, then let
     // the endpoint itself list its models (Hermes-style live discovery).
@@ -1174,13 +1384,18 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     // a blind guess.
     if (config.baseUrl) {
       baseUrl = config.baseUrl;
-      apiKey = await askRequiredSecret(`Paste your ${provider} API key`);
+      const keyHint =
+        keyEnvVar === "ANTHROPIC_API_KEY"
+          ? "Paste your Anthropic API key (sk-ant-..., official key)"
+          : `Paste your ${provider} API key`;
+      apiKey = await askRequiredSecret(keyHint);
       model = await pickOpenAIModel(
         provider,
         baseUrl,
         apiKey,
         config.models ?? [],
         config.defaultModel,
+        catalogKind,
       );
     } else {
       // Fallback for unknown providers
@@ -1213,7 +1428,18 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   }
 
   if (!isCodexProvider && !provider.startsWith("Ollama")) {
-    const reachable = await pingModelsEndpoint(baseUrl, apiKey);
+    let reachable: boolean;
+    if (catalogKind === "anthropic") {
+      try {
+        const { fetchAnthropicModels } = await import("@polyroot/intelligence");
+        await fetchAnthropicModels(baseUrl, apiKey);
+        reachable = true;
+      } catch {
+        reachable = false;
+      }
+    } else {
+      reachable = await pingModelsEndpoint(baseUrl, apiKey);
+    }
     if (!reachable) {
       console.log(
         "⚠️  Could not reach that address with your key — corporate gateways sometimes block the check while chat still works.",
@@ -1433,6 +1659,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     apiKey,
     baseUrl,
     forecastProvider,
+    keyEnvVar,
     walletType: walletChoice.startsWith("Create") ? "create" : "import",
     privateKey,
     passphrase,
@@ -1497,10 +1724,16 @@ function writeEnv(config: OnboardingConfig): void {
           `# Sign in: \`codex login\` (browser) or \`codex login --device-auth\` (headless).`,
           `POLYROOT_CODEX_BASE_URL=${config.baseUrl}`,
         ]
-      : [
-          `OPENAI_API_KEY=${config.apiKey}`,
-          ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
-        ]),
+      : config.forecastProvider === "anthropic"
+        ? [
+            `# Anthropic official API key (Messages protocol). Rotate at console.anthropic.com.`,
+            `ANTHROPIC_API_KEY=${config.apiKey}`,
+            ...(config.baseUrl ? [`ANTHROPIC_BASE_URL=${config.baseUrl}`] : []),
+          ]
+        : [
+            `OPENAI_API_KEY=${config.apiKey}`,
+            ...(config.baseUrl ? [`OPENAI_BASE_URL=${config.baseUrl}`] : []),
+          ]),
     "",
     "# Market discovery: the agent finds liquid markets itself by default.",
     "# Change to manual curation any time via `polyroot setup`.",
@@ -3090,9 +3323,11 @@ export function buildTelegramHandlers(
       loadDotEnv();
       const {
         fetchOpenAIModels,
+        fetchAnthropicModels,
         fetchCodexModels,
         loadCodexAuth,
         DEFAULT_CODEX_MODELS,
+        DEFAULT_ANTHROPIC_BASE_URL,
       } = await import("@polyroot/intelligence");
       const env = process.env;
       const provider = (
@@ -3102,12 +3337,18 @@ export function buildTelegramHandlers(
         provider === "codex"
           ? (env["POLYROOT_CODEX_BASE_URL"] ??
             "https://chatgpt.com/backend-api/codex")
-          : (env["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1");
+          : provider === "anthropic"
+            ? (env["ANTHROPIC_BASE_URL"] ?? DEFAULT_ANTHROPIC_BASE_URL)
+            : (env["OPENAI_BASE_URL"] ?? "https://api.openai.com/v1");
       let catalog: string[] = [];
       try {
         if (provider === "codex") {
           const creds = await loadCodexAuth();
           catalog = await fetchCodexModels(baseUrl, creds);
+        } else if (provider === "anthropic") {
+          const key = env["ANTHROPIC_API_KEY"] ?? "";
+          if (!key) throw new Error("no key");
+          catalog = await fetchAnthropicModels(baseUrl, key);
         } else {
           const key = env["OPENAI_API_KEY"] ?? "";
           if (!key) throw new Error("no key");
@@ -3292,9 +3533,12 @@ export function buildTelegramHandlers(
 
       async function onboardFacts(): Promise<TelegramOnboardFacts> {
         let codexReady = false;
+        let codexModels: string[] | undefined;
         try {
-          const { readCodexLogin } = await import("@polyroot/intelligence");
+          const { readCodexLogin, DEFAULT_CODEX_MODELS } =
+            await import("@polyroot/intelligence");
           codexReady = readCodexLogin() !== null;
+          codexModels = [...DEFAULT_CODEX_MODELS];
         } catch {
           codexReady = false;
         }
@@ -3302,6 +3546,12 @@ export function buildTelegramHandlers(
           passphraseSet: Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]),
           codexReady,
         };
+        if (codexModels) facts.codexModels = codexModels;
+        const saved = loadCustomProviders().map((c) => ({
+          name: c.name,
+          baseUrl: c.baseUrl,
+        }));
+        if (saved.length > 0) facts.savedCustoms = saved;
         if (env["WALLET_ADDRESS"]) {
           facts.signerAddress = env["WALLET_ADDRESS"];
         }
@@ -3851,6 +4101,53 @@ async function runLivePromoteCLI(args: string[]): Promise<void> {
   } finally {
     await pool.end().catch(() => undefined);
     closeSharedSession();
+  }
+}
+
+/**
+ * `polyroot set-key` — store a provider API key without ever passing it as
+ * a CLI argument (argv is visible in `ps` and shell history). Hidden prompt,
+ * straight into .env (600 perms). The key the Telegram wizard defers to.
+ */
+async function runSetKeyCommand(): Promise<void> {
+  try {
+    loadDotEnv();
+    ensurePolyrootHome();
+    const which = await askChoice(
+      "Which API key to store?",
+      [
+        "OpenAI-compatible (OPENAI_API_KEY) — OpenAI, OpenRouter, DeepSeek, Gemini, Kimi, gateways",
+        "Anthropic official (ANTHROPIC_API_KEY) — Claude models",
+      ],
+      0,
+    );
+    const varName = which.startsWith("Anthropic")
+      ? "ANTHROPIC_API_KEY"
+      : "OPENAI_API_KEY";
+    if (process.env[varName]) {
+      console.log(
+        `A key for ${varName} is already stored (value never shown).`,
+      );
+      const over = await askText("Overwrite it? (y/n)", { defaultValue: "n" });
+      if (!over.trim().toLowerCase().startsWith("y")) {
+        console.log("Kept the existing key.");
+        closeSharedSession();
+        return;
+      }
+    }
+    const key = await askRequiredSecret(`Paste your ${varName} (input hidden)`);
+    writeEnvKey(varName, key.trim());
+    console.log(`✅ ${varName} saved to ${ENV_PATH} (600 perms).`);
+    closeSharedSession();
+  } catch (e) {
+    closeSharedSession();
+    if (e instanceof OnboardingCancelled) {
+      console.log(
+        "\nCancelled — nothing stored. Run 'polyroot set-key' any time.",
+      );
+      process.exit(0);
+    }
+    throw e;
   }
 }
 
@@ -4971,6 +5268,10 @@ export async function main(
   }
   if (argv[0] === "mode") {
     await runModeCommand(argv[1]);
+    return;
+  }
+  if (argv[0] === "set-key") {
+    await runSetKeyCommand();
     return;
   }
   if (argv[0] === "live-promote") {

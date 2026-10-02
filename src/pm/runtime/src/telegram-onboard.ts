@@ -44,6 +44,8 @@ export interface OnboardState {
   needsTerminalKey?: boolean;
   walletAction?: "create" | "keep" | "later";
   newSignerAddress?: string;
+  /** Which .env variable the provider key lives in (set-key target). */
+  keyVar?: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
   mode?: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
   account?: string;
   funder?: string;
@@ -59,6 +61,10 @@ export interface OnboardFacts {
   signerAddress?: string;
   /** ChatGPT login detected for the codex provider. */
   codexReady: boolean;
+  /** Live Codex catalog (handler injects DEFAULT_CODEX_MODELS). */
+  codexModels?: string[];
+  /** Saved custom endpoints (name + URL only, never keys). */
+  savedCustoms?: Array<{ name: string; baseUrl: string }>;
   now?: number;
 }
 
@@ -72,10 +78,22 @@ export interface OnboardTurn {
 export const ONBOARD_TTL_MS = 30 * 60_000;
 
 const CURATED_MODELS: Record<string, string[]> = {
-  openai: ["gpt-4o-mini", "gpt-4o"],
-  codex: ["gpt-5.2", "gpt-5.1", "gpt-5-mini"],
+  openai: ["gpt-4o-mini", "gpt-5-mini", "gpt-4o"],
+  gemini: ["gemini-2.5-flash", "gemini-2.0-flash"],
+  openrouter: [
+    "anthropic/claude-sonnet-4.5",
+    "google/gemini-2.5-flash",
+    "deepseek/deepseek-chat",
+    "openai/gpt-4o-mini",
+  ],
+  deepseek: ["deepseek-chat", "deepseek-reasoner"],
   ollama: ["llama3.1", "qwen2.5:7b"],
+  claude: ["claude-sonnet-4-5", "claude-haiku-4-5"],
+  kimi: ["moonshot-v1-8k", "moonshot-v1-32k"],
 };
+
+/** Fallback only — the handler injects DEFAULT_CODEX_MODELS via facts. */
+const CODEX_FALLBACK = ["gpt-5.4", "gpt-5-mini"];
 
 const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 
@@ -94,16 +112,60 @@ function pickIndex(text: string, n: number): number | null {
   return null;
 }
 
+export interface WizardProviderOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Provider menu mirrors the terminal shortlist one-to-one (same order,
+ * Custom always last). Saved customs slot in after Kimi.
+ */
+export function wizardProviderOptions(
+  facts: OnboardFacts,
+): WizardProviderOption[] {
+  const base: WizardProviderOption[] = [
+    {
+      id: "codex",
+      label: `ChatGPT login / Codex ${facts.codexReady ? "(terdeteksi ✅)" : "(BELUM login — \`codex login\` dulu di server)"}`,
+    },
+    {
+      id: "gemini",
+      label: "Google Gemini (gratis, API key via `polyroot set-key`)",
+    },
+    {
+      id: "openrouter",
+      label: "OpenRouter (satu key, banyak model — pay-per-use)",
+    },
+    {
+      id: "deepseek",
+      label: "DeepSeek (termurah, API key via `polyroot set-key`)",
+    },
+    { id: "openai", label: "OpenAI (API key via `polyroot set-key`)" },
+    { id: "ollama", label: "Ollama lokal (tanpa key — butuh daemon Ollama)" },
+    {
+      id: "claude",
+      label: "Claude (Anthropic official key via `polyroot set-key`)",
+    },
+    { id: "kimi", label: "Kimi / Moonshot (API key via `polyroot set-key`)" },
+  ];
+  for (const c of facts.savedCustoms ?? []) {
+    base.push({ id: `saved:${c.name}`, label: `${c.name} (custom tersimpan)` });
+  }
+  base.push({
+    id: "custom",
+    label: "Custom endpoint (URL+model di sini, key via `polyroot set-key`)",
+  });
+  return base;
+}
+
 function providerMenu(facts: OnboardFacts): string {
+  const opts = wizardProviderOptions(facts);
   return (
     "🧠 Langkah 1: Otak AI (yang membaca pasar)\n" +
-    numbered([
-      `OpenAI API (butuh API key — dicatat, key diisi via terminal)`,
-      `ChatGPT login / Codex ${facts.codexReady ? "(terdeteksi ✅)" : "(BELUM login — `codex login` dulu di server)"}`,
-      `Ollama lokal (tanpa key — butuh daemon Ollama di server)`,
-      `Gateway custom OpenAI-compatible (catat URL+model, key via terminal)`,
-    ]) +
-    "\nBalas: nomor (1-4), atau `batal`."
+    "API key TIDAK PERNAH lewat chat — catat pilihan, isi key via `polyroot set-key`.\n" +
+    numbered(opts.map((o) => o.label)) +
+    `\nBalas: nomor (1-${opts.length}), atau \`batal\`.`
   );
 }
 
@@ -141,42 +203,30 @@ export function onboardNext(
 
   switch (state.step) {
     case "provider": {
-      const idx = pickIndex(t, 4);
+      const opts = wizardProviderOptions(facts);
+      const idx = pickIndex(t, opts.length);
       if (idx === null) {
         return {
           state,
-          reply: "Pilih 1-4 ya.\n\n" + providerMenu(facts),
+          reply: `Pilih 1-${opts.length} ya.\n\n` + providerMenu(facts),
           writes,
         };
       }
-      if (idx === 0) {
-        const ns: OnboardState = {
-          ...state,
-          step: "model",
-          provider: "openai",
-          forecastProvider: "openai",
-          needsTerminalKey: true,
-        };
-        return {
-          state: ns,
-          reply:
-            "Model OpenAI mana?\n" +
-            numbered(CURATED_MODELS["openai"] as string[]) +
-            "\nBalas: nomor, atau ketik nama model persis.",
-          writes,
-        };
-      }
-      if (idx === 1) {
+      const opt = opts[idx] as WizardProviderOption;
+      const keyMsg =
+        "API key-nya TIDAK di sini — isi via terminal: `polyroot set-key`.";
+      if (opt.id === "codex") {
         if (!facts.codexReady) {
           return {
             state,
             reply:
               "ChatGPT login belum terdeteksi di server.\n" +
               "Jalankan di server: `codex login` (browser) atau `codex login --device-auth` (headless),\n" +
-              "lalu pilih 2 lagi — atau pilih provider lain sekarang.",
+              "lalu pilih Codex lagi — atau pilih provider lain sekarang.",
             writes,
           };
         }
+        const list = facts.codexModels ?? CODEX_FALLBACK;
         const ns: OnboardState = {
           ...state,
           step: "model",
@@ -187,12 +237,12 @@ export function onboardNext(
           state: ns,
           reply:
             "Model Codex mana?\n" +
-            numbered(CURATED_MODELS["codex"] as string[]) +
+            numbered(list) +
             "\nBalas: nomor, atau ketik nama model persis.",
           writes,
         };
       }
-      if (idx === 2) {
+      if (opt.id === "ollama") {
         const ns: OnboardState = {
           ...state,
           step: "model",
@@ -209,18 +259,68 @@ export function onboardNext(
           writes,
         };
       }
+      if (opt.id === "custom") {
+        const ns: OnboardState = {
+          ...state,
+          step: "baseurl",
+          provider: "custom",
+          forecastProvider: "openai",
+          needsTerminalKey: true,
+          keyVar: "OPENAI_API_KEY",
+        };
+        return {
+          state: ns,
+          reply:
+            "Tempel base URL gateway kamu (contoh: https://gateway.contoh/v1).\n" +
+            keyMsg,
+          writes,
+        };
+      }
+      if (opt.id.startsWith("saved:")) {
+        const saved = (facts.savedCustoms ?? []).find(
+          (c) => `saved:${c.name}` === opt.id,
+        );
+        if (!saved) {
+          return { state, reply: providerMenu(facts), writes };
+        }
+        const ns: OnboardState = {
+          ...state,
+          step: "model",
+          provider: "custom",
+          forecastProvider: "openai",
+          baseUrl: saved.baseUrl,
+          needsTerminalKey: true,
+          keyVar: "OPENAI_API_KEY",
+        };
+        return {
+          state: ns,
+          reply:
+            `Custom tersimpan "${saved.baseUrl}" dipakai.\n` +
+            "Nama model di endpoint itu apa? (ketik persis — atau kosongkan bila belum tahu, pilih lagi nanti via /model)\n" +
+            keyMsg,
+          writes,
+        };
+      }
+      // Keyed providers: gemini, openrouter, deepseek, openai, kimi, claude.
+      // Choice recorded here; the key itself only ever enters via set-key.
+      const keyVar =
+        opt.id === "claude" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
       const ns: OnboardState = {
         ...state,
-        step: "baseurl",
-        provider: "custom",
-        forecastProvider: "openai",
+        step: "model",
+        provider: opt.id,
+        forecastProvider: opt.id === "claude" ? "anthropic" : "openai",
         needsTerminalKey: true,
+        keyVar,
       };
+      const list = CURATED_MODELS[opt.id] ?? [];
       return {
         state: ns,
         reply:
-          "Tempel base URL gateway kamu (contoh: https://gateway.contoh/v1).\n" +
-          "API key-nya TIDAK di sini — isi via terminal nanti.",
+          `Model ${opt.id} mana?\n` +
+          (list.length > 0 ? numbered(list) + "\n" : "") +
+          "Balas: nomor, atau ketik nama model persis.\n" +
+          keyMsg,
         writes,
       };
     }
@@ -273,7 +373,8 @@ export function onboardNext(
         "\n\n🔐 Langkah 2: Wallet (tempat key berada — tetap di server)";
       if (state.needsTerminalKey) {
         extra +=
-          "\nCatatan: API key provider diisi via terminal nanti — wizard lanjut tanpa key.";
+          `\nCatatan: API key provider diisi belakangan via terminal ` +
+          `\`polyroot set-key\` (${state.keyVar ?? "OPENAI_API_KEY"}) — wizard lanjut tanpa key.`;
       }
       return {
         state: ns,
@@ -540,7 +641,7 @@ export function onboardNext(
       const lossUsd = resolveLossCapPusd(capital, bps) ?? 0;
       writes.push(["POLYROOT_MICRO_LIVE_LOSS_CAP_USD", String(lossUsd)]);
       const keyNote = state.needsTerminalKey
-        ? "\n• ⏳ API key provider: isi via terminal — `OPENAI_API_KEY=...` ke ~/.polyroot/.env"
+        ? `\n• ⏳ API key provider: jalankan \`polyroot set-key\` di server (${state.keyVar ?? "OPENAI_API_KEY"})`
         : "";
       const ns: OnboardState = { ...state, step: "done", lossBps: bps };
       return {
