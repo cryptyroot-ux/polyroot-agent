@@ -57,6 +57,7 @@ export {
 export {
   parseArgs,
   printHelp,
+  buildTelegramHandlers,
   startAgent,
   main,
   assertRuntimeEnv,

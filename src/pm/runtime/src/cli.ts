@@ -2877,6 +2877,14 @@ const TELEGRAM_CONFIRM = new Set([
   "provider",
 ]);
 
+/**
+ * Pending wallet-create intents: userId -> expiry ms. Stores NO key
+ * material (the key is generated at confirm time). Per-process memory:
+ * restarts clear it, which can only cancel — never execute — an intent.
+ */
+const walletCreatePending = new Map<string, number>();
+const WALLET_CREATE_TTL_MS = 5 * 60_000;
+
 const MODE_RANK: Record<string, number> = {
   PAPER: 0,
   SHADOW: 1,
@@ -2921,9 +2929,10 @@ export interface TelegramRuntime {
 function telegramHelpText(): string {
   return [
     "Perintah yang tersedia:",
-    "status, explain [--last N], insight, health, markets, logs — baca, bebas",
+    "status, explain [--last N], insight, health, markets, logs, wallet — baca, bebas",
     "halt, restart, update, mode, model, provider — butuh konfirmasi YA",
-    "mode naik (ke MICRO_LIVE/LIVE), setup, kunci, guard reset — HANYA via terminal",
+    "wallet create — buat signer baru (konfirmasi 2 langkah di chat)",
+    "import key, mode naik (ke MICRO_LIVE/LIVE), setup, guard reset — HANYA via terminal",
   ].join("\n");
 }
 
@@ -3128,7 +3137,7 @@ export function buildTelegramHandlers(
       return `✅ Model → ${chosen} tersimpan. Restart manual untuk berlaku.`;
     },
 
-    wallet: async (args) => {
+    wallet: async (args, ctx) => {
       loadDotEnv();
       const env = process.env;
       const sub = (args[0] ?? "").toLowerCase();
@@ -3141,32 +3150,81 @@ export function buildTelegramHandlers(
           `• Signer Address: \`${addr}\`\n` +
           `• Account Address: \`${account}\`\n` +
           `• Funder Address: \`${funder}\`\n\n` +
-          `Gunakan: \`/wallet import <0x_private_key>\` untuk ganti signer.`
+          `Gunakan: \`/wallet create\` untuk buat signer baru (2 langkah, tanpa kirim key).`
         );
       }
       if (sub === "import") {
-        const pk = (args[1] ?? "").trim();
-        if (!/^(0x)?[0-9a-fA-F]{64}$/.test(pk)) {
-          throw new Error(
-            "Format private key salah — harus 64 karakter hex (diawali 0x atau tidak).",
+        // Private keys MUST NEVER transit chat: the transport itself refuses
+        // secret-looking messages, so inline import is unreachable by design.
+        // Keep the subcommand recognized to teach the safe path.
+        return (
+          "🔑 Import HANYA via terminal — private key TIDAK BOLEH lewat chat.\n" +
+          "Riwayat chat bisa dibaca, di-forward, dan di-backup di luar kendalimu.\n" +
+          "Jalankan di server: `polyroot` → pengaturan wallet (import secret key)."
+        );
+      }
+      if (sub === "create") {
+        const userId = ctx?.userId ?? "unknown";
+        const now = Date.now();
+        for (const [uid, exp] of walletCreatePending) {
+          if (exp <= now) walletCreatePending.delete(uid);
+        }
+        const saidYes = (args[1] ?? "").toLowerCase() === "ya";
+        const pending = walletCreatePending.get(userId);
+        if (!saidYes || !pending || now > pending) {
+          walletCreatePending.set(userId, now + WALLET_CREATE_TTL_MS);
+          const cur = env["WALLET_ADDRESS"] ?? "(unset)";
+          return (
+            "⚠️ Buat wallet signer BARU? Ini MENGGANTI signer aktif.\n" +
+            `• Signer sekarang: \`${cur}\`\n` +
+            "• Key lama tertimpa — pindahkan dana dulu bila masih ada saldo.\n" +
+            "• Private key baru TIDAK akan ditampilkan di chat (hanya di keystore server 600).\n" +
+            "Balas: `wallet create YA` dalam 5 menit untuk eksekusi."
           );
         }
-        const formattedPk = pk.startsWith("0x") ? pk : "0x" + pk;
-        const derived = deriveAddressFromPrivateKey(formattedPk);
-        const passphrase =
-          env["POLYROOT_KEYSTORE_PASSPHRASE"] ?? "polyroot-default-pass";
-        const keystore = sealPrivateKey(formattedPk, passphrase);
-        ensurePolyrootHome();
-        writeFileSync(KEYSTORE_PATH, JSON.stringify(keystore, null, 2) + "\n", {
+        walletCreatePending.delete(userId);
+        const passphrase = env["POLYROOT_KEYSTORE_PASSPHRASE"];
+        if (!passphrase) {
+          throw new Error(
+            "POLYROOT_KEYSTORE_PASSPHRASE belum ada — buat wallet pertama via terminal (`polyroot`), lalu /wallet create bisa dipakai berikutnya.",
+          );
+        }
+        // Paths resolved fresh per call (never the module consts) so tests
+        // can redirect via HOME and production never touches test files.
+        const home = process.env["HOME"]
+          ? `${process.env["HOME"]}/.polyroot`
+          : "/tmp/.polyroot";
+        const envPath = `${home}/.env`;
+        const keystorePath = `${home}/keystore.json`;
+        mkdirSync(home, { recursive: true, mode: 0o700 });
+        const privateKey = "0x" + randomBytes(32).toString("hex");
+        const derived = deriveAddressFromPrivateKey(privateKey);
+        const keystore = sealPrivateKey(privateKey, passphrase);
+        writeFileSync(keystorePath, JSON.stringify(keystore, null, 2) + "\n", {
           mode: 0o600,
         });
-        chmodSync(KEYSTORE_PATH, 0o600);
-        writeEnvKey("WALLET_ADDRESS", derived);
-        writeEnvKey("POLYROOT_KEYSTORE_JSON", JSON.stringify(keystore));
-        return `✅ Wallet signer diperbarui!\nAlamat baru: \`${derived}\`. Keystore di-seal aman.`;
+        chmodSync(keystorePath, 0o600);
+        const existing = existsSync(envPath)
+          ? readFileSync(envPath, "utf8")
+          : "";
+        writeFileSync(
+          envPath,
+          upsertEnvLines(existing, [
+            `WALLET_ADDRESS=${derived}`,
+            `POLYROOT_KEYSTORE_JSON=${JSON.stringify(keystore)}`,
+          ]) + "\n",
+          { mode: 0o600 },
+        );
+        return (
+          "✅ Wallet signer BARU dibuat!\n" +
+          `Alamat: \`${derived}\`\n` +
+          "• Private key TIDAK ditampilkan di sini — ia hanya ada di keystore server.\n" +
+          `• Backup SEKARANG dari terminal server: salin \`${keystorePath}\` + simpan passphrase vault di password manager.\n` +
+          "• Isi alamat baru dengan dana operasional sebelum trading."
+        );
       }
       throw new Error(
-        "Subcommand /wallet tidak dikenal. Gunakan: /wallet atau /wallet import <pk>",
+        "Subcommand /wallet tidak dikenal. Gunakan: /wallet atau /wallet create",
       );
     },
   };
