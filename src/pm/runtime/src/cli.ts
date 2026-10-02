@@ -20,9 +20,7 @@ import {
   decideGuardReset,
 } from "./live-guard-store.js";
 import { type RuntimeMode } from "./mode-watcher.js";
-import type {
-  OnboardFacts as TelegramOnboardFacts,
-} from "./telegram-onboard.js";
+import type { OnboardFacts as TelegramOnboardFacts } from "./telegram-onboard.js";
 import {
   uiEnabled,
   theme,
@@ -182,7 +180,9 @@ export function runPreflightCheck(
   // Always required: database
   if (!process.env["DATABASE_URL"]) {
     result.ok = false;
-    result.errors.push("DATABASE_URL is not set — run 'polyroot setup' to configure");
+    result.errors.push(
+      "DATABASE_URL is not set — run 'polyroot setup' to configure",
+    );
   } else {
     result.info.push("✅ Database configured");
   }
@@ -201,9 +201,13 @@ export function runPreflightCheck(
     result.info.push("✅ Raw private key configured");
   } else {
     if (isLiveMode) {
-      result.errors.push("Wallet not configured — run 'polyroot setup' to create/import wallet");
+      result.errors.push(
+        "Wallet not configured — run 'polyroot setup' to create/import wallet",
+      );
     } else {
-      result.warnings.push("⚠️  Wallet not configured — run 'polyroot setup' to create/import wallet");
+      result.warnings.push(
+        "⚠️  Wallet not configured — run 'polyroot setup' to create/import wallet",
+      );
     }
   }
 
@@ -220,18 +224,20 @@ export function runPreflightCheck(
       result.errors.push(
         "LIVE/MICRO_LIVE requires WALLET_ACCOUNT and WALLET_FUNDER (must be 3 distinct addresses: signer, account, funder)",
       );
-} else {
-        const _account = process.env["WALLET_ACCOUNT"];
-        const _funder = process.env["WALLET_FUNDER"];
-        const _signer = process.env["WALLET_ADDRESS"];
-        if (_account && _funder && process.env["WALLET_ADDRESS"]) {
-          const addrs = [
-            _account.toLowerCase(),
-            _funder.toLowerCase(),
-            process.env["WALLET_ADDRESS"]!.toLowerCase(),
-          ];
+    } else {
+      const _account = process.env["WALLET_ACCOUNT"];
+      const _funder = process.env["WALLET_FUNDER"];
+      const _signer = process.env["WALLET_ADDRESS"];
+      if (_account && _funder && process.env["WALLET_ADDRESS"]) {
+        const addrs = [
+          _account.toLowerCase(),
+          _funder.toLowerCase(),
+          process.env["WALLET_ADDRESS"]!.toLowerCase(),
+        ];
         if (new Set(addrs).size !== 3) {
-          result.errors.push("WALLET_ACCOUNT, WALLET_FUNDER, and signer must be 3 distinct addresses (WAL-03)");
+          result.errors.push(
+            "WALLET_ACCOUNT, WALLET_FUNDER, and signer must be 3 distinct addresses (WAL-03)",
+          );
         } else {
           result.info.push("✅ WAL-03: 3 distinct addresses verified");
         }
@@ -245,38 +251,66 @@ export function runPreflightCheck(
   const _venuePassphrase = process.env["POLYMARKET_API_PASSPHRASE"];
 
   if (isLiveMode) {
-    if (!process.env["POLYMARKET_API_KEY"] || !process.env["POLYMARKET_API_SECRET"] || !process.env["POLYMARKET_API_PASSPHRASE"]) {
-      result.errors.push("Polymarket credentials missing — run 'polyroot setup' to configure");
+    if (
+      !process.env["POLYMARKET_API_KEY"] ||
+      !process.env["POLYMARKET_API_SECRET"] ||
+      !process.env["POLYMARKET_API_PASSPHRASE"]
+    ) {
+      result.errors.push(
+        "Polymarket credentials missing — run 'polyroot setup' to configure",
+      );
     } else {
       result.info.push("✅ Polymarket credentials configured");
     }
   } else {
-    if (!process.env["POLYMARKET_API_KEY"] || !process.env["POLYMARKET_API_SECRET"] || !process.env["POLYMARKET_API_PASSPHRASE"]) {
-      result.warnings.push("⚠️  Polymarket credentials not set — required for live trading");
+    if (
+      !process.env["POLYMARKET_API_KEY"] ||
+      !process.env["POLYMARKET_API_SECRET"] ||
+      !process.env["POLYMARKET_API_PASSPHRASE"]
+    ) {
+      result.warnings.push(
+        "⚠️  Polymarket credentials not set — required for live trading",
+      );
     }
   }
 
   // Forecast provider
   const _provider = process.env["POLYROOT_FORECAST_PROVIDER"] || "openai";
-  const _hasKey = process.env["OPENAI_API_KEY"] || process.env["ANTHROPIC_API_KEY"] || process.env["POLYROOT_CODEX_BASE_URL"];
+  const _hasKey =
+    process.env["OPENAI_API_KEY"] ||
+    process.env["ANTHROPIC_API_KEY"] ||
+    process.env["POLYROOT_CODEX_BASE_URL"];
   if (process.env["POLYROOT_FORECAST_PROVIDER"] === "codex") {
     result.info.push("✅ Forecast provider: Codex (ChatGPT login)");
-  } else if (!process.env["OPENAI_API_KEY"] && !process.env["ANTHROPIC_API_KEY"] && !process.env["POLYROOT_CODEX_BASE_URL"]) {
-    result.warnings.push(`⚠️  Forecast provider '${_provider}' needs API key — run 'polyroot set-key'`);
+  } else if (
+    !process.env["OPENAI_API_KEY"] &&
+    !process.env["ANTHROPIC_API_KEY"] &&
+    !process.env["POLYROOT_CODEX_BASE_URL"]
+  ) {
+    result.warnings.push(
+      `⚠️  Forecast provider '${_provider}' needs API key — run 'polyroot set-key'`,
+    );
   } else {
     result.info.push(`✅ Forecast provider: ${_provider}`);
   }
 
   // Market discovery
-  if (!process.env["POLYROOT_MARKET_IDS"] && process.env["POLYROOT_MARKET_DISCOVERY"] !== "manual") {
+  if (
+    !process.env["POLYROOT_MARKET_IDS"] &&
+    process.env["POLYROOT_MARKET_DISCOVERY"] !== "manual"
+  ) {
     result.info.push("ℹ️  Market discovery: AUTO (will find liquid markets)");
   } else if (process.env["POLYROOT_MARKET_IDS"]) {
-    result.info.push("ℹ️  Market discovery: MANUAL (using POLYROOT_MARKET_IDS)");
+    result.info.push(
+      "ℹ️  Market discovery: MANUAL (using POLYROOT_MARKET_IDS)",
+    );
   }
 
   // Database
   if (!process.env["DATABASE_URL"]) {
-    result.errors.push("DATABASE_URL not set — run 'polyroot setup' to configure database");
+    result.errors.push(
+      "DATABASE_URL not set — run 'polyroot setup' to configure database",
+    );
   } else {
     result.info.push("✅ Database configured");
   }
@@ -333,7 +367,11 @@ export function displayPreflightResult(result: PreflightCheck): void {
   } else {
     console.log(t.bold(t.red("❌ Cannot start — fix errors above first")));
     console.log("");
-    console.log(t.dim("Run 'polyroot setup' to configure missing items, or 'polyroot doctor --live' for detailed diagnostics."));
+    console.log(
+      t.dim(
+        "Run 'polyroot setup' to configure missing items, or 'polyroot doctor --live' for detailed diagnostics.",
+      ),
+    );
   }
 }
 
@@ -4771,11 +4809,20 @@ async function runStatus(): Promise<void> {
       const r = await pool.query(
         `SELECT available_base, committed_base FROM balance_entries
          WHERE account = $1 AND asset = 'pUSD' LIMIT 1`,
-        [env["WALLET_FUNDER"] || env["WALLET_ADDRESS"] || env["WALLET_ACCOUNT"]],
+        [
+          env["WALLET_FUNDER"] ||
+            env["WALLET_ADDRESS"] ||
+            env["WALLET_ACCOUNT"],
+        ],
       );
       if (r.rows.length > 0) {
         const toUsd = (raw: unknown): number | null => {
-          const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
+          const n =
+            typeof raw === "string"
+              ? Number(raw)
+              : typeof raw === "number"
+                ? raw
+                : NaN;
           return Number.isFinite(n) ? Math.round((n / 1e6) * 100) / 100 : null;
         };
         bankrollUsd = toUsd(r.rows[0]?.["available_base"]);
@@ -4789,7 +4836,9 @@ async function runStatus(): Promise<void> {
   }
   const toUsd = (raw: unknown): string => {
     const n = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-    return n !== null ? `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
+    return n !== null
+      ? `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : "—";
   };
 
   // Venue
@@ -5539,7 +5588,11 @@ export async function main(
 
     if (!preflight.ok) {
       console.log("");
-      console.log(theme().dim("Run 'polyroot setup' to configure missing items, or 'polyroot doctor --live' for detailed diagnostics."));
+      console.log(
+        theme().dim(
+          "Run 'polyroot setup' to configure missing items, or 'polyroot doctor --live' for detailed diagnostics.",
+        ),
+      );
       process.exit(1);
     }
 
