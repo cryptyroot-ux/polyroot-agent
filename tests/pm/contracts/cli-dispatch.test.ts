@@ -112,6 +112,8 @@ describe("top-level logs command", () => {
 
 describe("console run refusal stays at the prompt", () => {
   it("occupied port -> guard message, then exit still works", async () => {
+    // NOTE: bare `polyroot` now opens the menu; the REPL under test lives
+    // at `polyroot console` (unchanged run-refusal behavior).
     const home = mkdtempSync(join(tmpdir(), "polyroot-dispatch-"));
     mkdirSync(join(home, ".polyroot"), { recursive: true });
     writeFileSync(
@@ -126,7 +128,7 @@ describe("console run refusal stays at the prompt", () => {
     const addr = portSrv.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
     try {
-      const { code, out } = await runCli([], {
+      const { code, out } = await runCli(["console"], {
         home,
         extraEnv: {
           POLYROOT_NO_SYSTEMD: "1",
@@ -175,7 +177,10 @@ describe("telegram setup wizard (dry-run, no network needed)", () => {
       let waitingForPrompt = false;
       const feeder = setInterval(() => {
         if (i < lines.length && !waitingForPrompt) {
-          if (text.includes("Tempel token bot dari BotFather") || text.includes("Tempel token")) {
+          if (
+            text.includes("Tempel token bot dari BotFather") ||
+            text.includes("Tempel token")
+          ) {
             waitingForPrompt = true;
             try {
               child.stdin.write(`${lines[i++]}\n`);
@@ -184,7 +189,12 @@ describe("telegram setup wizard (dry-run, no network needed)", () => {
             }
           }
         } else if (i < lines.length && waitingForPrompt) {
-          if (text.includes("Tempel token bot dari BotFather") || text.includes("Coba token lain") || text.includes("Terhubung sebagai") || text.includes("Setup dibatalkan")) {
+          if (
+            text.includes("Tempel token bot dari BotFather") ||
+            text.includes("Coba token lain") ||
+            text.includes("Terhubung sebagai") ||
+            text.includes("Setup dibatalkan")
+          ) {
             waitingForPrompt = false;
           }
         } else {

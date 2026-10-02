@@ -480,7 +480,9 @@ export function printHelp(): void {
     "\n" +
     helpThemeBold("commands:") +
     "\n" +
-    "  polyroot                 Open the interactive console\n" +
+    "  polyroot                 Open the interactive menu\n" +
+    "  polyroot console       Open the interactive console\n" +
+    "  polyroot menu          Open the interactive menu\n" +
     "  polyroot run             Start the agent (mode from settings)\n" +
     "  polyroot onboard         First-time setup (new users)\n" +
     "  polyroot setup           Change mode, capital, loss cap, markets\n" +
@@ -602,7 +604,7 @@ function isFirstRun(): boolean {
  * second prompt sees EOF and the whole flow cancels). Secrets reuse the same
  * interface with output muted, so typed characters never echo.
  */
-class OnboardingCancelled extends Error {
+export class OnboardingCancelled extends Error {
   constructor() {
     super("Setup cancelled");
   }
@@ -649,7 +651,7 @@ async function getSharedSession(): Promise<SharedSession> {
   return sharedSession;
 }
 
-function closeSharedSession(): void {
+export function closeSharedSession(): void {
   sharedSession?.close();
   sharedSession = undefined;
 }
@@ -696,7 +698,7 @@ async function askOnShared(
 }
 
 /** One normal line of input. Blank accepts `defaultValue`; without one, re-ask. */
-async function askText(
+export async function askText(
   message: string,
   opts: { defaultValue?: string | undefined } = {},
 ): Promise<string> {
@@ -784,7 +786,7 @@ async function pingModelsEndpoint(
 }
 
 /** Numbered menu with a marked default (blank = default), Hermes `_ask_index`-style. */
-async function askChoice(
+export async function askChoice(
   message: string,
   options: string[],
   defaultIdx = 0,
@@ -5356,6 +5358,14 @@ export async function main(
     printHelp();
     process.exit(0);
   }
+  if (argv[0] === "wallet" && argv[1] === "create") {
+    await promptWalletSetup("create");
+    return;
+  }
+  if (argv[0] === "wallet" && argv[1] === "import") {
+    await promptWalletSetup("import");
+    return;
+  }
   if (argv[0] === "wallet" && argv[1] === "verify") {
     const result = runWalletVerify();
     for (const c of result.checks) {
@@ -5546,9 +5556,21 @@ export async function main(
   }
 
   // Bare `polyroot` opens the interactive console (Hermes-style).
-  if (argv.length === 0 || argv[0] === "console") {
+  if (argv.length === 0) {
+    await runFirstTimeSetup();
+    const { runMenu } = await import("./menu/index.js");
+    await runMenu();
+    return;
+  }
+  if (argv[0] === "console") {
     await runFirstTimeSetup();
     await runConsole();
+    return;
+  }
+  if (argv[0] === "menu") {
+    await runFirstTimeSetup();
+    const { runMenu } = await import("./menu/index.js");
+    await runMenu();
     return;
   }
 
@@ -5613,6 +5635,7 @@ export async function main(
     "logs",
     "log",
     "console",
+    "menu",
     "telegram",
   ]);
   const first = argv[0] ?? "";

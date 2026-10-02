@@ -34,6 +34,7 @@ export * from "./console-ui.js";
 export * from "./instance-guard.js";
 export * from "./telegram.js";
 export * from "./telegram-onboard.js";
+export * from "./menu/index.js";
 export * from "./live-guard-store.js";
 export * from "./autonomy-bounds.js";
 export * from "./live-preflight.js";
