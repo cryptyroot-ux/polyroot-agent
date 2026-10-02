@@ -194,24 +194,44 @@ export class PgRecoveryLedger implements IRecoveryLedger {
     result?: OrderResult,
   ): Promise<void> {
     if (!fromVenue) return;
+    if (result) {
+      // P0: LIVE (resting) and PARTIAL are NOT terminal. The order is still
+      // live on the venue book — more fills or a cancel can follow. Record
+      // the ACK but keep resolved=false so reconciliation keeps polling.
+      // The `resolved = false` guard prevents a stale non-terminal event
+      // from un-resolving an already terminal order.
+      if (
+        result.order_status === "LIVE" ||
+        result.order_status === "PARTIAL"
+      ) {
+        await this.pool.query(
+          `UPDATE recovery_ledger
+           SET state = 'ACKNOWLEDGED', acknowledged_at = now(), updated_at = now()
+           WHERE order_id = $1 AND resolved = false`,
+          [orderId],
+        );
+        return;
+      }
+    }
     // No default to CANCEL_CERTAIN: timeout/error without venue result is definitively unknown,
     // treated as DEFINITIVE_REJECT. CANCEL_CERTAIN is reserved only for explicit cancel confirmations.
+    // Precedence: an explicit terminal order_status always beats the
+    // submission handshake (a CANCELED order whose submit was ACKed is
+    // terminal — the ACK must not mask it).
     let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" =
       "DEFINITIVE_REJECT";
     if (result) {
       if (
-        result.order_status === "LIVE" ||
-        result.order_status === "PARTIAL" ||
-        result.order_status === "MATCHED" ||
-        result.submit_status === "ACKNOWLEDGED"
-      ) {
-        resolvedState = "ACKNOWLEDGED";
-      } else if (
         result.order_status === "CANCELED" ||
         result.order_status === "REJECTED" ||
         result.order_status === "EXPIRED"
       ) {
         resolvedState = "DEFINITIVE_REJECT";
+      } else if (
+        result.order_status === "MATCHED" ||
+        result.submit_status === "ACKNOWLEDGED"
+      ) {
+        resolvedState = "ACKNOWLEDGED";
       }
     }
     await this.pool.query(
@@ -374,24 +394,40 @@ export class MemRecoveryLedger implements IRecoveryLedger {
   ): Promise<void> {
     const o = this.orders.get(orderId);
     if (o && fromVenue) {
+      if (result) {
+        // P0: LIVE (resting) and PARTIAL are NOT terminal. Record the ACK
+        // but keep resolved=false so reconciliation keeps polling. Never
+        // un-resolve an already terminal order on a stale event.
+        if (
+          (result.order_status === "LIVE" ||
+            result.order_status === "PARTIAL") &&
+          !o.resolved
+        ) {
+          o.state = "ACKNOWLEDGED";
+          o.acknowledgedAt = new Date();
+          o.updatedAt = new Date();
+          return;
+        }
+      }
       // No default to CANCEL_CERTAIN: timeout/error without venue result is
       // treated as DEFINITIVE_REJECT. CANCEL_CERTAIN only with explicit venue cancel.
+      // Precedence: an explicit terminal order_status always beats the
+      // submission handshake (a CANCELED order whose submit was ACKed is
+      // terminal — the ACK must not mask it).
       let resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" =
         "DEFINITIVE_REJECT";
       if (result) {
         if (
-          result.order_status === "LIVE" ||
-          result.order_status === "PARTIAL" ||
-          result.order_status === "MATCHED" ||
-          result.submit_status === "ACKNOWLEDGED"
-        ) {
-          resolvedState = "ACKNOWLEDGED";
-        } else if (
           result.order_status === "CANCELED" ||
           result.order_status === "REJECTED" ||
           result.order_status === "EXPIRED"
         ) {
           resolvedState = "DEFINITIVE_REJECT";
+        } else if (
+          result.order_status === "MATCHED" ||
+          result.submit_status === "ACKNOWLEDGED"
+        ) {
+          resolvedState = "ACKNOWLEDGED";
         }
       }
       o.resolved = true;
