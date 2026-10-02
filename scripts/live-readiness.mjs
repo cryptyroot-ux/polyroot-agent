@@ -59,16 +59,114 @@ function checkEnvPresence(name) {
   return typeof process.env[name] === "string" && process.env[name].length > 0;
 }
 
+async function checkLiveFills(url) {
+  if (!url) {
+    return {
+      blocker: "authenticated live fills",
+      status: "BLOCKED",
+      detail: "no database URL configured",
+      remediation:
+        "export TEST_DATABASE_URL=postgresql://... (read-only user is enough)",
+    };
+  }
+  let pool = null;
+  try {
+    pool = new Pool({ connectionString: url, connectionTimeoutMillis: 5000 });
+    // Real venue acknowledgements: resolved rows carrying a venue order id.
+    // Paper/shadow sim fills never write venue_order_id — this counts only
+    // venue-confirmed executions.
+    const r = await pool.query(
+      `SELECT count(*)::text AS n,
+              max(resolved_at)::text AS last_at
+       FROM recovery_ledger
+       WHERE resolved = true AND resolved_state = 'ACKNOWLEDGED'
+         AND venue_order_id IS NOT NULL AND venue_order_id <> ''`,
+    );
+    const n = Number(r.rows[0]?.n ?? 0);
+    return n > 0
+      ? {
+          blocker: "authenticated live fills",
+          status: "READY",
+          detail: `${n} venue-confirmed fill(s), latest ${r.rows[0]?.last_at ?? "unknown"}`,
+          remediation: null,
+        }
+      : {
+          blocker: "authenticated live fills",
+          status: "BLOCKED",
+          detail: "0 venue-confirmed fills on record",
+          remediation:
+            "run bounded MICRO_LIVE first; SHADOW/PAPER sim fills do not count",
+        };
+  } catch (e) {
+    return {
+      blocker: "authenticated live fills",
+      status: "BLOCKED",
+      detail: `database unreachable: ${e instanceof Error ? e.message : String(e)}`,
+      remediation: "provide TEST_DATABASE_URL with valid credentials",
+    };
+  } finally {
+    if (pool) await pool.end().catch(() => undefined);
+  }
+}
+
+async function checkPromotion(url) {
+  if (!url) {
+    return {
+      blocker: "owner-signed LIVE promotion",
+      status: "BLOCKED",
+      detail: "no database URL configured",
+      remediation:
+        "export TEST_DATABASE_URL=postgresql://... (read-only user is enough)",
+    };
+  }
+  let pool = null;
+  try {
+    pool = new Pool({ connectionString: url, connectionTimeoutMillis: 5000 });
+    const r = await pool.query(
+      `SELECT id::text AS id, strategy, profile, to_cap_usd, expires_at::text AS exp
+       FROM live_promotions
+       WHERE revoked_at IS NULL AND expires_at > now()
+       ORDER BY created_at DESC LIMIT 1`,
+    );
+    const row = r.rows[0];
+    return row
+      ? {
+          blocker: "owner-signed LIVE promotion",
+          status: "READY",
+          detail: `${row.strategy}/${row.profile} → $${row.to_cap_usd} until ${row.exp} (${row.id})`,
+          remediation: null,
+        }
+      : {
+          blocker: "owner-signed LIVE promotion",
+          status: "BLOCKED",
+          detail: "no live owner-signed promotion row",
+          remediation:
+            "grant one in the terminal: `polyroot live-promote` (typed PROMOTE, wallet-signed)",
+        };
+  } catch (e) {
+    const missing =
+      e instanceof Error && /does not exist|relation/i.test(e.message);
+    return {
+      blocker: "owner-signed LIVE promotion",
+      status: "BLOCKED",
+      detail: missing
+        ? "live_promotions table missing — run migrations through 0027"
+        : `database unreachable: ${e instanceof Error ? e.message : String(e)}`,
+      remediation: missing
+        ? "npm run migrate:latest"
+        : "provide TEST_DATABASE_URL with valid credentials",
+    };
+  } finally {
+    if (pool) await pool.end().catch(() => undefined);
+  }
+}
+
 async function main() {
   const rows = [];
   rows.push(await checkObservationDays());
-  rows.push({
-    blocker: "authenticated live fills",
-    status: "BLOCKED",
-    detail: "no fill evidence supplied to this rehearsal",
-    remediation:
-      "run micro-LIVE calibration, then point FILL_EVIDENCE_REF at its journal",
-  });
+  const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+  rows.push(await checkLiveFills(url));
+  rows.push(await checkPromotion(url));
   const kmsKey = checkEnvPresence("KMS_KEY_ID");
   const awsKey = checkEnvPresence("AWS_ACCESS_KEY_ID");
   const keystoreJson = checkEnvPresence("POLYROOT_KEYSTORE_JSON");
