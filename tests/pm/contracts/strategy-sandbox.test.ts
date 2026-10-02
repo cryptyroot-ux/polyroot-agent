@@ -14,11 +14,21 @@ describe("Strategy Sandbox — Process Isolation", () => {
     });
     assert.ok(result.intent.side === "BUY");
 
-    // Verify isolation
-    const globals = await client.evalInWorker("return globalThis");
-    assert.ok(!globals.fetch);
-    assert.ok(!globals.require);
-    assert.ok(!globals.process);
+    // Verify isolation FOR REAL: enumerate the actual vm global names.
+    // (The old assertion passed by construction — the worker hardcoded a
+    // fake answer. This one fails if process/fetch ever leak back in.)
+    const names = (await client.evalInWorker(
+      "return Object.keys(globalThis)",
+    )) as string[];
+    for (const forbidden of ["process", "fetch", "require", "Worker"]) {
+      assert.ok(
+        !names.includes(forbidden),
+        `${forbidden} must not exist in the strategy sandbox`,
+      );
+    }
+    // Secrets must be unreachable even by name lookup.
+    const envSeen = await client.evalInWorker("return typeof process");
+    assert.equal(envSeen, "undefined");
 
     await worker.terminate();
   });
