@@ -56,6 +56,11 @@ export async function spawnStrategyWorker(opts: {
       ...DEFAULT_WORKER_RESOURCE_LIMITS,
       ...opts.resourceLimits,
     },
+    // P1: workers inherit NOTHING from host env — no DATABASE_URL, no API
+    // keys, no keystore passphrases. Strategies receive exactly one thing:
+    // the `input` message. (Empty env is safe: the worker module imports
+    // only worker_threads + vm, neither reads env.)
+    env: {},
   });
 
   function callWorker(message: unknown): Promise<unknown> {

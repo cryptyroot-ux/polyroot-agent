@@ -32,4 +32,18 @@ describe("Strategy Sandbox — Process Isolation", () => {
 
     await worker.terminate();
   });
+
+  it("worker inherits zero host env (no DATABASE_URL, keys, passphrases)", async () => {
+    const { client, worker } = await spawnStrategyWorker({
+      strategyCode: `return { ok: true };`,
+    });
+    try {
+      const probe = (await client.evalInWorker(
+        "return (typeof process === 'undefined') ? 'no-process' : Object.keys(process.env).length",
+      )) as string | number;
+      assert.equal(probe, "no-process");
+    } finally {
+      await worker.terminate();
+    }
+  });
 });
