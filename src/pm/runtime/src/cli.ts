@@ -150,6 +150,193 @@ export function assertRuntimeEnv(
   }
 }
 
+/**
+ * Pre-flight check for required configurations before running the agent.
+ * Returns detailed validation results without throwing.
+ */
+export interface PreflightCheck {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  info: string[];
+}
+
+/**
+ * Run comprehensive pre-flight checks for all required configurations.
+ * Returns detailed validation results without throwing — suitable for display.
+ */
+export function runPreflightCheck(
+  mode: CLIConfig["mode"],
+  _env: NodeJS.ProcessEnv = process.env,
+): PreflightCheck {
+  const result: PreflightCheck = {
+    ok: true,
+    errors: [],
+    warnings: [],
+    info: [],
+  };
+
+  const isLiveMode = mode === "MICRO_LIVE" || mode === "LIVE";
+  const _isPaperOrShadow = mode === "PAPER" || mode === "SHADOW";
+
+  // Always required: database
+  if (!process.env["DATABASE_URL"]) {
+    result.ok = false;
+    result.errors.push("DATABASE_URL is not set — run 'polyroot setup' to configure");
+  } else {
+    result.info.push("✅ Database configured");
+  }
+
+  // Wallet/Keystore
+  const hasKeystore = Boolean(process.env["POLYROOT_KEYSTORE_JSON"]);
+  const hasPassphrase = Boolean(process.env["POLYROOT_KEYSTORE_PASSPHRASE"]);
+  const hasRawKey = Boolean(
+    process.env["PRIVATE_KEY_HEX"] ?? process.env["WALLET_PRIVATE_KEY"],
+  );
+  const _walletAddr = process.env["WALLET_ADDRESS"];
+
+  if (hasKeystore && hasPassphrase) {
+    result.info.push("✅ Keystore configured (sealed)");
+  } else if (hasRawKey) {
+    result.info.push("✅ Raw private key configured");
+  } else {
+    if (isLiveMode) {
+      result.errors.push("Wallet not configured — run 'polyroot setup' to create/import wallet");
+    } else {
+      result.warnings.push("⚠️  Wallet not configured — run 'polyroot setup' to create/import wallet");
+    }
+  }
+
+  if (process.env["WALLET_ADDRESS"]) {
+    result.info.push(`✅ Signer address: ${process.env["WALLET_ADDRESS"]}`);
+  }
+
+  // Live mode specific checks
+  if (isLiveMode) {
+    const _account = process.env["WALLET_ACCOUNT"];
+    const _funder = process.env["WALLET_FUNDER"];
+
+    if (!process.env["WALLET_ACCOUNT"] || !process.env["WALLET_FUNDER"]) {
+      result.errors.push(
+        "LIVE/MICRO_LIVE requires WALLET_ACCOUNT and WALLET_FUNDER (must be 3 distinct addresses: signer, account, funder)",
+      );
+} else {
+        const _account = process.env["WALLET_ACCOUNT"];
+        const _funder = process.env["WALLET_FUNDER"];
+        const _signer = process.env["WALLET_ADDRESS"];
+        if (_account && _funder && process.env["WALLET_ADDRESS"]) {
+          const addrs = [
+            _account.toLowerCase(),
+            _funder.toLowerCase(),
+            process.env["WALLET_ADDRESS"]!.toLowerCase(),
+          ];
+        if (new Set(addrs).size !== 3) {
+          result.errors.push("WALLET_ACCOUNT, WALLET_FUNDER, and signer must be 3 distinct addresses (WAL-03)");
+        } else {
+          result.info.push("✅ WAL-03: 3 distinct addresses verified");
+        }
+      }
+    }
+  }
+
+  // Venue credentials (required for live trading)
+  const _venueKey = process.env["POLYMARKET_API_KEY"];
+  const _venueSecret = process.env["POLYMARKET_API_SECRET"];
+  const _venuePassphrase = process.env["POLYMARKET_API_PASSPHRASE"];
+
+  if (isLiveMode) {
+    if (!process.env["POLYMARKET_API_KEY"] || !process.env["POLYMARKET_API_SECRET"] || !process.env["POLYMARKET_API_PASSPHRASE"]) {
+      result.errors.push("Polymarket credentials missing — run 'polyroot setup' to configure");
+    } else {
+      result.info.push("✅ Polymarket credentials configured");
+    }
+  } else {
+    if (!process.env["POLYMARKET_API_KEY"] || !process.env["POLYMARKET_API_SECRET"] || !process.env["POLYMARKET_API_PASSPHRASE"]) {
+      result.warnings.push("⚠️  Polymarket credentials not set — required for live trading");
+    }
+  }
+
+  // Forecast provider
+  const _provider = process.env["POLYROOT_FORECAST_PROVIDER"] || "openai";
+  const _hasKey = process.env["OPENAI_API_KEY"] || process.env["ANTHROPIC_API_KEY"] || process.env["POLYROOT_CODEX_BASE_URL"];
+  if (process.env["POLYROOT_FORECAST_PROVIDER"] === "codex") {
+    result.info.push("✅ Forecast provider: Codex (ChatGPT login)");
+  } else if (!process.env["OPENAI_API_KEY"] && !process.env["ANTHROPIC_API_KEY"] && !process.env["POLYROOT_CODEX_BASE_URL"]) {
+    result.warnings.push(`⚠️  Forecast provider '${_provider}' needs API key — run 'polyroot set-key'`);
+  } else {
+    result.info.push(`✅ Forecast provider: ${_provider}`);
+  }
+
+  // Market discovery
+  if (!process.env["POLYROOT_MARKET_IDS"] && process.env["POLYROOT_MARKET_DISCOVERY"] !== "manual") {
+    result.info.push("ℹ️  Market discovery: AUTO (will find liquid markets)");
+  } else if (process.env["POLYROOT_MARKET_IDS"]) {
+    result.info.push("ℹ️  Market discovery: MANUAL (using POLYROOT_MARKET_IDS)");
+  }
+
+  // Database
+  if (!process.env["DATABASE_URL"]) {
+    result.errors.push("DATABASE_URL not set — run 'polyroot setup' to configure database");
+  } else {
+    result.info.push("✅ Database configured");
+  }
+
+  // RPC
+  const rpcUrl = process.env["RPC_URL"] || "https://polygon-rpc.com (default)";
+  result.info.push(`ℹ️  RPC: ${rpcUrl}`);
+
+  // RPC URL reachability (for live modes)
+  if (isLiveMode && !process.env["RPC_URL"]) {
+    result.warnings.push("⚠️  Using default RPC URL — ensure it's accessible");
+  }
+
+  // Final result
+  if (result.errors.length > 0) result.ok = false;
+
+  return result;
+}
+
+/**
+ * Display preflight check results in a user-friendly format.
+ */
+export function displayPreflightResult(result: PreflightCheck): void {
+  const t = theme();
+  console.log(banner("PolyRoot Agent — Pre-flight Check"));
+  console.log("");
+
+  if (result.info.length > 0) {
+    console.log(t.bold(t.green("✅ Ready:")));
+    for (const msg of result.info) {
+      console.log(`  ${msg}`);
+    }
+    console.log("");
+  }
+
+  if (result.warnings.length > 0) {
+    console.log(t.bold(t.yellow("⚠️  Warnings:")));
+    for (const msg of result.warnings) {
+      console.log(`  ${msg}`);
+    }
+    console.log("");
+  }
+
+  if (result.errors.length > 0) {
+    console.log(t.bold(t.red("❌ Errors (must fix before running):")));
+    for (const msg of result.errors) {
+      console.log(`  ${msg}`);
+    }
+    console.log("");
+  }
+
+  if (result.ok) {
+    console.log(t.bold(t.green("✅ All checks passed — ready to run!")));
+  } else {
+    console.log(t.bold(t.red("❌ Cannot start — fix errors above first")));
+    console.log("");
+    console.log(t.dim("Run 'polyroot setup' to configure missing items, or 'polyroot doctor --live' for detailed diagnostics."));
+  }
+}
+
 export interface CLIConfig {
   mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
   databaseUrl: string;
@@ -4574,6 +4761,37 @@ async function runStatus(): Promise<void> {
   const account = env["WALLET_ACCOUNT"] || "Not set";
   const funder = env["WALLET_FUNDER"] || "Not set";
 
+  // Balance (from database)
+  let bankrollUsd: number | null = null;
+  let lockedUsd: number | null = null;
+  try {
+    const { Pool } = await import("pg");
+    const pool = new Pool({ connectionString: process.env["DATABASE_URL"] });
+    try {
+      const r = await pool.query(
+        `SELECT available_base, committed_base FROM balance_entries
+         WHERE account = $1 AND asset = 'pUSD' LIMIT 1`,
+        [env["WALLET_FUNDER"] || env["WALLET_ADDRESS"] || env["WALLET_ACCOUNT"]],
+      );
+      if (r.rows.length > 0) {
+        const toUsd = (raw: unknown): number | null => {
+          const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
+          return Number.isFinite(n) ? Math.round((n / 1e6) * 100) / 100 : null;
+        };
+        bankrollUsd = toUsd(r.rows[0]?.["available_base"]);
+        lockedUsd = toUsd(r.rows[0]?.["committed_base"]) ?? null;
+      }
+    } finally {
+      await pool.end().catch(() => undefined);
+    }
+  } catch {
+    // display-only: missing balance stays null
+  }
+  const toUsd = (raw: unknown): string => {
+    const n = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+    return n !== null ? `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
+  };
+
   // Venue
   const venueKey = env["POLYMARKET_API_KEY"] ? "✅ Set" : "❌ Missing";
   const venueSecret = env["POLYMARKET_API_SECRET"] ? "✅ Set" : "❌ Missing";
@@ -4610,6 +4828,8 @@ async function runStatus(): Promise<void> {
         ["Address:", walletAddr],
         ["Account:", account],
         ["Funder:", funder],
+        ["Balance:", toUsd(bankrollUsd)],
+        ["Locked (reservations):", toUsd(lockedUsd)],
       ],
       t,
     ),
@@ -5312,6 +5532,17 @@ export async function main(
   if (argv[0] === "run" || argv[0] === "start") {
     await runFirstTimeSetup();
     const runConfig = parseArgs(argv.slice(1));
+
+    // Pre-flight check — show what's missing before starting
+    const preflight = runPreflightCheck(runConfig.mode);
+    displayPreflightResult(preflight);
+
+    if (!preflight.ok) {
+      console.log("");
+      console.log(theme().dim("Run 'polyroot setup' to configure missing items, or 'polyroot doctor --live' for detailed diagnostics."));
+      process.exit(1);
+    }
+
     assertRuntimeEnv(runConfig.mode);
     if (runConfig.mode === "MICRO_LIVE") {
       await assertMicroLiveReady(runConfig.databaseUrl);
