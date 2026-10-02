@@ -53,8 +53,10 @@ describe("telegram /wallet", () => {
   it("view shows WAL-03 addresses without secrets", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-wallet-"));
     useHome(home);
-    process.env["WALLET_ADDRESS"] = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    process.env["WALLET_ACCOUNT"] = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    process.env["WALLET_ADDRESS"] =
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    process.env["WALLET_ACCOUNT"] =
+      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     process.env["WALLET_FUNDER"] = "0xcccccccccccccccccccccccccccccccccccccccc";
     const h = handlers();
     const out = (await h["wallet"]!([], {
@@ -73,10 +75,10 @@ describe("telegram /wallet", () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-wallet-"));
     useHome(home);
     const h = handlers();
-    const out = (await h["wallet"]!(
-      ["import", "0x" + "ab".repeat(32)],
-      { userId: "1", username: "op" },
-    )) as string;
+    const out = (await h["wallet"]!(["import", "0x" + "ab".repeat(32)], {
+      userId: "1",
+      username: "op",
+    })) as string;
     assert.match(out, /HANYA via terminal/);
     assert.ok(
       !existsSync(join(home, ".polyroot", ".env")),
