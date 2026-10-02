@@ -71,7 +71,10 @@ export {
   loadDotEnv,
   runWalletVerify,
   runGuardReset,
+  runPreflightCheck,
+  displayPreflightResult,
   type GuardResetResult,
+  type PreflightCheck,
   type WalletCheck,
   type WalletVerifyResult,
 } from "./cli.js";

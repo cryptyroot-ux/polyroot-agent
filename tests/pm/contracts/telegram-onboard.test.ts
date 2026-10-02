@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   onboardNext,
   onboardIntro,
+  wizardProviderOptions,
   applyOnboardWrites,
   onboardPaths,
   onboardSessionGet,
@@ -257,5 +258,45 @@ describe("telegram /onboard wizard (pure machine)", () => {
       if (saved === undefined) delete process.env["HOME"];
       else process.env["HOME"] = saved;
     }
+  });
+});
+
+describe("provider menu parity (terminal shortlist == wizard)", () => {
+  const facts = {
+    passphraseSet: true,
+    codexReady: true,
+    now: 1_000_000,
+  };
+  it("wizard order mirrors the terminal shortlist, Custom always last", () => {
+    const ids = wizardProviderOptions(facts).map((o) => o.id);
+    assert.deepEqual(ids, [
+      "codex",
+      "gemini",
+      "openrouter",
+      "deepseek",
+      "openai",
+      "ollama",
+      "claude",
+      "kimi",
+      "custom",
+    ]);
+  });
+  it("saved customs slot in after Kimi, still before Custom", () => {
+    const ids = wizardProviderOptions({
+      ...facts,
+      savedCustoms: [{ name: "mygw", baseUrl: "https://gw.example/v1" }],
+    }).map((o) => o.id);
+    assert.deepEqual(ids, [
+      "codex",
+      "gemini",
+      "openrouter",
+      "deepseek",
+      "openai",
+      "ollama",
+      "claude",
+      "kimi",
+      "saved:mygw",
+      "custom",
+    ]);
   });
 });

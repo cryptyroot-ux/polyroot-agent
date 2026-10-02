@@ -165,7 +165,7 @@ export interface PreflightCheck {
  */
 export function runPreflightCheck(
   mode: CLIConfig["mode"],
-  _env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env,
 ): PreflightCheck {
   const result: PreflightCheck = {
     ok: true,
@@ -175,10 +175,9 @@ export function runPreflightCheck(
   };
 
   const isLiveMode = mode === "MICRO_LIVE" || mode === "LIVE";
-  const _isPaperOrShadow = mode === "PAPER" || mode === "SHADOW";
 
   // Always required: database
-  if (!process.env["DATABASE_URL"]) {
+  if (!env["DATABASE_URL"]) {
     result.ok = false;
     result.errors.push(
       "DATABASE_URL is not set — run 'polyroot setup' to configure",
@@ -188,13 +187,11 @@ export function runPreflightCheck(
   }
 
   // Wallet/Keystore
-  const hasKeystore = Boolean(process.env["POLYROOT_KEYSTORE_JSON"]);
-  const hasPassphrase = Boolean(process.env["POLYROOT_KEYSTORE_PASSPHRASE"]);
+  const hasKeystore = Boolean(env["POLYROOT_KEYSTORE_JSON"]);
+  const hasPassphrase = Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]);
   const hasRawKey = Boolean(
-    process.env["PRIVATE_KEY_HEX"] ?? process.env["WALLET_PRIVATE_KEY"],
+    env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"],
   );
-  const _walletAddr = process.env["WALLET_ADDRESS"];
-
   if (hasKeystore && hasPassphrase) {
     result.info.push("✅ Keystore configured (sealed)");
   } else if (hasRawKey) {
@@ -211,50 +208,42 @@ export function runPreflightCheck(
     }
   }
 
-  if (process.env["WALLET_ADDRESS"]) {
-    result.info.push(`✅ Signer address: ${process.env["WALLET_ADDRESS"]}`);
+  if (env["WALLET_ADDRESS"]) {
+    result.info.push(`✅ Signer address: ${env["WALLET_ADDRESS"]}`);
   }
 
   // Live mode specific checks
   if (isLiveMode) {
-    const _account = process.env["WALLET_ACCOUNT"];
-    const _funder = process.env["WALLET_FUNDER"];
+    const account = env["WALLET_ACCOUNT"];
+    const funder = env["WALLET_FUNDER"];
+    const signer = env["WALLET_ADDRESS"];
 
-    if (!process.env["WALLET_ACCOUNT"] || !process.env["WALLET_FUNDER"]) {
+    if (!account || !funder) {
       result.errors.push(
         "LIVE/MICRO_LIVE requires WALLET_ACCOUNT and WALLET_FUNDER (must be 3 distinct addresses: signer, account, funder)",
       );
-    } else {
-      const _account = process.env["WALLET_ACCOUNT"];
-      const _funder = process.env["WALLET_FUNDER"];
-      const _signer = process.env["WALLET_ADDRESS"];
-      if (_account && _funder && process.env["WALLET_ADDRESS"]) {
-        const addrs = [
-          _account.toLowerCase(),
-          _funder.toLowerCase(),
-          process.env["WALLET_ADDRESS"]!.toLowerCase(),
-        ];
-        if (new Set(addrs).size !== 3) {
-          result.errors.push(
-            "WALLET_ACCOUNT, WALLET_FUNDER, and signer must be 3 distinct addresses (WAL-03)",
-          );
-        } else {
-          result.info.push("✅ WAL-03: 3 distinct addresses verified");
-        }
+    } else if (signer) {
+      const addrs = [
+        account.toLowerCase(),
+        funder.toLowerCase(),
+        signer.toLowerCase(),
+      ];
+      if (new Set(addrs).size !== 3) {
+        result.errors.push(
+          "WALLET_ACCOUNT, WALLET_FUNDER, and signer must be 3 distinct addresses (WAL-03)",
+        );
+      } else {
+        result.info.push("✅ WAL-03: 3 distinct addresses verified");
       }
     }
   }
 
   // Venue credentials (required for live trading)
-  const _venueKey = process.env["POLYMARKET_API_KEY"];
-  const _venueSecret = process.env["POLYMARKET_API_SECRET"];
-  const _venuePassphrase = process.env["POLYMARKET_API_PASSPHRASE"];
-
   if (isLiveMode) {
     if (
-      !process.env["POLYMARKET_API_KEY"] ||
-      !process.env["POLYMARKET_API_SECRET"] ||
-      !process.env["POLYMARKET_API_PASSPHRASE"]
+      !env["POLYMARKET_API_KEY"] ||
+      !env["POLYMARKET_API_SECRET"] ||
+      !env["POLYMARKET_API_PASSPHRASE"]
     ) {
       result.errors.push(
         "Polymarket credentials missing — run 'polyroot setup' to configure",
@@ -264,9 +253,9 @@ export function runPreflightCheck(
     }
   } else {
     if (
-      !process.env["POLYMARKET_API_KEY"] ||
-      !process.env["POLYMARKET_API_SECRET"] ||
-      !process.env["POLYMARKET_API_PASSPHRASE"]
+      !env["POLYMARKET_API_KEY"] ||
+      !env["POLYMARKET_API_SECRET"] ||
+      !env["POLYMARKET_API_PASSPHRASE"]
     ) {
       result.warnings.push(
         "⚠️  Polymarket credentials not set — required for live trading",
@@ -275,52 +264,39 @@ export function runPreflightCheck(
   }
 
   // Forecast provider
-  const _provider = process.env["POLYROOT_FORECAST_PROVIDER"] || "openai";
-  const _hasKey =
-    process.env["OPENAI_API_KEY"] ||
-    process.env["ANTHROPIC_API_KEY"] ||
-    process.env["POLYROOT_CODEX_BASE_URL"];
-  if (process.env["POLYROOT_FORECAST_PROVIDER"] === "codex") {
+  const provider = env["POLYROOT_FORECAST_PROVIDER"] || "openai";
+  if (env["POLYROOT_FORECAST_PROVIDER"] === "codex") {
     result.info.push("✅ Forecast provider: Codex (ChatGPT login)");
   } else if (
-    !process.env["OPENAI_API_KEY"] &&
-    !process.env["ANTHROPIC_API_KEY"] &&
-    !process.env["POLYROOT_CODEX_BASE_URL"]
+    !env["OPENAI_API_KEY"] &&
+    !env["ANTHROPIC_API_KEY"] &&
+    !env["POLYROOT_CODEX_BASE_URL"]
   ) {
     result.warnings.push(
-      `⚠️  Forecast provider '${_provider}' needs API key — run 'polyroot set-key'`,
+      `⚠️  Forecast provider '${provider}' needs API key — run 'polyroot set-key'`,
     );
   } else {
-    result.info.push(`✅ Forecast provider: ${_provider}`);
+    result.info.push(`✅ Forecast provider: ${provider}`);
   }
 
   // Market discovery
   if (
-    !process.env["POLYROOT_MARKET_IDS"] &&
-    process.env["POLYROOT_MARKET_DISCOVERY"] !== "manual"
+    !env["POLYROOT_MARKET_IDS"] &&
+    env["POLYROOT_MARKET_DISCOVERY"] !== "manual"
   ) {
     result.info.push("ℹ️  Market discovery: AUTO (will find liquid markets)");
-  } else if (process.env["POLYROOT_MARKET_IDS"]) {
+  } else if (env["POLYROOT_MARKET_IDS"]) {
     result.info.push(
       "ℹ️  Market discovery: MANUAL (using POLYROOT_MARKET_IDS)",
     );
   }
 
-  // Database
-  if (!process.env["DATABASE_URL"]) {
-    result.errors.push(
-      "DATABASE_URL not set — run 'polyroot setup' to configure database",
-    );
-  } else {
-    result.info.push("✅ Database configured");
-  }
-
   // RPC
-  const rpcUrl = process.env["RPC_URL"] || "https://polygon-rpc.com (default)";
+  const rpcUrl = env["RPC_URL"] || "https://polygon-rpc.com (default)";
   result.info.push(`ℹ️  RPC: ${rpcUrl}`);
 
   // RPC URL reachability (for live modes)
-  if (isLiveMode && !process.env["RPC_URL"]) {
+  if (isLiveMode && !env["RPC_URL"]) {
     result.warnings.push("⚠️  Using default RPC URL — ensure it's accessible");
   }
 
@@ -1142,17 +1118,22 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   const MORE_LABEL = "More providers (full list)";
   const CUSTOM_LABEL = "Custom endpoint (enter URL manually)";
   const REMOVE_LABEL = "Remove a saved custom provider";
-  const savedCustoms = loadCustomProviders();
-  const shortlist: string[] = [
-    ...SHORTLIST_KEYS.map((k) => SHORTLIST_LABELS[k] as string),
-    ...savedCustoms.map((c) => `${c.name} (saved custom)`),
-    MORE_LABEL,
-    CUSTOM_LABEL,
-  ];
-  if (savedCustoms.length > 0) shortlist.push(REMOVE_LABEL);
+  // Built fresh on every ask so a remove-then-repick never offers a
+  // just-deleted endpoint (stale menu = stranded selection).
+  const buildShortlist = (): string[] => {
+    const saved = loadCustomProviders();
+    const list: string[] = [
+      ...SHORTLIST_KEYS.map((k) => SHORTLIST_LABELS[k] as string),
+      ...saved.map((c) => `${c.name} (saved custom)`),
+      MORE_LABEL,
+      CUSTOM_LABEL,
+    ];
+    if (saved.length > 0) list.push(REMOVE_LABEL);
+    return list;
+  };
   let provider = await askChoice(
     "Choose AI provider (Enter = default):",
-    shortlist,
+    buildShortlist(),
     4,
   );
   if (provider === MORE_LABEL) {
@@ -1162,7 +1143,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     await removeSavedCustomProvider();
     provider = await askChoice(
       "Choose AI provider (Enter = default):",
-      shortlist.filter((l) => l !== REMOVE_LABEL),
+      buildShortlist(),
       4,
     );
   }
