@@ -633,6 +633,45 @@ export class Executor {
     // Record cancel request for reconciliation
     await this.deps.recoveryLedger.recordCancelRequested(orderId);
     const res = await this.deps.adapter.cancelOrder(orderId);
+    if (res.ok) {
+      // P0: a venue-confirmed cancel is terminal — settle the money now
+      // instead of leaving committed capital stranded until some future
+      // reconciliation pass. Mirrors the reconcile() terminal path: resolve
+      // the ledger, then release the un-consumed remainder of every
+      // reservation bound to this order's permit. release() only returns
+      // reserved-minus-consumed, so partially filled orders keep their
+      // filled portion consumed. Best-effort: settlement must never flip
+      // an already-confirmed cancel.
+      try {
+        await this.deps.recoveryLedger.resolve(orderId, true, {
+          success: true,
+          order_status: "CANCELED",
+          order_id: orderId,
+          timestamp: new Date(),
+        });
+        if (this.deps.reservationManager) {
+          const rec = await this.deps.recoveryLedger.get(orderId);
+          if (rec && rec.permitId) {
+            const permitObj = await this.deps.permitStore.get(rec.permitId);
+            if (permitObj && permitObj.reservation_ids) {
+              for (const resId of permitObj.reservation_ids) {
+                await this.deps.reservationManager
+                  .release(resId, "CANCELLED")
+                  .catch((err: unknown) =>
+                    console.error(
+                      `[executor] reservation release failed for ${resId}: ${(err as Error).message}`,
+                    ),
+                  );
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error(
+          `[executor] cancel settlement failed for ${orderId}: ${(err as Error).message}`,
+        );
+      }
+    }
     // Release lease after cancel operation
     await this.deps.leaseStore.releaseExecutorLease(
       this.deps.walletId,

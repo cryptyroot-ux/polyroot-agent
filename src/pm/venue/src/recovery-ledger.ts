@@ -345,12 +345,17 @@ export class MemRecoveryLedger implements IRecoveryLedger {
 
   async addSubmittedUnknown(
     orderId: string,
-    _venueOrderId?: string,
-    _permitId?: string,
+    venueOrderId?: string,
+    permitId?: string,
   ): Promise<void> {
+    // Parity with Pg: persist the permit binding — settlement paths
+    // (reconcile/cancel) look the permit up from this row. Dropping it
+    // silently strands committed capital in Mem-backed runs.
     this.orders.set(
       orderId,
       this.createOrder(orderId, "SUBMITTING", {
+        ...(venueOrderId !== undefined ? { venueOrderId } : {}),
+        ...(permitId !== undefined ? { permitId } : {}),
         reconcileCount: 0,
         resolved: false,
       }),

@@ -409,4 +409,33 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
     );
     await deps.leaseStore.releaseExecutorLease(deps.walletId, "other_holder");
   });
+
+  it("P0: cancel settles reservations — venue-confirmed cancel releases committed capital", async () => {
+    const adapter = new FakeAdapter();
+    const { deps, recoveryLedger } = makeDeps(adapter);
+    const released: Array<{ id: string; reason: string }> = [];
+    deps.reservationManager = {
+      consume: async () => ({ ok: true }) as const,
+      release: async (
+        reservationId: string,
+        reason: "CANCELLED" | "EXPIRED" | "REJECTED",
+      ) => {
+        released.push({ id: reservationId, reason });
+        return { ok: true } as const;
+      },
+    } as unknown as import("@polyroot/risk").ReservationManager;
+    const ex = new Executor(deps);
+    const s = await ex.submit(makeSignedOrder("ord_c1"), makePermit());
+    assert.equal(s.outcome, "SUBMITTED");
+    const c = await ex.cancel("ord_c1");
+    assert.equal(c.ok, true);
+    assert.deepEqual(
+      released,
+      [{ id: "res_1", reason: "CANCELLED" }],
+      "committed capital must be released back on confirmed cancel",
+    );
+    const rec = await recoveryLedger.get("ord_c1");
+    assert.equal(rec?.resolved, true);
+    assert.equal(rec?.resolvedState, "DEFINITIVE_REJECT");
+  });
 });
