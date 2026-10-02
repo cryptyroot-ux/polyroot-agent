@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0.0",
-  "release_id": "55b45854-9165-defc-4d18-b431dae7ea4e",
-  "timestamp_utc": "2026-10-02T07:06:42.393Z",
+  "release_id": "2e03e8b9-98c5-938b-d898-9bcc9e2b6b67",
+  "timestamp_utc": "2026-10-02T19:11:48.111Z",
   "git": {
     "repo": "https://github.com/cryptyroot-ux/polyroot-agent.git",
     "branch": "main",
-    "commit_sha": "55b458549165defc4d18b431dae7ea4ecc3584ff",
+    "commit_sha": "2e03e8b998c5938bd8989bcc9e2b6b6768cfb61f",
     "tag": "v1.14.2",
     "dirty": false
   },
@@ -28,7 +28,7 @@
   "image": {
     "repository": "polyroot/trader",
     "tag": "v1.14.2",
-    "digest": "sha256:08964ec67a3bd889d8198b038f5779fcbc33ce7be3f526f6043b56930567477e"
+    "digest": "sha256:10e31e9d02a62dd4364b8cad39b54f390a3ebb0432a7a32e4c368be0f9755305"
   },
   "sdk": {
     "package": "@polymarket/client",
