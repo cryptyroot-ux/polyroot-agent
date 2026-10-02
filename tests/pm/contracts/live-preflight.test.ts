@@ -150,4 +150,46 @@ describe("doctor --live preflight", () => {
     assert.ok(latch && !latch.ok);
     assert.match(latch.detail, /guard reset/);
   });
+
+  it("P1: blocks when indeterminate orders sit past the stale horizon", async () => {
+    const result = await runLivePreflight(
+      greenDeps({
+        queryDb: async (text: string) => {
+          if (text.includes("SELECT 1")) return { rows: [{}] };
+          if (text.includes("information_schema")) {
+            return {
+              rows: [
+                "execution_permits",
+                "reservations",
+                "recovery_ledger",
+                "seen_orders",
+                "live_guard_state",
+                "balance_entries",
+              ].map((table_name) => ({ table_name })),
+            };
+          }
+          if (text.includes("live_guard_state")) return { rows: [] };
+          if (text.includes("SUBMISSION_UNKNOWN")) {
+            return {
+              rows: [{ order_id: "ord_stuck", state: "SUBMISSION_UNKNOWN" }],
+            };
+          }
+          return { rows: [] };
+        },
+      }),
+    );
+    assert.equal(result.ok, false);
+    const stale = result.checks.find((c) => c.name === "stale-unknowns");
+    assert.ok(stale && !stale.ok);
+    assert.match(stale.detail, /ord_stuck/);
+  });
+
+  it("passes when only resting LIVE/PARTIAL orders are in flight", async () => {
+    // Resting and partial orders are normal business — the stale query only
+    // matches indeterminate states, so greenDeps (empty rows) passes.
+    const result = await runLivePreflight(greenDeps());
+    assert.equal(result.ok, true);
+    const stale = result.checks.find((c) => c.name === "stale-unknowns");
+    assert.ok(stale && stale.ok);
+  });
 });

@@ -49,6 +49,9 @@ function pass(name: string, detail: string): PreflightCheck {
   return { name, ok: true, detail };
 }
 
+/** Age past which an indeterminate order proves reconciliation is stuck. */
+export const STALE_UNKNOWN_MINUTES = 30;
+
 /** Prove every infrastructure dependency. Never throws. */
 export async function runLivePreflight(
   deps: LivePreflightDeps,
@@ -235,6 +238,41 @@ export async function runLivePreflight(
   } catch (err) {
     checks.push(
       fail("loss-latch", `latch check failed: ${(err as Error).message}`),
+    );
+  }
+
+  // 10. Reconciliation clean: no order may sit in an indeterminate state
+  // (SUBMISSION_UNKNOWN / CANCEL_UNKNOWN) past the stale horizon. Resting
+  // LIVE and PARTIAL orders are normal in-flight business and never match
+  // this query. A stale unknown means money whose venue truth is unproven —
+  // live trading starts only from a clean book.
+  try {
+    const res = await deps.queryDb(
+      `SELECT order_id, state FROM recovery_ledger
+       WHERE resolved = false
+         AND state IN ('SUBMISSION_UNKNOWN', 'CANCEL_UNKNOWN')
+         AND updated_at < now() - INTERVAL '${STALE_UNKNOWN_MINUTES} minutes'`,
+    );
+    if (res.rows.length > 0) {
+      const ids = res.rows
+        .map((r) => `${String(r["order_id"])}:${String(r["state"])}`)
+        .slice(0, 5)
+        .join(", ");
+      checks.push(
+        fail(
+          "stale-unknowns",
+          `${res.rows.length} order(s) with unproven venue truth older than ${STALE_UNKNOWN_MINUTES}m (${ids}) — reconcile or resolve them before live trading`,
+        ),
+      );
+    } else {
+      checks.push(pass("stale-unknowns", "reconciliation clean"));
+    }
+  } catch (err) {
+    checks.push(
+      fail(
+        "stale-unknowns",
+        `unknown-order check failed: ${(err as Error).message}`,
+      ),
     );
   }
 
