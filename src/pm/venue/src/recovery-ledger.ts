@@ -216,10 +216,7 @@ export class PgRecoveryLedger implements IRecoveryLedger {
       // the ACK but keep resolved=false so reconciliation keeps polling.
       // The `resolved = false` guard prevents a stale non-terminal event
       // from un-resolving an already terminal order.
-      if (
-        result.order_status === "LIVE" ||
-        result.order_status === "PARTIAL"
-      ) {
+      if (result.order_status === "LIVE" || result.order_status === "PARTIAL") {
         await this.pool.query(
           `UPDATE recovery_ledger
            SET state = 'ACKNOWLEDGED', acknowledged_at = now(), updated_at = now()
