@@ -32,7 +32,9 @@
     "pino": "^8.18.0",
     "pino-pretty": "^10.3.1",
     "ulid": "^2.4.0",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "elliptic": "^6.6.1",
+    "keccak256": "^1.0.6"
   },
   "devDependencies": {
     "@polyroot/tsconfig": "*",

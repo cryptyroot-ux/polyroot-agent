@@ -6,6 +6,8 @@
  */
 
 import { Pool } from "pg";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
   createPgStores,
   ReservationManager,
@@ -41,7 +43,10 @@ import {
   type TelegramStreamEmitter,
   type AgentStreamEventType,
 } from "@polyroot/observability";
-import { PgLiveGuardStore } from "./live-guard-store.js";
+import {
+  PgLiveGuardStore,
+  resolveStartupAdmission,
+} from "./live-guard-store.js";
 import { PgResolvedClusters } from "./postgres-log.js";
 import { createStepPersistence } from "./observability/index.js";
 import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
@@ -211,6 +216,113 @@ export interface BootstrapAgentOptions {
    * markets. The continuous service always streams.
    */
   streamEnabled?: boolean;
+}
+
+/**
+ * Locate the install root (holds release_manifest.json, package-lock.json,
+ * migrations/). No hardcoded paths: walk up from the running CLI plus cwd.
+ */
+function findInstallRoot(): string | null {
+  const candidates: string[] = [process.cwd()];
+  try {
+    let dir = dirname(process.argv[1] ?? process.cwd());
+    for (let i = 0; i < 6; i++) {
+      candidates.push(dir);
+      dir = dirname(dir);
+    }
+  } catch {
+    // argv unusable — cwd candidate still stands
+  }
+  for (const dir of candidates) {
+    try {
+      if (existsSync(join(dir, "release_manifest.json"))) return dir;
+    } catch {
+      // keep searching
+    }
+  }
+  return null;
+}
+
+/**
+ * Startup LIVE admission inputs, assembled from durable local truth:
+ * manifest + lockfile (code identity), migration files vs applied rows
+ * (schema identity), wallet key + venue creds (custody). DB-backed gates
+ * (promotion, latch, reconciliation, baseline) are read inside
+ * resolveStartupAdmission. Never throws for missing files (blocks instead).
+ */
+async function resolveLiveAdmissionAtStartup(
+  pool: Pool,
+): Promise<{ admitted: boolean; promotionId?: string }> {
+  const root = findInstallRoot();
+  let manifestLockSha: string | undefined;
+  let runningLockSha: string | undefined;
+  let shippedMigrations: string[] = [];
+  if (root) {
+    try {
+      const manifest = JSON.parse(
+        readFileSync(join(root, "release_manifest.json"), "utf8"),
+      ) as {
+        runtime?: { lockfile_sha256?: string };
+      };
+      if (typeof manifest.runtime?.lockfile_sha256 === "string") {
+        manifestLockSha = manifest.runtime.lockfile_sha256;
+      }
+      runningLockSha = createHash("sha256")
+        .update(readFileSync(join(root, "package-lock.json")))
+        .digest("hex");
+      shippedMigrations = readdirSync(join(root, "migrations"))
+        .filter((f) => f.endsWith(".sql"))
+        .sort();
+    } catch {
+      // unreadable artifact tree — gates below fail closed with reasons
+    }
+  }
+  let appliedMigrations: string[] = [];
+  try {
+    const r = await pool.query("SELECT filename FROM schema_migrations");
+    appliedMigrations = r.rows.map((row) => String(row["filename"]));
+  } catch {
+    // schema table missing — G0 blocks with a named reason
+  }
+  const { resolveWalletKey } = await import("@polyroot/signer");
+  let walletOk = false;
+  let ownerAddress = "";
+  try {
+    const rawKey = resolveWalletKey(process.env);
+    const { deriveAddressFromPrivateKey } = await import("@polyroot/signer");
+    ownerAddress = deriveAddressFromPrivateKey(rawKey);
+    walletOk = ownerAddress.length > 0;
+  } catch {
+    walletOk = false;
+  }
+  if (!walletOk) {
+    ownerAddress =
+      process.env["WALLET_ADDRESS"] ??
+      "0x0000000000000000000000000000000000000000";
+  }
+  const venueCredsOk = Boolean(
+    process.env["POLYMARKET_API_KEY"] &&
+    process.env["POLYMARKET_API_SECRET"] &&
+    process.env["POLYMARKET_API_PASSPHRASE"],
+  );
+  const decision = await resolveStartupAdmission({
+    pool,
+    ownerAddress,
+    strategy: process.env["POLYROOT_LIVE_STRATEGY"] ?? "default",
+    profile: process.env["POLYROOT_LIVE_PROFILE"] ?? "live",
+    appliedMigrations,
+    shippedMigrations,
+    ...(manifestLockSha !== undefined ? { manifestLockSha } : {}),
+    ...(runningLockSha !== undefined ? { runningLockSha } : {}),
+    walletOk,
+    venueCredsOk,
+  });
+  for (const reason of decision.reasons) {
+    console.log(`   admission: ${reason}`);
+  }
+  return decision.admitted && decision.promotionId
+    ? { admitted: true, promotionId: decision.promotionId }
+    : { admitted: false };
 }
 
 export async function bootstrapAgent(
@@ -611,6 +723,31 @@ export async function bootstrapAgent(
       // observer failure is never a trading failure
     }
   };
+  // LIVE admission: owner-signed promotion + live operational gates.
+  // Resolved once at startup (promotion rows are durable; latch and
+  // reconciliation are re-checked per pass by their own guards). Absent or
+  // failing admission leaves the loop FINANCIAL_BLOCKED — loud in logs,
+  // never a silent no-trade loop.
+  let liveAdmission: { admitted: boolean; promotionId?: string } | undefined;
+  if (mode === "LIVE") {
+    try {
+      liveAdmission = await resolveLiveAdmissionAtStartup(pool);
+    } catch (err) {
+      console.log(
+        `⛔ LIVE admission unreadable (${(err as Error).message}) — starting BLOCKED.`,
+      );
+      liveAdmission = { admitted: false };
+    }
+    if (liveAdmission.admitted) {
+      console.log(
+        `✅ LIVE admitted (promotion ${liveAdmission.promotionId}). Operational gates re-checked per pass.`,
+      );
+    } else {
+      console.log(
+        "⛔ LIVE NOT admitted — loop starts FINANCIAL_BLOCKED. Grant with `polyroot live-promote`, then restart.",
+      );
+    }
+  }
   const pipeline = createG4Pipeline({
     config: {
       mode,
@@ -618,6 +755,7 @@ export async function bootstrapAgent(
       maxConcurrentMarkets,
       ...(microLiveCapUsd !== undefined ? { microLiveCapUsd } : {}),
       ...(liveLossCapPusd !== undefined ? { liveLossCapPusd } : {}),
+      ...(liveAdmission !== undefined ? { liveAdmission } : {}),
     },
     observability: {
       emitMetrics: (m) => {

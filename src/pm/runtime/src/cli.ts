@@ -293,6 +293,7 @@ export function printHelp(): void {
     "  polyroot doctor          Basic health check\n" +
     "  polyroot doctor --live   LIVE readiness test, required before real money\n" +
     "  polyroot wallet verify   Check wallet with no network\n" +
+    "  polyroot live-promote [grant|list|revoke]  Owner-signed LIVE admission (terminal only)\n" +
     "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
     "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
     "  polyroot mode            Show current runtime mode\n" +
@@ -3592,6 +3593,155 @@ async function runTelegramSetup(): Promise<void> {
   }
 }
 
+/**
+ * `polyroot live-promote [grant|list|revoke]` — owner-signed LIVE admission.
+ * Granting signs the capital tuple with the agent wallet key and stores the
+ * append-only promotion row; startup verifies signature + expiry + live
+ * operational gates before the G4 loop may admit LIVE. Revoke is the
+ * kill-switch for a live promotion. Never exposed via Telegram.
+ */
+async function runLivePromoteCLI(args: string[]): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"];
+  if (!dbUrl) {
+    console.error("❌ DATABASE_URL required (run `polyroot setup` first).");
+    process.exit(1);
+  }
+  const sub = (args[0] ?? "grant").toLowerCase();
+  const pool = new Pool({ connectionString: dbUrl });
+  const { PgPromotionStore } = await import("./live-guard-store.js");
+  const store = new PgPromotionStore(pool);
+  try {
+    if (sub === "list") {
+      const rows = await store.listActive();
+      if (rows.length === 0) {
+        console.log("No active LIVE promotions.");
+        return;
+      }
+      for (const r of rows) {
+        console.log(
+          `• ${r.id}  ${r.strategy}/${r.profile}  $${r.fromCapUsd} → $${r.toCapUsd}  expires ${r.expiresAt}  owner ${r.ownerAddress}`,
+        );
+      }
+      return;
+    }
+    if (sub === "revoke") {
+      const id = (args[1] ?? "").trim();
+      if (!id) {
+        console.error("Usage: polyroot live-promote revoke <promotion-id>");
+        process.exit(1);
+      }
+      const confirm = await askText(
+        `Type REVOKE to kill promotion ${id} (LIVE admission stops at next startup/pass)`,
+      );
+      if (confirm.trim() !== "REVOKE") {
+        console.log("Aborted — promotion left intact.");
+        return;
+      }
+      const ok = await store.revoke(id);
+      console.log(
+        ok
+          ? `✅ Promotion ${id} revoked.`
+          : `❌ No such active promotion: ${id}`,
+      );
+      if (!ok) process.exit(1);
+      return;
+    }
+    if (sub !== "grant") {
+      console.error("Usage: polyroot live-promote [grant|list|revoke [id]]");
+      process.exit(1);
+    }
+    console.log(banner("LIVE Promotion — owner sign-off"));
+    console.log(
+      "  This signs REAL-MONEY authority with the agent wallet key.\n" +
+        "  Admission still requires: schema-current, manifested tree, clear\n" +
+        "  latch, clean reconciliation, SHADOW baseline, wallet + venue creds.\n",
+    );
+    const strategy = await askText("Strategy name", {
+      defaultValue: "default",
+    });
+    const profile = await askText("Profile name", { defaultValue: "live" });
+    const fromRaw = await askText("Current cap in USD (from)", {
+      defaultValue: String(AUTONOMY_BOUNDS.CAPITAL_CAP_USD),
+    });
+    const toRaw = await askText("New cap in USD (to, must exceed from)");
+    const fromCapUsd = Number(fromRaw);
+    const toCapUsd = Number(toRaw);
+    if (
+      !Number.isFinite(fromCapUsd) ||
+      !Number.isFinite(toCapUsd) ||
+      toCapUsd <= fromCapUsd ||
+      fromCapUsd < 0
+    ) {
+      console.error("❌ Caps invalid: need 0 <= from < to, both finite.");
+      process.exit(1);
+    }
+    const daysRaw = await askText("Valid for how many days", {
+      defaultValue: "30",
+    });
+    const days = Number(daysRaw);
+    if (!Number.isFinite(days) || days <= 0 || days > 365) {
+      console.error("❌ Expiry must be 1..365 days.");
+      process.exit(1);
+    }
+    const expiresAt = new Date(Date.now() + days * 86_400_000).toISOString();
+    let rawKey: string;
+    try {
+      rawKey = resolveWalletKey(process.env);
+    } catch {
+      console.error("❌ No wallet key — run `polyroot` onboarding first.");
+      process.exit(1);
+    }
+    const ownerAddress = deriveAddressFromPrivateKey(rawKey);
+    console.log(`\n   Owner (signer): ${ownerAddress}`);
+    console.log(
+      `   ${strategy.trim() || "default"}/${profile.trim() || "live"}  $${fromCapUsd} → $${toCapUsd}  until ${expiresAt}`,
+    );
+    const confirm = await askText("Type PROMOTE to sign with the wallet key");
+    if (confirm.trim() !== "PROMOTE") {
+      console.log("Aborted — nothing signed, nothing stored.");
+      return;
+    }
+    const { signPromotion } = await import("@polyroot/control");
+    const tuple = {
+      strategy: strategy.trim() || "default",
+      profile: profile.trim() || "live",
+      fromCapUsd,
+      toCapUsd,
+      expiresAt,
+    };
+    const { signature } = signPromotion(rawKey, tuple);
+    const id = await store.insert({
+      ...tuple,
+      ownerAddress,
+      signature,
+      monitoring: { systemHealth: true, venueMode: true, accountMode: true },
+      rollback: {
+        triggers: ["drawdown-latch", "kill-switch", "mandate-expiry"],
+        steps: ["reduce", "flatten"],
+      },
+      createdBy: "cli",
+    });
+    console.log(`\n✅ Promotion granted: ${id}`);
+    console.log(
+      "   LIVE admission at next startup if all operational gates hold.",
+    );
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (/relation .* does not exist|live_promotions/i.test(msg)) {
+      console.error(
+        "❌ live_promotions table missing — run `npm run migrate:latest` first.",
+      );
+    } else {
+      console.error(`❌ live-promote failed: ${msg}`);
+    }
+    process.exit(1);
+  } finally {
+    await pool.end().catch(() => undefined);
+    closeSharedSession();
+  }
+}
+
 async function runModeCommand(targetMode?: string): Promise<void> {
   loadDotEnv();
   const dbUrl = process.env["DATABASE_URL"];
@@ -4709,6 +4859,10 @@ export async function main(
   }
   if (argv[0] === "mode") {
     await runModeCommand(argv[1]);
+    return;
+  }
+  if (argv[0] === "live-promote") {
+    await runLivePromoteCLI(argv.slice(1));
     return;
   }
   if (argv[0] === "telegram") {
