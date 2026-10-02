@@ -592,6 +592,20 @@ export class Executor {
             ),
           );
       }
+      // Seed the ledger fill counters to this baseline (delta discarded —
+      // already consumed above) so later reconcile polls consume only
+      // genuinely new fills instead of re-counting the submit fill.
+      await this.deps.recoveryLedger
+        .consumeFill(
+          order.order_id,
+          decimalToBase(res.result.filled_size).toString(),
+          consumedCash.toString(),
+        )
+        .catch((err: unknown) =>
+          console.error(
+            `[executor] fill baseline record failed for ${order.order_id}: ${(err as Error).message}`,
+          ),
+        );
     }
 
     return { outcome: "SUBMITTED", result: res.result, state: st };
@@ -702,8 +716,20 @@ export class Executor {
     }
 
     const current = this.deps.seen.get(orderId) ?? "NOT_SEEN";
+    // Poll when the outcome is unknown OR the ledger row is still unresolved
+    // (resting LIVE / PARTIAL orders accrue fills across polls — without this,
+    // post-submit fills are invisible and committed capital drifts).
+    // Settled (resolved) rows are never re-queried.
+    let ledgerNeedsIt = false;
+    try {
+      ledgerNeedsIt = Boolean(
+        await this.deps.recoveryLedger.needsReconcile(orderId),
+      );
+    } catch {
+      ledgerNeedsIt = false;
+    }
     // Reconciliation must never turn an unknown order back into a live submit.
-    if (current !== "SUBMISSION_UNKNOWN") {
+    if (current !== "SUBMISSION_UNKNOWN" && !ledgerNeedsIt) {
       // Release lease if we acquired it
       if (leaseAcquired) {
         await this.deps.leaseStore.releaseExecutorLease(
@@ -716,7 +742,10 @@ export class Executor {
 
     // Check if recovery ledger thinks this needs reconciliation
     const needsReconcile =
-      await this.deps.recoveryLedger.needsReconcile(orderId);
+      ledgerNeedsIt ||
+      (await Promise.resolve(
+        this.deps.recoveryLedger.needsReconcile(orderId),
+      ).catch(() => false));
     if (!needsReconcile) {
       // No longer needs reconciliation
       // Release lease if we acquired it
@@ -740,7 +769,9 @@ export class Executor {
             this.deps.holder,
           );
         }
-        return "SUBMISSION_UNKNOWN"; // venue has no record yet
+        // A venue read failure must not downgrade an acknowledged order:
+        // keep the current state so the next poll retries.
+        return current; // venue has no record yet
       }
       // Order-level terminal states take precedence: a canceled / rejected /
       // expired order will never fill — mark it definitively done.
@@ -787,6 +818,63 @@ export class Executor {
       // PARTIAL / MATCHED). No blind re-submit.
       if (result.submit_status === "ACKNOWLEDGED") {
         this.deps.seen.add(orderId, "ACKNOWLEDGED");
+        // P0: consume post-submit fills exactly once. The venue reports
+        // cumulative fills; the ledger returns only the not-yet-consumed
+        // cash delta (monotonic counters — replays consume zero). Without
+        // this, fills landing after submit are never accounted and a later
+        // cancel over-releases.
+        try {
+          const filledSize =
+            typeof result.filled_size === "number" &&
+            Number.isFinite(result.filled_size) &&
+            result.filled_size > 0
+              ? result.filled_size
+              : 0;
+          const avgPrice =
+            typeof result.average_price === "number" &&
+            Number.isFinite(result.average_price) &&
+            result.average_price > 0
+              ? result.average_price
+              : 0;
+          if (filledSize > 0 && avgPrice > 0 && this.deps.reservationManager) {
+            const cumulativeCash = cashNeededFor(
+              decimalToBase(filledSize),
+              decimalToBase(avgPrice),
+            );
+            const { deltaCashBase } =
+              await this.deps.recoveryLedger.consumeFill(
+                orderId,
+                decimalToBase(filledSize).toString(),
+                cumulativeCash.toString(),
+              );
+            const delta = BigInt(deltaCashBase);
+            if (delta > 0n) {
+              const rec = await this.deps.recoveryLedger.get(orderId);
+              if (rec && rec.permitId) {
+                const permitObj = await this.deps.permitStore.get(rec.permitId);
+                if (permitObj && permitObj.reservation_ids) {
+                  for (const resId of permitObj.reservation_ids) {
+                    await this.deps.reservationManager
+                      .consume(resId, delta)
+                      .catch((err: unknown) =>
+                        console.error(
+                          `[executor] reconcile fill-consume failed for ${resId}: ${(err as Error).message}`,
+                        ),
+                      );
+                  }
+                }
+              }
+            }
+          } else if (filledSize > 0) {
+            console.warn(
+              `[executor] reconcile for ${orderId} reports fills without a usable price — skipping consume, staying unresolved`,
+            );
+          }
+        } catch (err) {
+          console.error(
+            `[executor] reconcile fill accounting failed for ${orderId}: ${(err as Error).message}`,
+          );
+        }
         await this.deps.recoveryLedger.resolve(orderId, true, result);
         // Release lease if we acquired it
         if (leaseAcquired) {

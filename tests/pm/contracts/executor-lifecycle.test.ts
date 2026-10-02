@@ -349,7 +349,7 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
     assert.equal(state, "SUBMISSION_UNKNOWN");
   });
 
-  it("reconcile: non-UNKNOWN order → returns current state without querying venue", async () => {
+  it("reconcile: unresolved ACKNOWLEDGED order is polled, but a venue read failure never downgrades it", async () => {
     const adapter = new FakeAdapter();
     let queried = false;
     adapter.getOrderStatusFn = async () => {
@@ -358,12 +358,43 @@ describe("Executor — order lifecycle, idempotency, no-blind-retry (PM-EXE-03..
     };
     const { deps, permitStore } = makeDeps(adapter);
     const ex = new Executor(deps);
-    // Submit successfully → state becomes ACKNOWLEDGED.
+    // Submit successfully → state becomes ACKNOWLEDGED, ledger stays
+    // unresolved while the order rests LIVE (P0 lifecycle fix).
     await ex.submit(makeSignedOrder("ord_r4"), makePermit());
     queried = false;
     const state = await ex.reconcile("ord_r4");
     assert.equal(state, "ACKNOWLEDGED");
-    assert.equal(queried, false, "must not query venue for non-UNKNOWN order");
+    assert.equal(
+      queried,
+      true,
+      "unresolved resting/partial orders must be polled for fills",
+    );
+  });
+
+  it("reconcile: terminally resolved order is never re-queried", async () => {
+    const adapter = new FakeAdapter();
+    let queried = false;
+    adapter.getOrderStatusFn = async () => {
+      queried = true;
+      return null;
+    };
+    adapter.placeOrderFn = async () => ({
+      ok: true,
+      result: {
+        success: true,
+        submit_status: "ACKNOWLEDGED",
+        order_status: "MATCHED",
+        filled_size: 10,
+        timestamp: new Date(),
+      },
+    });
+    const { deps, permitStore } = makeDeps(adapter);
+    const ex = new Executor(deps);
+    await ex.submit(makeSignedOrder("ord_r5"), makePermit());
+    queried = false;
+    const state = await ex.reconcile("ord_r5");
+    assert.equal(state, "ACKNOWLEDGED");
+    assert.equal(queried, false, "must not query venue for resolved order");
   });
 
   it("releases executor lease on validation failure (expired permit, amount exceeds, permit mismatch)", async () => {

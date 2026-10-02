@@ -202,6 +202,77 @@ describe("Executor settlement accounting (cash units, claim receipt)", () => {
     );
   });
 
+  it("P0: reconcile consumes post-submit fills exactly once (delta only)", async () => {
+    const adapter = new FakeAdapter();
+    // Submit fills 10 of 100 shares @ 0.5.
+    adapter.placeOrderFn = async () => ({
+      ok: true,
+      result: {
+        success: true,
+        submit_status: "ACKNOWLEDGED",
+        order_status: "PARTIAL",
+        filled_size: 10,
+        average_price: 0.5,
+        timestamp: new Date(),
+      },
+    });
+    // Venue later reports 16 cumulative shares @ 0.5.
+    adapter.getOrderStatus = async () => ({
+      success: true,
+      submit_status: "ACKNOWLEDGED",
+      order_status: "PARTIAL",
+      filled_size: 16,
+      average_price: 0.5,
+      timestamp: new Date(),
+    });
+    const consumed: ConsumeCall[] = [];
+    const { deps } = makeDeps(adapter, consumed);
+    const ex = new Executor(deps);
+    const res = await ex.submit(makeSignedOrder(), makePermit());
+    assert.equal(res.outcome, "SUBMITTED");
+    assert.equal(consumed.length, 1);
+    const first = cashNeededFor(decimalToBase(10), decimalToBase(0.5));
+    assert.equal(consumed[0]?.amount, first);
+    // Reconcile must consume only the 6-share delta, then stay silent.
+    const state = await ex.reconcile("ord_1");
+    assert.equal(state, "ACKNOWLEDGED");
+    assert.equal(consumed.length, 2);
+    const delta = cashNeededFor(decimalToBase(6), decimalToBase(0.5));
+    assert.equal(consumed[1]?.amount, delta);
+    const again = await ex.reconcile("ord_1");
+    assert.equal(again, "ACKNOWLEDGED");
+    assert.equal(
+      consumed.length,
+      2,
+      "replay/re-poll must not double-consume fills",
+    );
+  });
+
+  it("P0: resting LIVE order with fills is polled and accounted", async () => {
+    const adapter = new FakeAdapter(); // placeOrder → LIVE, no fills
+    adapter.getOrderStatus = async () => ({
+      success: true,
+      submit_status: "ACKNOWLEDGED",
+      order_status: "PARTIAL",
+      filled_size: 5,
+      average_price: 0.5,
+      timestamp: new Date(),
+    });
+    const consumed: ConsumeCall[] = [];
+    const { deps } = makeDeps(adapter, consumed);
+    const ex = new Executor(deps);
+    const res = await ex.submit(makeSignedOrder(), makePermit());
+    assert.equal(res.outcome, "SUBMITTED");
+    assert.equal(consumed.length, 0, "no fills at submit time");
+    const state = await ex.reconcile("ord_1");
+    assert.equal(state, "ACKNOWLEDGED");
+    assert.equal(consumed.length, 1);
+    assert.equal(
+      consumed[0]?.amount,
+      cashNeededFor(decimalToBase(5), decimalToBase(0.5)),
+    );
+  });
+
   it("records a claim-binding payload hash at permit claim time", async () => {
     const adapter = new FakeAdapter();
     const consumed: ConsumeCall[] = [];

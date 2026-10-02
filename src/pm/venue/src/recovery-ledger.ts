@@ -22,6 +22,9 @@ export interface InFlightOrder {
   resolved: boolean;
   resolvedAt: Date | undefined;
   resolvedState: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | undefined;
+  /** Cumulative venue-reported fills already accounted (base units, strings). */
+  consumedFillSharesBase?: string;
+  consumedFillCashBase?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,6 +70,17 @@ export interface IRecoveryLedger {
   ): Promise<void>;
   /** Map current confirmed-cancelled set (only definitively resolved cancels). */
   certainCancels(): string[] | Promise<string[]>;
+  /**
+   * Record venue-reported cumulative fills and return the not-yet-consumed
+   * cash delta. Monotonic: counters only rise, so replays and duplicate
+   * polls consume nothing twice. Callers feed the returned delta to the
+   * reservation manager. All amounts are base-unit decimal strings.
+   */
+  consumeFill(
+    orderId: string,
+    filledSharesBase: string,
+    cumulativeCashBase: string,
+  ): Promise<{ deltaCashBase: string }>;
 }
 
 /** PostgreSQL implementation using recovery_ledger table (migration 0005). */
@@ -83,6 +97,8 @@ interface RecoveryLedgerRow {
   resolved: boolean;
   resolved_at: Date | null;
   resolved_state: "ACKNOWLEDGED" | "DEFINITIVE_REJECT" | null;
+  consumed_fill_shares_base: string | null;
+  consumed_fill_cash_base: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -289,6 +305,53 @@ export class PgRecoveryLedger implements IRecoveryLedger {
     return result.rows.map((r) => r.order_id);
   }
 
+  async consumeFill(
+    orderId: string,
+    filledSharesBase: string,
+    cumulativeCashBase: string,
+  ): Promise<{ deltaCashBase: string }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query(
+        `SELECT consumed_fill_shares_base, consumed_fill_cash_base
+         FROM recovery_ledger WHERE order_id = $1 FOR UPDATE`,
+        [orderId],
+      );
+      if (r.rowCount !== 1) {
+        await client.query("ROLLBACK");
+        return { deltaCashBase: "0" };
+      }
+      const toBig = (v: unknown): bigint => {
+        try {
+          return BigInt(String(v ?? "0"));
+        } catch {
+          return 0n;
+        }
+      };
+      const prevShares = toBig(r.rows[0].consumed_fill_shares_base);
+      const prevCash = toBig(r.rows[0].consumed_fill_cash_base);
+      const repShares = toBig(filledSharesBase);
+      const repCash = toBig(cumulativeCashBase);
+      const newShares = repShares > prevShares ? repShares : prevShares;
+      const newCash = repCash > prevCash ? repCash : prevCash;
+      const delta = newCash - prevCash;
+      await client.query(
+        `UPDATE recovery_ledger
+         SET consumed_fill_shares_base = $2, consumed_fill_cash_base = $3, updated_at = now()
+         WHERE order_id = $1`,
+        [orderId, newShares.toString(), newCash.toString()],
+      );
+      await client.query("COMMIT");
+      return { deltaCashBase: delta.toString() };
+    } catch {
+      await client.query("ROLLBACK").catch(() => {});
+      return { deltaCashBase: "0" };
+    } finally {
+      client.release();
+    }
+  }
+
   /** Shape of a recovery_ledger row as returned by pg. */
   private mapRow(row: RecoveryLedgerRow): InFlightOrder {
     return {
@@ -303,6 +366,8 @@ export class PgRecoveryLedger implements IRecoveryLedger {
       resolved: row.resolved,
       resolvedAt: row.resolved_at ?? undefined,
       resolvedState: row.resolved_state ?? undefined,
+      consumedFillSharesBase: row.consumed_fill_shares_base ?? "0",
+      consumedFillCashBase: row.consumed_fill_cash_base ?? "0",
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -459,6 +524,32 @@ export class MemRecoveryLedger implements IRecoveryLedger {
       if (!o.resolved) out.push({ ...o });
     }
     return out;
+  }
+
+  async consumeFill(
+    orderId: string,
+    filledSharesBase: string,
+    cumulativeCashBase: string,
+  ): Promise<{ deltaCashBase: string }> {
+    const o = this.orders.get(orderId);
+    if (!o) return { deltaCashBase: "0" };
+    const toBig = (v: unknown): bigint => {
+      try {
+        return BigInt(String(v ?? "0"));
+      } catch {
+        return 0n;
+      }
+    };
+    const prevShares = toBig(o.consumedFillSharesBase);
+    const prevCash = toBig(o.consumedFillCashBase);
+    const repShares = toBig(filledSharesBase);
+    const repCash = toBig(cumulativeCashBase);
+    const newShares = repShares > prevShares ? repShares : prevShares;
+    const newCash = repCash > prevCash ? repCash : prevCash;
+    o.consumedFillSharesBase = newShares.toString();
+    o.consumedFillCashBase = newCash.toString();
+    o.updatedAt = new Date();
+    return { deltaCashBase: (newCash - prevCash).toString() };
   }
 
   async get(orderId: string): Promise<InFlightOrder | null> {
