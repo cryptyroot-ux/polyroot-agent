@@ -1090,6 +1090,41 @@ async function removeSavedCustomProvider(): Promise<void> {
   );
 }
 
+interface DetectedProxyWallets {
+  account: string;
+  funder: string;
+}
+
+/**
+ * Query Polymarket CLOB API to auto-discover proxy wallet
+ * and funder addresses for a given API key.
+ */
+async function detectProxyWalletAddresses(): Promise<DetectedProxyWallets | null> {
+  const host = process.env["POLYMARKET_API_URL"] || "https://clob.polymarket.com";
+  const apiKey = process.env["POLYMARKET_API_KEY"];
+  if (!apiKey) return null;
+
+  try {
+    const resp = await fetch(`${host}/auth/api-keys`, {
+      headers: {
+        "POLY_API_KEY": apiKey,
+        "Accept": "application/json",
+      },
+    });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as any;
+    if (data && data.account && data.funder) {
+      return {
+        account: String(data.account),
+        funder: String(data.funder),
+      };
+    }
+  } catch {
+    // Return null on network/auth failure, fall back to manual prompt
+  }
+  return null;
+}
+
 async function runOnboarding(): Promise<OnboardingConfig> {
   console.log(banner("Welcome to PolyRoot Agent — First-Time Setup"));
   console.log("  3 steps. Every step has a safe default: just press Enter.\n");
@@ -1724,67 +1759,81 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   chmodSync(KEYSTORE_PATH, 0o600);
   console.log(`🔐 Keystore saved to ${KEYSTORE_PATH} (encrypted, 600 perms)`);
 
-  // 3. Mode selection — full PAPER → SHADOW → MICRO_LIVE → LIVE ladder.
-  // SHADOW stays the default: live data, simulated fills, $0 risk.
+  // 3. Mode selection — Live-First: default to LIVE, single confirmation.
   console.log(stepper(3, 3, "Mode"));
-  console.log("\n🚀 Step 3/3: Choose Mode");
+  console.log("\n🚀 Step 3/3: Trading Mode");
   console.log(
-    "   PAPER = practice, mock data, $0 risk. SHADOW = live data, sim fills, $0 risk.",
+    "   LIVE = Real money on Polymarket. SHADOW = Live data, simulated fills, $0 risk.",
   );
   console.log(
-    "   MICRO_LIVE = small real money (needs API keys + loss cap). LIVE = full real money.",
+    "   PAPER = Safe simulation, mock data, $0 risk. MICRO_LIVE = Small real money with caps.",
   );
   const modeChoice = await askChoice(
-    "Choose mode (Enter = SHADOW):",
+    "Choose mode (Enter = LIVE):",
     [
-      "SHADOW — Live data, simulated fills, $0 risk (recommended)",
+      "LIVE — Real trading on Polymarket (requires API keys + loss cap)",
+      "SHADOW — Live data, simulated fills, $0 risk",
       "PAPER — Safe simulation, mock data, $0 risk",
       "MICRO_LIVE — Small real money (requires capital, API keys, loss cap)",
-      "LIVE — Real trading on Polymarket (requires capital, API keys)",
     ],
     0,
   );
-  let mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" = "SHADOW";
+  let mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" = "LIVE";
   let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
   let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
   let walletAccount = "";
   let walletFunder = "";
 
-  // SHADOW, MICRO_LIVE and LIVE need capital/loss caps (SHADOW simulates with
-  // real data; PAPER ignores caps and runs the mock fixture).
-  const needsCapitalConfig =
-    modeChoice.startsWith("SHADOW") ||
-    modeChoice.startsWith("MICRO") ||
-    modeChoice.startsWith("LIVE");
-  if (needsCapitalConfig) {
-    const isLive = modeChoice.startsWith("LIVE");
-    const isMicro = modeChoice.startsWith("MICRO");
-    if (isLive || isMicro) {
-      const label = isLive ? "LIVE" : "MICRO_LIVE";
+  let isLive = modeChoice.startsWith("LIVE");
+  let isMicro = modeChoice.startsWith("MICRO");
+  let isShadow = modeChoice.startsWith("SHADOW");
+  let isPaper = modeChoice.startsWith("PAPER");
+
+  if (isLive || isMicro) {
+    const label = isLive ? "LIVE" : "MICRO_LIVE";
+    mode = label;
+    console.log(
+      `\n${label} uses REAL MONEY. The daily loss cap shuts the system`,
+      "down automatically when reached (needs your manual reset).",
+    );
+    console.log(
+      `${label} also needs: Polymarket API keys + 3 distinct wallet`,
+      "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
+    );
+    const confirm = await askText(
+      `Type ${label} to continue (anything else stays SHADOW)`,
+    );
+    if (confirm.trim() !== label) {
+      mode = "SHADOW";
+      console.log("Staying on SHADOW.");
+      isLive = false;
+      isMicro = false;
+      isShadow = true;
+    } else {
       mode = label;
+      // WAL-03 addresses are asked ONLY after explicit real-money
+      // confirmation — decliners must never be interrogated for them.
+      const signerAddress = deriveAddressFromPrivateKey(privateKey!);
       console.log(
-        `\n${label} uses REAL MONEY. The daily loss cap shuts the system`,
-        "down automatically when reached (needs your manual reset).",
+        "\n📍 WAL-03 requires 3 distinct addresses for live trading: Signer, Account, and Funder.",
       );
-      console.log(
-        `${label} also needs: Polymarket API keys + 3 distinct wallet`,
-        "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
-      );
-      const confirm = await askText(
-        `Type ${label} to continue (anything else stays SHADOW)`,
-      );
-      if (confirm.trim() !== label) {
-        mode = "SHADOW";
-        console.log("Staying on SHADOW.");
-      } else {
-        mode = label;
-        // WAL-03 addresses are asked ONLY after explicit real-money
-        // confirmation — decliners must never be interrogated for them.
-        const signerAddress = deriveAddressFromPrivateKey(privateKey!);
-        console.log(
-          "\n📍 WAL-03 requires 3 distinct addresses for live trading: Signer, Account, and Funder.",
-        );
-        console.log(`   Your Signer address is: ${signerAddress}`);
+      console.log(`   Your Signer address is: ${signerAddress}`);
+      // Auto-detect proxy wallet addresses from Polymarket API
+      console.log("\n🔍 Auto-detecting Polymarket proxy wallet addresses...");
+      const detected = await detectProxyWalletAddresses();
+      if (detected) {
+        walletAccount = detected.account;
+        walletFunder = detected.funder;
+        console.log(`✅ Auto-detected Account: ${walletAccount}`);
+        console.log(`✅ Auto-detected Funder:  ${walletFunder}`);
+        const ok = await askText("Use these addresses? (y/n)", { defaultValue: "y" });
+        if (!ok.trim().toLowerCase().startsWith("y")) {
+          walletAccount = "";
+          walletFunder = "";
+        }
+      }
+      // Fallback to manual entry if auto-detection failed or was declined
+      if (!walletAccount) {
         for (;;) {
           walletAccount = await askText(
             "Wallet Account address (0x...) — must differ from Signer:",
@@ -1806,6 +1855,8 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           }
           break;
         }
+      }
+      if (!walletFunder) {
         for (;;) {
           walletFunder = await askText(
             "Wallet Funder address (0x...) — must differ from Signer and Account:",
@@ -1832,10 +1883,20 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           break;
         }
       }
-    } else {
-      mode = "SHADOW";
     }
+  } else if (isShadow) {
+    mode = "SHADOW";
+  } else if (isPaper) {
+    mode = "PAPER";
+    console.log(
+      "PAPER selected: safe simulation on the mock fixture, caps ignored.",
+      "Change later with: polyroot setup",
+    );
+  }
 
+  // SHADOW, MICRO_LIVE and LIVE need capital/loss caps (SHADOW simulates with
+  // real data; PAPER ignores caps and runs the mock fixture).
+  if (isLive || isMicro || isShadow) {
     const capitalRaw = await askText(
       `Capital cap in USD — max money allowed in play (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
       { defaultValue: String(AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
@@ -1845,24 +1906,18 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       Number.isFinite(capitalParsed) && capitalParsed > 0
         ? capitalParsed
         : AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
-    const bpsRaw = await askText(
-      `Daily loss cap in bps, 500 = 5% (default ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})`,
-      { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS) },
+    const pctRaw = await askText(
+      `Daily loss cap in % (e.g. 5 = 5%) (default ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS / 100}%)`,
+      { defaultValue: String(AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS / 100) },
     );
-    const bpsParsed = Number(bpsRaw);
+    const pctParsed = Number(pctRaw);
     lossBps =
-      Number.isFinite(bpsParsed) && bpsParsed > 0
-        ? bpsParsed
+      Number.isFinite(pctParsed) && pctParsed > 0
+        ? Math.round(pctParsed * 100)
         : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
     const lossCap = resolveLossCapPusd(capitalUsd, lossBps) ?? 0;
     console.log(
-      `\n✅ Your limits: capital $${capitalUsd}, stop-loss $${lossCap}/day.`,
-    );
-  } else {
-    mode = "PAPER";
-    console.log(
-      "PAPER selected: safe simulation on the mock fixture, caps ignored.",
-      "Change later with: polyroot setup",
+      `\n✅ Your limits: capital $${capitalUsd}, stop-loss $${lossCap}/day (${lossBps / 100}%).`,
     );
   }
 
