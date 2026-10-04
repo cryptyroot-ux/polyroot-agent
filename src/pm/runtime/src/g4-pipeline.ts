@@ -42,7 +42,7 @@ import { AUTONOMY_BOUNDS } from "./autonomy-bounds.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
-export type G4PipelineMode = "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+export type G4PipelineMode = "MICRO_LIVE" | "LIVE";
 
 export interface G4PipelineConfig extends G4CoreConfig {}
 export interface G4PipelineDeps extends G4CoreDeps {}
@@ -75,13 +75,6 @@ export class G4Pipeline {
   private readonly scoreMemory = new Map<string, RankedMarket>();
   /** Open filled notional per token (freed only by settlement). */
   private readonly tracker = new PositionTracker();
-  private readonly paperFillConfig: {
-    cancelProbability: number;
-    partialFraction: number;
-    latencyMs: number;
-    makerFeeBps: number;
-    takerFeeBps: number;
-  };
 
   constructor(config: G4PipelineConfig, deps: G4PipelineDeps) {
     const defaults = getDefaultModeConfig(config.mode, config);
@@ -107,14 +100,6 @@ export class G4Pipeline {
       fillRatio: 0,
       currentExposureUsd: 0,
       maxExposureUsd: 0,
-    };
-
-    this.paperFillConfig = {
-      cancelProbability: this.config.paperFillConfig.cancelProbability,
-      partialFraction: this.config.paperFillConfig.partialFraction,
-      latencyMs: this.config.paperFillConfig.latencyMs,
-      makerFeeBps: this.config.paperConfig.makerFeeBps,
-      takerFeeBps: this.config.paperConfig.takerFeeBps,
     };
   }
 
@@ -227,7 +212,6 @@ export class G4Pipeline {
     const result = await executeG4Step(
       input,
       { config: this.config, deps: this.deps },
-      this.paperFillConfig,
     );
 
     // Single step-complete emission point: covers every exit path

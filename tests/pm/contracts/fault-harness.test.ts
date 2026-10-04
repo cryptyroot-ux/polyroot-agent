@@ -211,7 +211,7 @@ const basePortfolio: Portfolio = {
 const basePolicy: RiskPolicy = {
   schema_version: "1.1",
   policy_version: "v0-bootstrap",
-  execution_mode: "PAPER",
+  execution_mode: "LIVE",
   capital_usd_cap: null,
   max_order_pct: 0.005,
   max_market_pct: 0.02,

@@ -2,15 +2,14 @@
  * @polyroot/control — Deployment workflow gates (PR-OPS-07, T-PR-OPS-07).
  *
  * Blue-green promotion is deliberately split into:
- * 1. immutable PAPER canary validation,
- * 2. explicit owner-approved LIVE promotion,
- * 3. rollback refusal when the candidate schema is incompatible.
+ * 1. explicit owner-approved LIVE promotion,
+ * 2. rollback refusal when the candidate schema is incompatible.
  *
  * Validation never routes financial orders and never self-promotes to LIVE.
  */
 
 export type DeploymentSlot = "BLUE" | "GREEN";
-export type DeploymentMode = "PAPER" | "LIVE";
+export type DeploymentMode = "LIVE";
 
 export interface DeploymentCandidate {
   /** Immutable release identifier from the release manifest. */
@@ -21,7 +20,7 @@ export interface DeploymentCandidate {
   schemaVersion: string;
   /** Hash of the migration set carried by the candidate. */
   migrationHash: string;
-  /** PAPER is validated automatically; LIVE requires explicit owner approval. */
+  /** LIVE requires explicit owner approval. */
   mode: DeploymentMode;
   /** Slot that should receive the candidate. */
   targetSlot: DeploymentSlot;
@@ -40,8 +39,7 @@ export interface DeploymentState {
 export type DeploymentDecision =
   | {
       ok: true;
-      code:
-        "PAPER_CANARY_READY" | "LIVE_PROMOTION_AUTHORIZED" | "ROLLBACK_ALLOWED";
+      code: "LIVE_PROMOTION_AUTHORIZED" | "ROLLBACK_ALLOWED";
       reason: string;
       targetSlot: DeploymentSlot;
     }
@@ -139,17 +137,6 @@ export function validateDeploymentCandidate(
       ok: false,
       code: "ALREADY_LIVE",
       reason: "active deployment is already LIVE",
-    };
-  }
-
-  if (candidate.mode === "PAPER") {
-    return {
-      ok: true,
-      code: "PAPER_CANARY_READY",
-      reason: schema.requiresMigration
-        ? "PAPER canary validated; forward migration required before promotion"
-        : "PAPER canary validated",
-      targetSlot: candidate.targetSlot,
     };
   }
 

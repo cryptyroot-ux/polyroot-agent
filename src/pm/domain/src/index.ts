@@ -104,11 +104,9 @@ export const nowSec = () => Math.floor(Date.now() / 1000);
 
 /* ─── Orthogonal state axes (PRD P3.2, Blueprint B3.2) ─── */
 
-/** Operation mode — RESEARCH/PAPER/SHADOW/LIVE (PM-GOV-02); only LIVE can send financial orders. */
+/** Operation mode — RESEARCH/LIVE (PM-GOV-02); only LIVE can send financial orders. */
 export const OperationModeSchema = z.enum([
   "RESEARCH",
-  "PAPER",
-  "SHADOW",
   "LIVE",
 ]);
 export type OperationMode = z.infer<typeof OperationModeSchema>;
@@ -748,7 +746,7 @@ export type Portfolio = z.infer<typeof PortfolioSchema>;
 export const RiskPolicySchema = z.object({
   schema_version: z.string().default(SCHEMA_VERSION),
   policy_version: z.string().min(1),
-  execution_mode: OperationModeSchema.default("PAPER"),
+  execution_mode: OperationModeSchema.default("LIVE"),
   capital_usd_cap: z.number().positive().nullable(),
   max_order_pct: z.number().min(0).max(1),
   max_market_pct: z.number().min(0).max(1),
@@ -784,7 +782,7 @@ export type RiskPolicy = z.infer<typeof RiskPolicySchema>;
 export const DEFAULT_RISK_POLICY: RiskPolicy = {
   schema_version: SCHEMA_VERSION,
   policy_version: "v0-bootstrap",
-  execution_mode: "PAPER",
+  execution_mode: "LIVE",
   capital_usd_cap: null,
   max_order_pct: 0.005,
   max_market_pct: 0.02,

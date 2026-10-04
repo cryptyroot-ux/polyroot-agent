@@ -33,7 +33,7 @@ export class MemPolicyStore {
     this.policy = {
       schema_version: "1.1",
       policy_version: `v${Date.now()}`,
-      execution_mode: "PAPER",
+      execution_mode: "LIVE",
       capital_usd_cap: 10_000,
       max_order_pct: 0.005,
       max_market_pct: 0.02,

@@ -2,14 +2,12 @@
  * @polyroot/runtime — G4 Autonomous Runtime Loop.
  *
  * Implements the G4 autonomous loop per Blueprint B17.3:
- * PAPER → SHADOW → MICRO_LIVE → autonomous-LIVE
+ * MICRO_LIVE → autonomous-LIVE
  *
  * The loop integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.
  *
  * Modes:
- * - PAPER: zero financial I/O, simulator fills
- * - SHADOW: live data, no financial I/O
  * - MICRO-LIVE: real wallet, explicit cap, real fills
  * - LIVE: full autonomy (requires Autonomy Charter gate)
  */
@@ -50,14 +48,12 @@ export type G4LoopMetrics = G4CoreMetrics;
 /* ─── G4 Autonomous Loop ─────────────────────────────────────────────────── */
 
 /**
- * G4 Autonomous Loop — implements PAPER → SHADOW → MICRO_LIVE → LIVE sequence.
+ * G4 Autonomous Loop — implements MICRO_LIVE → LIVE sequence.
  *
  * The loop integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.
  *
  * Modes:
- * - PAPER: zero financial I/O, simulator fills
- * - SHADOW: live data, no financial I/O
  * - MICRO-LIVE: real wallet, explicit cap, real fills
  * - LIVE: full autonomy (requires Autonomy Charter gate)
  */
@@ -67,13 +63,6 @@ export class G4AutonomousLoop {
   private readonly metrics: G4LoopMetrics;
   private running = false;
   private stopFn?: () => void;
-  private readonly paperFillConfig: {
-    cancelProbability: number;
-    partialFraction: number;
-    latencyMs: number;
-    makerFeeBps: number;
-    takerFeeBps: number;
-  };
 
   constructor(config: G4LoopConfig, deps: G4LoopDeps) {
     const defaults = getDefaultModeConfig(config.mode, config);
@@ -88,14 +77,6 @@ export class G4AutonomousLoop {
       fillRatio: 0,
       currentExposureUsd: 0,
       maxExposureUsd: 0,
-    };
-
-    this.paperFillConfig = {
-      cancelProbability: this.config.paperFillConfig.cancelProbability,
-      partialFraction: this.config.paperFillConfig.partialFraction,
-      latencyMs: this.config.paperFillConfig.latencyMs,
-      makerFeeBps: this.config.paperConfig.makerFeeBps,
-      takerFeeBps: this.config.paperConfig.takerFeeBps,
     };
   }
 
@@ -124,7 +105,6 @@ export class G4AutonomousLoop {
     const result = await executeG4Step(
       input,
       { config: this.config, deps: this.deps },
-      this.paperFillConfig,
     );
 
     // Single step-complete emission point (see G4Pipeline.processMarket).
