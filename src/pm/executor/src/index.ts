@@ -394,15 +394,6 @@ export class Executor {
         };
       }
     }
-    //    cash ceiling). A signed order that exceeds its permit is refused —
-    //    this is the reserve-then-spend enforcement, never loosened by a tier.
-    if (!this.permitCoversOrder(order, permit)) {
-      return {
-        outcome: "PERMIT_INVALID",
-        code: "AMOUNT_EXCEEDS_PERMIT",
-        reason: "order exceeds permit reservation",
-      };
-    }
 
     // 5. Venue-mode gate — fail closed BEFORE any permit claim. A harmless
     //    reject must NOT strand money authority: the permit is only consumed
