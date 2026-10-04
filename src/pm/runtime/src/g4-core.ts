@@ -7,7 +7,6 @@ import type {
   VenueMode,
   WalletIdentity,
 } from "@polyroot/domain";
-import { simulateFill } from "./paper-engine.js";
 import {
   evaluateEdge,
   validateAndReserve,
@@ -26,7 +25,7 @@ import {
 
 /* ─── Core G4 Types ──────────────────────────────────────────────────────── */
 
-export type G4Mode = "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+export type G4Mode = "MICRO_LIVE" | "LIVE";
 
 export interface G4CoreConfig {
   mode: G4Mode;
@@ -600,10 +599,8 @@ export function createG4Core(options: CreateG4CoreOptions) {
 /* ─── Mode Transition Logic ──────────────────────────────────────────────── */
 
 export const G4_MODE_TRANSITIONS: Record<G4Mode, G4Mode[]> = {
-  PAPER: ["SHADOW"],
-  SHADOW: ["MICRO_LIVE", "PAPER"],
-  MICRO_LIVE: ["LIVE", "SHADOW"],
-  LIVE: ["SHADOW"],
+  MICRO_LIVE: ["LIVE"],
+  LIVE: [],
 };
 
 export function isValidModeTransition(
@@ -669,7 +666,7 @@ export function computeFinancialGate(
     return "FINANCIAL_BLOCKED";
   }
 
-  if (mode === "MICRO_LIVE" || mode === "SHADOW" || mode === "LIVE") {
+  if (mode === "MICRO_LIVE" || mode === "LIVE") {
     const venue = venueMode();
     if (
       venue === "UNAVAILABLE" ||
