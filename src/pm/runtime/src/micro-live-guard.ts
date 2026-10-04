@@ -19,14 +19,36 @@
 
 import { levelAtLeast, type KillLevel } from "@polyroot/risk";
 import {
-  evaluateShadowCandidate,
-  type ShadowCriteria,
-} from "./paper-engine.js";
-import {
   evaluateRealityGap,
   type RealityGapInput,
   type RealityGapTolerances,
 } from "./reality-gap.js";
+
+/** Baseline criteria for live-read evidence before money may move. */
+export interface ShadowCriteria {
+  minResolvedClusters: number;
+  minDays: number;
+}
+
+function evaluateShadowCandidate(input: {
+  observedDays: number;
+  resolvedClusters: number;
+  criteria: ShadowCriteria;
+}): { passed: boolean; reason: string } {
+  if (input.observedDays < input.criteria.minDays) {
+    return {
+      passed: false,
+      reason: `baseline ${input.observedDays}d < ${input.criteria.minDays}d`,
+    };
+  }
+  if (input.resolvedClusters < input.criteria.minResolvedClusters) {
+    return {
+      passed: false,
+      reason: `resolved clusters ${input.resolvedClusters} < ${input.criteria.minResolvedClusters}`,
+    };
+  }
+  return { passed: true, reason: "live-read baseline met" };
+}
 
 /* ─── Loss-cap latch ─────────────────────────────────────────────────── */
 

@@ -2066,7 +2066,7 @@ async function runOnboardingFlow(): Promise<void> {
       if (demo.trim().toLowerCase().startsWith("y")) {
         try {
           await startAgent({
-            mode: "SHADOW",
+            mode: "MICRO_LIVE",
             databaseUrl: process.env["DATABASE_URL"] ?? "",
             kmsKeyId: "",
             kmsEndpoint: "",
@@ -2499,17 +2499,6 @@ async function runConsole(): Promise<void> {
         await runRestoreCLI(args);
       } else if (cmd === "setup") {
         await runSetupFlow();
-      } else if (cmd === "shadow-fund") {
-        const aIdx = args.indexOf("--amount");
-        const amountRaw =
-          aIdx >= 0 && args[aIdx + 1] && !args[aIdx + 1]?.startsWith("--")
-            ? (args[aIdx + 1] as string)
-            : "";
-        if (!amountRaw) {
-          console.log("Usage: shadow-fund --amount <usd>");
-        } else {
-          await runShadowFund(amountRaw);
-        }
       } else if (cmd === "doctor") {
         if (args.includes("--live")) await runLiveDoctor();
         else await runDoctor();
@@ -2586,48 +2575,6 @@ async function runConsole(): Promise<void> {
       }
       console.error(`❌ ${(err as Error).message}`);
     }
-  }
-}
-
-/** `polyroot shadow-fund --amount <usd>` — credit SHADOW play bankroll.
- *  Play money only: hard-refused on MICRO_LIVE/LIVE so sim funds can never
- *  touch real money. Idempotent (sets, not adds) for a clean baseline. */
-async function runShadowFund(amountRaw: string): Promise<void> {
-  loadDotEnv();
-  const mode = (process.env["RUNTIME_MODE"] ?? "SHADOW").toUpperCase();
-  if (mode === "MICRO_LIVE" || mode === "LIVE") {
-    console.error(
-      "❌ REFUSED: shadow-fund is play money — never on MICRO_LIVE/LIVE.",
-    );
-    process.exit(1);
-  }
-  const amount = Number(amountRaw);
-  if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000) {
-    console.error(
-      "Usage: polyroot shadow-fund --amount <usd>  (0 < amount ≤ 1000000)",
-    );
-    process.exit(1);
-  }
-  const dbUrl = process.env["DATABASE_URL"] ?? "";
-  if (!dbUrl) {
-    console.error("❌ DATABASE_URL not set");
-    process.exit(1);
-  }
-  const wallet = buildWalletIdentity(mode === "SHADOW" ? "SHADOW" : "PAPER");
-  const pool = new Pool({ connectionString: dbUrl });
-  try {
-    await pool.query(
-      `INSERT INTO balance_entries (account, asset, available_base, committed_base, updated_at)
-       VALUES ($1, 'pUSD', $2, 0, now())
-       ON CONFLICT (account, asset)
-       DO UPDATE SET available_base = EXCLUDED.available_base, committed_base = 0, updated_at = now()`,
-      [wallet.funder, decimalToBase(amount).toString()],
-    );
-    console.log(
-      `✅ Shadow bankroll: $${amount} play money → ${wallet.funder} (pUSD).`,
-    );
-  } finally {
-    await pool.end().catch(() => undefined);
   }
 }
 
@@ -3013,13 +2960,9 @@ export async function startAgent(config: CLIConfig): Promise<void> {
         // domain SignedOrders stays refused until CLOB translation lands).
         venueAdapter: await buildLiveVenueAdapter(),
       }
-    : config.mode === "SHADOW"
-      ? { venueAdapter: buildPublicVenueAdapter() }
-      : {};
+    : {};
   const agent = await bootstrapAgent(config.databaseUrl, config.mode, {
     ...baseOpts,
-    // Dry runs stay silent on Telegram: `--once` evaluates the mock
-    // fixture, and its PAPER/mock_market_1 lines are test noise.
     streamEnabled: !config.once,
   });
   const pipeline = agent.pipeline as unknown as {
@@ -5599,19 +5542,6 @@ export async function main(
   }
   if (argv[0] === "telegram") {
     await runTelegramCLI(argv.slice(1));
-    return;
-  }
-  if (argv[0] === "shadow-fund") {
-    const aIdx = argv.indexOf("--amount");
-    const amountRaw =
-      aIdx >= 0 && argv[aIdx + 1] && !argv[aIdx + 1]?.startsWith("--")
-        ? (argv[aIdx + 1] as string)
-        : "";
-    if (!amountRaw) {
-      console.error("Usage: polyroot shadow-fund --amount <usd>");
-      process.exit(1);
-    }
-    await runShadowFund(amountRaw);
     return;
   }
 

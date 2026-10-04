@@ -124,17 +124,6 @@ export function shouldSkipFailedForecast(
   );
 }
 
-/** PAPER/SHADOW placeholder identity (mock venue — never touches real funds). */
-const PAPER_WALLET_IDENTITY: WalletIdentity = {
-  schema_version: "1.1",
-  wallet_id: "00000000-0000-0000-0000-000000000001",
-  wallet_type: "DEPOSIT_WALLET",
-  signer_address: "0xSIGNER_ADDRESS_1111111111111111",
-  account_wallet: "0xACCOUNT_ADDRESS_22222222222222",
-  funder: "0xFUNDER_ADDRESS_3333333333333333",
-  chain_id: 137,
-  verified_at: new Date("2026-01-01T00:00:00.000Z"),
-};
 
 /**
  * Deterministic wallet id (UUID-style) derived from the signer address.
@@ -162,11 +151,9 @@ export function deterministicWalletId(signerAddress: string): string {
  * addresses (WAL-03); PAPER/SHADOW keep the mock placeholder.
  */
 export function buildWalletIdentity(
-  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE",
+  mode: "MICRO_LIVE" | "LIVE",
   env: NodeJS.ProcessEnv = process.env,
 ): WalletIdentity {
-  if (mode === "PAPER" || mode === "SHADOW")
-    return { ...PAPER_WALLET_IDENTITY };
   const rawKey = env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"] ?? "";
   const signerAddress = deriveAddressFromPrivateKey(rawKey);
   const account = env["WALLET_ACCOUNT"] ?? "";
@@ -327,7 +314,7 @@ async function resolveLiveAdmissionAtStartup(
 
 export async function bootstrapAgent(
   connectionString: string,
-  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" = "PAPER",
+  mode: "MICRO_LIVE" | "LIVE" = "MICRO_LIVE",
   opts: BootstrapAgentOptions = {},
 ) {
   const pool = new Pool({ connectionString });
@@ -493,7 +480,7 @@ export async function bootstrapAgent(
   // discover the most liquid markets itself within owner guardrails —
   // never mock data either way.
   const { ids: marketUniverse, sides: marketSides }: MarketUniverseWithSides =
-    mode === "PAPER"
+mode === "MICRO_LIVE" || mode === "LIVE"
       ? { ids: [], sides: {} }
       : await resolveMarketUniverseWithSides(process.env);
   const marketMeta = new Map<string, { question: string; volume24h: number }>();

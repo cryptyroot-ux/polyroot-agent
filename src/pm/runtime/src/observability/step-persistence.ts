@@ -165,45 +165,9 @@ export async function persistStep(
     );
   }
 
-  // 3. Decision log — PAPER/SHADOW tables; live modes persist via executor.
-  const uncertainty = p === null ? 1 : round4(1 - certainty(p));
-  const size =
-    typeof result.size === "number" && Number.isFinite(result.size)
-      ? result.size
-      : 0;
-  if (deps.mode === "PAPER") {
-    const fill = result.fill;
-    out.decisionLog = await tryInsert(
-      deps,
-      "paper_log",
-      `INSERT INTO paper_log
-         (market_id, action, forecast_p, size, fill_status, filled_size,
-          fill_price, maker_fee, taker_fee, uncertainty, loop_epoch)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0)`,
-      [
-        result.market_id,
-        result.decision,
-        p,
-        size,
-        fill?.status ?? "CANCELLED",
-        fill?.filledSize ?? 0,
-        fill?.fillPrice ?? null,
-        fill?.makerFee ?? 0,
-        fill?.takerFee ?? 0,
-        uncertainty,
-      ],
-    );
-  } else if (deps.mode === "SHADOW") {
-    out.decisionLog = await tryInsert(
-      deps,
-      "shadow_log",
-      `INSERT INTO shadow_log (market_id, action, forecast_p, size, uncertainty)
-       VALUES ($1,$2,$3,$4,$5)`,
-      [result.market_id, result.decision, p, size, uncertainty],
-    );
-  } else {
-    out.decisionLog = true; // live fills persist through the executor path
-  }
+  // 3. Decision log — live fills persist through the executor path; the
+  //    PAPER/SHADOW-only decision tables are gone.
+  out.decisionLog = true; // live fills persist through the executor path
   return out;
 }
 
