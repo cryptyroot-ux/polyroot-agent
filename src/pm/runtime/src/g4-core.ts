@@ -685,21 +685,17 @@ export function computeFinancialGate(
 }
 
 /**
- * Build one loop pass of market inputs. PAPER uses the mock fixture;
- * every other mode REQUIRES a wired market source and NEVER falls back
- * to mock data (a live-configured loop on mock markets would fabricate
- * decisions).
+ * Build one loop pass of market inputs. Live modes REQUIRE a wired market
+ * source and NEVER fall back to mock data (a live-configured loop on mock
+ * markets would fabricate decisions).
  */
 export async function buildLoopInputs(
   config: Pick<G4CoreConfig, "mode">,
   deps: Pick<G4CoreDeps, "marketSource">,
 ): Promise<LiveMarketInput[]> {
-  if (config.mode === "PAPER") {
-    return [{ market_id: "mock_market_1", bid: 0.45, ask: 0.55 }];
-  }
   if (!deps.marketSource) {
     throw new Error(
-      "LIVE_LOOP_UNWIRED: SHADOW/MICRO_LIVE/LIVE require a wired marketSource; refusing to run on mock data",
+      "LIVE_LOOP_UNWIRED: MICRO_LIVE/LIVE require a wired marketSource; refusing to run on mock data",
     );
   }
   return collectLiveInputs(deps.marketSource);
@@ -708,7 +704,6 @@ export async function buildLoopInputs(
 export async function executeG4Step(
   input: G4CoreInput,
   core: { config: G4CoreConfig; deps: G4CoreDeps },
-  paperFillConfig: G4FillSimulatorConfig,
 ): Promise<G4CoreResult> {
   const {
     market_id,
@@ -956,94 +951,70 @@ export async function executeG4Step(
   let permitId: string | undefined;
   let outcome: "SUBMITTED" | "NEEDS_RECONCILIATION" | undefined;
 
-  if (config.mode === "PAPER" || config.mode === "SHADOW") {
-    // Simulate fill
-    const fillResult = simulateFill({
-      size,
-      bid,
-      ask,
-      depth: 1000,
-      taker: true,
-      makerFeeBps: paperFillConfig.makerFeeBps,
-      takerFeeBps: paperFillConfig.takerFeeBps,
-      latencyMs: paperFillConfig.latencyMs,
-      cancelProbability: paperFillConfig.cancelProbability,
-      partialFraction: paperFillConfig.partialFraction,
-    });
-    fill = {
-      status: fillResult.status,
-      filledSize: fillResult.filledSize,
-      fillPrice: fillResult.fillPrice,
-      makerFee: fillResult.makerFee,
-      takerFee: fillResult.takerFee,
-      latencyMs: fillResult.latencyMs,
-    };
-  } else if (config.mode === "MICRO_LIVE" || config.mode === "LIVE") {
-    // Live enforcement (fail-closed, in order): exposure cap, loss-cap
-    // presence, wired guard, durable loss latch — before any submission.
-    const noTrade = (reason: string): G4CoreResult => ({
+  // Live enforcement (fail-closed, in order): exposure cap, loss-cap
+  // presence, wired guard, durable loss latch — before any submission.
+  const noTrade = (reason: string): G4CoreResult => ({
+    market_id,
+    decision: "NO_TRADE",
+    reason,
+  });
+  const cap = config.microLiveCapUsd;
+  if (cap === undefined || !Number.isFinite(cap) || cap <= 0) {
+    return noTrade(
+      "MICRO_LIVE_CAP_UNCONFIGURED: live modes require a finite positive microLiveCapUsd",
+    );
+  }
+  const notional = size * built.order.price;
+  const exposure = currentPortfolioExposureUsd ?? 0;
+  if (exposure + notional > cap) {
+    return noTrade(
+      `EXPOSURE_CAP_EXCEEDED: exposure ${exposure} + notional ${notional} exceeds cap ${cap}`,
+    );
+  }
+  const lossCap = config.liveLossCapPusd;
+  if (lossCap === undefined || !Number.isFinite(lossCap) || lossCap <= 0) {
+    return noTrade(
+      "LOSS_CAP_UNCONFIGURED: live modes require a finite positive liveLossCapPusd",
+    );
+  }
+  if (!deps.liveGuard) {
+    return noTrade(
+      "LIVE_GUARD_UNWIRED: live modes require a wired liveGuard (durable latch + realized-loss reader)",
+    );
+  }
+  const previous = await deps.liveGuard.loadLatch();
+  const realizedLoss = await deps.liveGuard.realizedLossPusd();
+  const latch = evaluateLossGuard({
+    realizedLossPusd: realizedLoss,
+    lossCapPusd: lossCap,
+    reset: false,
+    previous,
+  });
+  await deps.liveGuard.saveLatch(latch.state);
+  if (latch.halted) {
+    return noTrade(`${latch.code}: ${latch.reason}`);
+  }
+  // Submit to executor
+  const submitted = await deps.executor.submit(
+    built.order,
+    gateResult.permit,
+  );
+  if (submitted.outcome === "SUBMITTED") {
+    orderId = built.order.order_id;
+    permitId = gateResult.permit.permit_id;
+    outcome = "SUBMITTED";
+  } else if (submitted.outcome === "NEEDS_RECONCILIATION") {
+    outcome = "NEEDS_RECONCILIATION";
+  } else {
+    return {
       market_id,
       decision: "NO_TRADE",
-      reason,
-    });
-    const cap = config.microLiveCapUsd;
-    if (cap === undefined || !Number.isFinite(cap) || cap <= 0) {
-      return noTrade(
-        "MICRO_LIVE_CAP_UNCONFIGURED: live modes require a finite positive microLiveCapUsd",
-      );
-    }
-    const notional = size * built.order.price;
-    const exposure = currentPortfolioExposureUsd ?? 0;
-    if (exposure + notional > cap) {
-      return noTrade(
-        `EXPOSURE_CAP_EXCEEDED: exposure ${exposure} + notional ${notional} exceeds cap ${cap}`,
-      );
-    }
-    const lossCap = config.liveLossCapPusd;
-    if (lossCap === undefined || !Number.isFinite(lossCap) || lossCap <= 0) {
-      return noTrade(
-        "LOSS_CAP_UNCONFIGURED: live modes require a finite positive liveLossCapPusd",
-      );
-    }
-    if (!deps.liveGuard) {
-      return noTrade(
-        "LIVE_GUARD_UNWIRED: live modes require a wired liveGuard (durable latch + realized-loss reader)",
-      );
-    }
-    const previous = await deps.liveGuard.loadLatch();
-    const realizedLoss = await deps.liveGuard.realizedLossPusd();
-    const latch = evaluateLossGuard({
-      realizedLossPusd: realizedLoss,
-      lossCapPusd: lossCap,
-      reset: false,
-      previous,
-    });
-    await deps.liveGuard.saveLatch(latch.state);
-    if (latch.halted) {
-      return noTrade(`${latch.code}: ${latch.reason}`);
-    }
-    // Submit to executor
-    const submitted = await deps.executor.submit(
-      built.order,
-      gateResult.permit,
-    );
-    if (submitted.outcome === "SUBMITTED") {
-      orderId = built.order.order_id;
-      permitId = gateResult.permit.permit_id;
-      outcome = "SUBMITTED";
-    } else if (submitted.outcome === "NEEDS_RECONCILIATION") {
-      outcome = "NEEDS_RECONCILIATION";
-    } else {
-      return {
-        market_id,
-        decision: "NO_TRADE",
-        reason: `Executor: ${submitted.reason ?? submitted.code}`,
-        p,
-        edge: edge.edge_after_fees ?? edge.edge,
-        bookBid: bid,
-        bookAsk: ask,
-      };
-    }
+      reason: `Executor: ${submitted.reason ?? submitted.code}`,
+      p,
+      edge: edge.edge_after_fees ?? edge.edge,
+      bookBid: bid,
+      bookAsk: ask,
+    };
   }
 
   // Entries are BUY-only (see §4): the label follows the intent, and sim
