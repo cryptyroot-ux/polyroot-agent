@@ -352,7 +352,7 @@ export function displayPreflightResult(result: PreflightCheck): void {
 }
 
 export interface CLIConfig {
-  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+  mode: "MICRO_LIVE" | "LIVE";
   databaseUrl: string;
   kmsKeyId: string;
   kmsEndpoint: string;
@@ -420,7 +420,7 @@ export function formatOnceTranscript(
   return lines.join("\n");
 }
 
-const MODES = ["PAPER", "SHADOW", "MICRO_LIVE", "LIVE"] as const;
+const MODES = ["MICRO_LIVE", "LIVE"] as const;
 
 /**
  * Closest known command by edit distance (typo rescue for
@@ -486,7 +486,6 @@ export function printHelp(): void {
     "  polyroot run             Start the agent (mode from settings)\n" +
     "  polyroot onboard         First-time setup (new users)\n" +
     "  polyroot setup           Change mode, capital, loss cap, markets\n" +
-    "  polyroot shadow-fund --amount <usd>  Credit SHADOW play bankroll\n" +
     "  polyroot markets         Browse popular markets by name\n" +
     "  polyroot logs [--follow] Watch agent log files\n" +
     "  polyroot status          Show current configuration\n" +
@@ -502,7 +501,7 @@ export function printHelp(): void {
     "  polyroot set-key         Store a provider API key (hidden prompt, never argv)\n" +
     "  polyroot live-promote [grant|list|revoke]  Owner-signed LIVE admission (terminal only)\n" +
     "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
-    "  polyroot mode <MODE>     Switch runtime mode (PAPER|SHADOW|MICRO_LIVE|LIVE)\n" +
+    "  polyroot mode <MODE>     Switch runtime mode (MICRO_LIVE|LIVE)\n" +
     "  polyroot mode            Show current runtime mode\n" +
     "  polyroot telegram setup          Wizard: hubungkan bot Telegram (tanpa edit file)\n" +
     "  polyroot telegram <approve|list|revoke|allow|status>  Pairing management\n" +
@@ -512,7 +511,7 @@ export function printHelp(): void {
 }
 
 export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
-  let mode: CLIConfig["mode"] = "SHADOW";
+  let mode: CLIConfig["mode"] = "MICRO_LIVE";
   let modeFromFlag = false;
   let databaseUrl = "";
   let kmsKeyId = "";

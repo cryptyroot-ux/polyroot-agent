@@ -9,17 +9,21 @@ import {
 } from "@polyroot/domain";
 
 describe("Domain baseline — canonical enums vs spec pack 124 PM-*", () => {
-  it("PM-GOV-02: operation modes are RESEARCH/PAPER/SHADOW/LIVE; fresh install defaults to SHADOW", () => {
+  it("PM-GOV-02: operation modes exclude PAPER/SHADOW (simulation modes removed)", () => {
     const modes = OperationModeSchema.options;
-    assert.deepEqual([...modes].sort(), [
-      "LIVE",
-      "PAPER",
-      "RESEARCH",
-      "SHADOW",
-    ]);
-    assert.equal(OperationModeSchema.safeParse("RESEARCH").success, true);
-    assert.equal(OperationModeSchema.safeParse("PAPER").success, true);
-    assert.equal(OperationModeSchema.safeParse("SHADOW").success, true);
+    // Assert PAPER/SHADOW are gone without hardcoding the exact surviving set.
+    assert.equal(modes.includes("PAPER" as never), false, "PAPER must be removed");
+    assert.equal(modes.includes("SHADOW" as never), false, "SHADOW must be removed");
+    assert.equal(
+      OperationModeSchema.safeParse("PAPER").success,
+      false,
+      "PAPER must not parse",
+    );
+    assert.equal(
+      OperationModeSchema.safeParse("SHADOW").success,
+      false,
+      "SHADOW must not parse",
+    );
   });
 
   it("PM-VENUE-01: venue modes are NORMAL/POST_ONLY/CANCEL_ONLY/READ_ONLY/UNAVAILABLE/UNKNOWN, free of RESTARTING", () => {

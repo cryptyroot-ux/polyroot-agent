@@ -1,12 +1,10 @@
 /**
- * @polyroot/runtime — G4 Pipeline (PAPER → SHADOW → MICRO-LIVE → LIVE).
+ * @polyroot/runtime — G4 Pipeline (MICRO-LIVE → LIVE).
  *
  * The G4 pipeline orchestrates the complete autonomous trading flow:
  *   INTELLIGENCE → STRATEGY → ORCHESTRATOR → EXECUTOR → VENUE
  *
  * Modes:
- * - PAPER: Zero financial I/O, simulator fills, no venue I/O
- * - SHADOW: Live data, no financial I/O, no order submission
  * - MICRO_LIVE: Real wallet, explicit cap, real fills
  * - LIVE: Full autonomy (requires Autonomy Charter gate)
  *
@@ -53,14 +51,12 @@ export interface G4PipelineMetrics extends G4CoreMetrics {}
 /* ─── G4 Pipeline ─────────────────────────────────────────────────── */
 
 /**
- * G4 Pipeline — implements PAPER → SHADOW → MICRO_LIVE → LIVE sequence.
+ * G4 Pipeline — implements MICRO_LIVE → LIVE sequence.
  *
  * The pipeline integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.
  *
  * Modes:
- * - PAPER: zero financial I/O, simulator fills
- * - SHADOW: live data, no financial I/O
  * - MICRO-LIVE: real wallet, explicit cap, real fills
  * - LIVE: full autonomy (requires Autonomy Charter gate)
  */
@@ -282,9 +278,7 @@ export class G4Pipeline {
           await new Promise((resolve) => setTimeout(resolve, 5000));
           continue;
         }
-        // PAPER replays the mock fixture; every other mode iterates the
-        // wired market universe (buildLoopInputs throws rather than
-        // fabricating mock markets when live-configured).
+        // Iterate the wired market universe
         const inputs = await buildLoopInputs(this.config, this.deps);
         if (inputs.length === 0) {
           console.log("⏭️  No live markets with prices this pass.");
