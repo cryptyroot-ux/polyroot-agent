@@ -126,6 +126,7 @@ describe("smart-money feed (venue)", () => {
     try {
       await handle.tick();
       const f = handle.getFlow("tokA");
+      console.error("[TEST DEBUG] f:", f, "tokenId:", "tokA");
       assert.ok(f);
       // +51 − 2000 = −1949 across 2 wallets
       assert.equal(f.netFlowUsd, 51 - 2000);

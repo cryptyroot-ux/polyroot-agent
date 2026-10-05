@@ -238,17 +238,17 @@ export function startSmartMoneySync(
           }
           e.trades.push(t);
           e.wallets.add(w);
+      console.error("[DEBUG] tokenId:", tokenId, "flows.has:", flows.has(tokenId));
         }
       } catch (err) {
         deps.onError?.(err instanceof Error ? err : new Error(String(err)));
       }
+      console.error("[DEBUG] In tick, cache.size:", cache.size, "keys:", [...cache.keys()]);
     }
-    const now = Date.now();
+const now = Date.now();
+    console.log("[DEBUG] tick() called, perToken.size:", perToken.size);
     cache.clear();
     for (const [tokenId, e] of perToken) {
-      const flows = buildTokenFlows(e.trades, lookbackMs, now);
-      const f = flows.get(tokenId);
-      if (!f) continue;
       // Corroboration demand: one wallet selling is an anecdote.
       f.wallets = e.wallets.size;
       cache.set(tokenId, f);
