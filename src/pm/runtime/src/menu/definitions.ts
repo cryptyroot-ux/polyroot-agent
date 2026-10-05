@@ -42,24 +42,8 @@ export const POLYROOT_MENU: MenuNode = {
   label: "Polyroot Agent Menu",
   children: [
     branch("mode", "Mode", [
-      leaf(
-        "mode-show",
-        "Show current mode",
-        ["mode"],
-        "MICRO_LIVE | LIVE",
-      ),
-      leaf(
-        "mode-paper",
-        "Switch to PAPER",
-        ["mode", "PAPER"],
-        "Safe simulation, $0 risk",
-      ),
-      leaf(
-        "mode-shadow",
-        "Switch to SHADOW",
-        ["mode", "SHADOW"],
-        "Live data, sim fills, $0 risk",
-      ),
+      leaf("mode-show", "Show current mode", ["mode"], "MICRO_LIVE | LIVE"),
+
       leaf(
         "mode-micro",
         "Switch to MICRO_LIVE",
