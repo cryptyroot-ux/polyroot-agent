@@ -4,7 +4,10 @@ import { computeGate } from "@polyroot/control";
 
 describe("PRD P3.2 operational state model", () => {
   it("Only LIVE can send financial orders; MICRO_LIVE is blocked at control layer", () => {
-    assert.equal(computeGate("MICRO_LIVE", "ACTIVE", "NORMAL"), "FINANCIAL_BLOCKED");
+    assert.equal(
+      computeGate("MICRO_LIVE", "ACTIVE", "NORMAL"),
+      "FINANCIAL_BLOCKED",
+    );
     assert.equal(computeGate("LIVE", "ACTIVE", "NORMAL"), "ALLOW");
   });
 

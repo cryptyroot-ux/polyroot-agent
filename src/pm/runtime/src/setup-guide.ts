@@ -88,9 +88,7 @@ export function upsertEnvLines(existing: string, updates: string[]): string {
 
 /** Numbered cheat-sheet printed after setup/onboarding. Exact commands,
  *  in order, with what PASS looks like. */
-export function formatNextSteps(
-  mode: "MICRO_LIVE" | "LIVE",
-): string {
+export function formatNextSteps(mode: "MICRO_LIVE" | "LIVE"): string {
   const lines = [
     "",
     "═══ Next steps (run one at a time) ═══",

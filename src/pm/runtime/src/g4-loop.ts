@@ -102,10 +102,10 @@ export class G4AutonomousLoop {
 
   /** Run one iteration of the autonomous loop for a single market. */
   async step(input: G4LoopInput): Promise<G4LoopResult> {
-    const result = await executeG4Step(
-      input,
-      { config: this.config, deps: this.deps },
-    );
+    const result = await executeG4Step(input, {
+      config: this.config,
+      deps: this.deps,
+    });
 
     // Single step-complete emission point (see G4Pipeline.processMarket).
     this.deps.observability?.emitStepComplete?.(input, result);

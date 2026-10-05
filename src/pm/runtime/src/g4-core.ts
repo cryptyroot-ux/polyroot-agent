@@ -995,10 +995,7 @@ export async function executeG4Step(
     return noTrade(`${latch.code}: ${latch.reason}`);
   }
   // Submit to executor
-  const submitted = await deps.executor.submit(
-    built.order,
-    gateResult.permit,
-  );
+  const submitted = await deps.executor.submit(built.order, gateResult.permit);
   if (submitted.outcome === "SUBMITTED") {
     orderId = built.order.order_id;
     permitId = gateResult.permit.permit_id;

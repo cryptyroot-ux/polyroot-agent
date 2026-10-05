@@ -118,7 +118,7 @@ describe("console run refusal stays at the prompt", () => {
     mkdirSync(join(home, ".polyroot"), { recursive: true });
     writeFileSync(
       join(home, ".polyroot", ".env"),
-      "DATABASE_URL=postgresql://127.0.0.1:1/nodb\nRUNTIME_MODE=SHADOW\n",
+      "DATABASE_URL=postgresql://127.0.0.1:1/nodb\nRUNTIME_MODE=MICRO_LIVE\n",
     );
     const portSrv = createServer();
     await new Promise<void>((resolve, reject) => {
@@ -240,7 +240,7 @@ describe("onboarding preserves unmanaged env keys", () => {
     ].join("\n");
     const out = mergeEnvPreserving(existing, [
       "DATABASE_URL=postgresql://new/db",
-      "RUNTIME_MODE=SHADOW",
+      "RUNTIME_MODE=MICRO_LIVE",
     ]);
     assert.ok(out.includes("DATABASE_URL=postgresql://new/db"));
     assert.ok(out.includes("TELEGRAM_BOT_TOKEN=123:ABC"));

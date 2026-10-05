@@ -105,9 +105,9 @@ describe("telegram secrets + identities", () => {
   });
 
   it("parseTelegramText strips slash and bot suffix", () => {
-    assert.deepEqual(parseTelegramText("/mode SHADOW"), {
+    assert.deepEqual(parseTelegramText("/mode MICRO_LIVE"), {
       command: "mode",
-      args: ["SHADOW"],
+      args: ["MICRO_LIVE"],
     });
     assert.deepEqual(parseTelegramText("status"), {
       command: "status",

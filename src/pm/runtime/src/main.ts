@@ -124,7 +124,6 @@ export function shouldSkipFailedForecast(
   );
 }
 
-
 /**
  * Deterministic wallet id (UUID-style) derived from the signer address.
  * Stable across restarts so lease fencing and recovery stay consistent
@@ -480,9 +479,7 @@ export async function bootstrapAgent(
   // discover the most liquid markets itself within owner guardrails —
   // never mock data either way.
   const { ids: marketUniverse, sides: marketSides }: MarketUniverseWithSides =
-mode === "MICRO_LIVE" || mode === "LIVE"
-      ? { ids: [], sides: {} }
-      : await resolveMarketUniverseWithSides(process.env);
+    await resolveMarketUniverseWithSides(process.env);
   const marketMeta = new Map<string, { question: string; volume24h: number }>();
   // Display-only enrichment (skipped for empty universes such as PAPER):
   // an empty map just means nameless lines, never a boot failure.

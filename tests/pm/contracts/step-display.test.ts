@@ -8,7 +8,7 @@ const LONG_ID =
 describe("operator step display block", () => {
   it("shows side, percents, edge math and funds on a BUY fill", () => {
     const out = formatStepBlock({
-      mode: "SHADOW",
+      mode: "MICRO_LIVE",
       marketId: LONG_ID,
       bid: 0.61,
       ask: 0.62,
@@ -23,7 +23,7 @@ describe("operator step display block", () => {
       floorPct: 3,
       funds: { bankrollUsd: 1000, sessionPnlUsd: 2.1 },
     });
-    assert.ok(out.includes("[SHADOW] 34722…77831"), "short market id");
+    assert.ok(out.includes("[MICRO_LIVE] 34722…77831"), "short market id");
     assert.ok(out.includes("YES 61.0% / NO 62.0%"), "percent book");
     assert.ok(out.includes("AI p(YES)=71.0%"), "percent forecast");
     assert.ok(out.includes("Order flow favors YES"), "rationale shown");
@@ -39,7 +39,7 @@ describe("operator step display block", () => {
 
   it("shows abstain + floor comparison on NO_TRADE without funds", () => {
     const out = formatStepBlock({
-      mode: "SHADOW",
+      mode: "MICRO_LIVE",
       marketId: "mkt-1",
       bid: 0.6,
       ask: 0.61,
@@ -83,7 +83,7 @@ describe("operator step display block", () => {
 
   it("falls back to the book price when the fill price is zero", () => {
     const out = formatStepBlock({
-      mode: "SHADOW",
+      mode: "MICRO_LIVE",
       marketId: "m",
       bid: 0.034,
       ask: 0.035,
@@ -104,7 +104,7 @@ describe("operator step display block", () => {
 
   it("shows locked reservations separately so the bankroll always adds up", () => {
     const out = formatStepBlock({
-      mode: "SHADOW",
+      mode: "MICRO_LIVE",
       marketId: "m",
       bid: 0.6,
       ask: 0.61,

@@ -76,13 +76,13 @@ describe("console UI kit", () => {
   it("kv aligns values, table aligns columns", () => {
     const k = kv(
       [
-        ["Mode:", "SHADOW"],
+        ["Mode:", "MICRO_LIVE"],
         ["Database:", "✅ Set"],
       ],
       theme(OFF),
     );
     const [l1, l2] = k.split("\n");
-    assert.equal(l1?.indexOf("SHADOW"), l2?.indexOf("✅ Set"));
+    assert.equal(l1?.indexOf("MICRO_LIVE"), l2?.indexOf("✅ Set"));
     const tb = table(["#", "Market"], [["1", "Will X?"]], {}, theme(OFF));
     assert.ok(tb.includes("#") && tb.includes("Will X?"));
   });
@@ -95,20 +95,20 @@ describe("console UI kit", () => {
   });
 
   it("pill wraps text verbatim", () => {
-    assert.ok(pill("SHADOW", "cyan", theme(OFF)).includes("SHADOW"));
+    assert.ok(pill("MICRO_LIVE", "cyan", theme(OFF)).includes("MICRO_LIVE"));
   });
 
   it("menuFrame shows identical options in order with cursor + default", () => {
     const f = menuFrame(
-      "Choose mode (Enter = SHADOW):",
-      ["SHADOW — x", "PAPER — y"],
+      "Choose mode (Enter = MICRO_LIVE):",
+      ["MICRO_LIVE — x", "PAPER — y"],
       0,
       1,
       {},
       theme(OFF),
     );
-    assert.ok(f.includes("Choose mode (Enter = SHADOW):"));
-    assert.ok(f.indexOf("SHADOW — x") < f.indexOf("PAPER — y"));
+    assert.ok(f.includes("Choose mode (Enter = MICRO_LIVE):"));
+    assert.ok(f.indexOf("MICRO_LIVE — x") < f.indexOf("PAPER — y"));
     assert.ok(f.includes("▸") && f.includes("→"));
     assert.ok(f.includes("Choice [1-2]"));
   });

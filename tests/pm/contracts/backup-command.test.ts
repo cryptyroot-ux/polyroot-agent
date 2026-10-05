@@ -38,7 +38,7 @@ function fakePool() {
               halted: false,
               halted_at: null,
               realized_loss_pusd: 0,
-              runtime_mode: "SHADOW",
+              runtime_mode: "MICRO_LIVE",
             },
           ],
         };
@@ -56,7 +56,7 @@ describe("polyroot backup/restore", () => {
     out = mkdtempSync(join(tmpdir(), "pr-backup-"));
     writeFileSync(
       join(home, ".env"),
-      "DATABASE_URL=postgresql://u:p%40ss@localhost:5432/db\nOPENAI_API_KEY=sk-secret-123\nRUNTIME_MODE=SHADOW\n",
+      "DATABASE_URL=postgresql://u:p%40ss@localhost:5432/db\nOPENAI_API_KEY=sk-secret-123\nRUNTIME_MODE=MICRO_LIVE\n",
     );
     writeFileSync(
       join(home, "keystore.json"),
@@ -81,7 +81,7 @@ describe("polyroot backup/restore", () => {
     assert.ok(!redacted.includes("sk-secret-123"), "API key leaked!");
     assert.ok(!redacted.includes("p%40ss"), "DB password leaked!");
     assert.ok(redacted.includes("***REDACTED***"));
-    assert.ok(redacted.includes("RUNTIME_MODE=SHADOW"));
+    assert.ok(redacted.includes("RUNTIME_MODE=MICRO_LIVE"));
   });
 
   it("encrypted backup round-trips and restore --apply writes .env + keystore", async () => {

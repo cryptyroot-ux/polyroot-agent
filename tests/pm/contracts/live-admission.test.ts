@@ -45,9 +45,9 @@ describe("P0: LIVE admission is explicit, never unconditional", () => {
       }),
       "ALLOW",
     );
-    // SHADOW removed from the mode ladder; MICRO_LIVE replaces it.
+    // MICRO_LIVE removed from the mode ladder; MICRO_LIVE replaces it.
     // assert.equal(
-    //   computeFinancialGate("SHADOW", venueNormal, undefined, {
+    //   computeFinancialGate("MICRO_LIVE", venueNormal, undefined, {
     //     admitted: true,
     //   }),
     //   "ALLOW",

@@ -17,7 +17,7 @@ import {
  * the active deployment. A candidate older than the active schema is refused
  * even when live orders remain reconcilable — the migration is forward-only.
  *
- * DeploymentMode is "LIVE" only: the PAPER/SHADOW/MICRO_LIVE canary ladder
+ * DeploymentMode is "LIVE" only: the PAPER/MICRO_LIVE/MICRO_LIVE canary ladder
  * has been removed, so every rollout now reaches real money and every LIVE
  * promotion demands explicit owner approval.
  */
@@ -107,8 +107,7 @@ describe("PR-OPS-07 / T-PR-OPS-07: deployment candidate validation", () => {
       ACTIVE_LIVE,
     );
     assert.equal(r.ok, false);
-    if (!r.ok)
-      assert.equal(r.code, "LIVE_PROMOTION_REQUIRES_OWNER_APPROVAL");
+    if (!r.ok) assert.equal(r.code, "LIVE_PROMOTION_REQUIRES_OWNER_APPROVAL");
   });
 
   it("refuses LIVE promotion when already LIVE", () => {

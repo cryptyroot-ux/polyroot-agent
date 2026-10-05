@@ -205,10 +205,10 @@ export class G4Pipeline {
 
   /** Run one iteration of the pipeline for a single market. */
   async processMarket(input: G4PipelineInput): Promise<G4PipelineResult> {
-    const result = await executeG4Step(
-      input,
-      { config: this.config, deps: this.deps },
-    );
+    const result = await executeG4Step(input, {
+      config: this.config,
+      deps: this.deps,
+    });
 
     // Single step-complete emission point: covers every exit path
     // (abstains, gates, fills) exactly once for persistence observers.

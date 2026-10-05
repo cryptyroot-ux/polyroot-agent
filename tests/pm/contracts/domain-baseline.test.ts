@@ -9,20 +9,28 @@ import {
 } from "@polyroot/domain";
 
 describe("Domain baseline — canonical enums vs spec pack 124 PM-*", () => {
-  it("PM-GOV-02: operation modes exclude PAPER/SHADOW (simulation modes removed)", () => {
+  it("PM-GOV-02: operation modes exclude PAPER/MICRO_LIVE (simulation modes removed)", () => {
     const modes = OperationModeSchema.options;
-    // Assert PAPER/SHADOW are gone without hardcoding the exact surviving set.
-    assert.equal(modes.includes("PAPER" as never), false, "PAPER must be removed");
-    assert.equal(modes.includes("SHADOW" as never), false, "SHADOW must be removed");
+    // Assert PAPER/MICRO_LIVE are gone without hardcoding the exact surviving set.
+    assert.equal(
+      modes.includes("PAPER" as never),
+      false,
+      "PAPER must be removed",
+    );
+    assert.equal(
+      modes.includes("MICRO_LIVE" as never),
+      false,
+      "MICRO_LIVE must be removed",
+    );
     assert.equal(
       OperationModeSchema.safeParse("PAPER").success,
       false,
       "PAPER must not parse",
     );
     assert.equal(
-      OperationModeSchema.safeParse("SHADOW").success,
+      OperationModeSchema.safeParse("MICRO_LIVE").success,
       false,
-      "SHADOW must not parse",
+      "MICRO_LIVE must not parse",
     );
   });
 

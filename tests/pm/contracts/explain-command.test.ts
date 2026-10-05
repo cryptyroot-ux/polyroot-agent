@@ -13,7 +13,7 @@ const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
 function testHome(): string {
   const home = mkdtempSync(join(tmpdir(), "polyroot-cli-"));
   mkdirSync(join(home, ".polyroot"), { recursive: true });
-  writeFileSync(join(home, ".polyroot", ".env"), "RUNTIME_MODE=SHADOW\n");
+  writeFileSync(join(home, ".polyroot", ".env"), "RUNTIME_MODE=MICRO_LIVE\n");
   return home;
 }
 
@@ -188,7 +188,7 @@ describe("polyroot explain", () => {
     assert.ok(out.includes("explain"), "help must list the explain command");
   });
 
-  it("caps --last at 20 and merges PAPER + SHADOW newest-first", async () => {
+  it("caps --last at 20 and merges PAPER + MICRO_LIVE newest-first", async () => {
     const pool = makePool([
       (t) =>
         t.includes("FROM paper_log")

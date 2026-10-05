@@ -28,7 +28,7 @@ class FakePool implements QueryablePool {
 describe("Runtime — ModeWatcher (Hot-Reload & Fail-Closed)", () => {
   it("initializes with initialMode and reads DB on first poll", async () => {
     const pool = new FakePool();
-    pool.mode = "SHADOW";
+    pool.mode = "MICRO_LIVE";
     const watcher = new ModeWatcher({
       pool,
       initialMode: "PAPER",
@@ -37,7 +37,7 @@ describe("Runtime — ModeWatcher (Hot-Reload & Fail-Closed)", () => {
     assert.equal(watcher.getMode(), "PAPER");
 
     await watcher.pollOnce();
-    assert.equal(watcher.getMode(), "SHADOW");
+    assert.equal(watcher.getMode(), "MICRO_LIVE");
     assert.equal(watcher.isDegraded(), false);
   });
 

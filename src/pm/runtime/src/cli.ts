@@ -1097,15 +1097,16 @@ interface DetectedProxyWallets {
  * and funder addresses for a given API key.
  */
 async function detectProxyWalletAddresses(): Promise<DetectedProxyWallets | null> {
-  const host = process.env["POLYMARKET_API_URL"] || "https://clob.polymarket.com";
+  const host =
+    process.env["POLYMARKET_API_URL"] || "https://clob.polymarket.com";
   const apiKey = process.env["POLYMARKET_API_KEY"];
   if (!apiKey) return null;
 
   try {
     const resp = await fetch(`${host}/auth/api-keys`, {
       headers: {
-        "POLY_API_KEY": apiKey,
-        "Accept": "application/json",
+        POLY_API_KEY: apiKey,
+        Accept: "application/json",
       },
     });
     if (!resp.ok) return null;
@@ -1815,7 +1816,9 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       walletFunder = detected.funder;
       console.log(`✅ Auto-detected Account: ${walletAccount}`);
       console.log(`✅ Auto-detected Funder:  ${walletFunder}`);
-      const ok = await askText("Use these addresses? (y/n)", { defaultValue: "y" });
+      const ok = await askText("Use these addresses? (y/n)", {
+        defaultValue: "y",
+      });
       if (!ok.trim().toLowerCase().startsWith("y")) {
         walletAccount = "";
         walletFunder = "";
@@ -2266,7 +2269,6 @@ function printConsoleHelp(): void {
       "  restore        Verify (and --apply) a backup\n" +
       "  logs [N]       Show recent agent activity (default 15 lines)\n" +
       "  logs --follow  Watch activity live (Ctrl+C back to prompt)\n" +
-      
       "  markets        Show popular markets (add --search <text>)\n" +
       "  doctor         Basic health check (add --live for the strict gate)\n" +
       "  setup          Guided configuration (mode, caps, markets, wallet, API)\n" +
@@ -2834,11 +2836,13 @@ async function runSetupFlow(): Promise<void> {
         ],
         0,
       );
-      await promptWalletSetup(walletSkip.startsWith("Create") ? "create" : "import");
+      await promptWalletSetup(
+        walletSkip.startsWith("Create") ? "create" : "import",
+      );
     }
 
-  // 5. VENUE API CREDENTIALS (for live modes, skippable)
-  if (mode === "LIVE" || mode === "MICRO_LIVE") {
+    // 5. VENUE API CREDENTIALS (for live modes, skippable)
+    if (mode === "LIVE" || mode === "MICRO_LIVE") {
       const venueSkip = await askChoice(
         "Polymarket API credentials (Enter = skip for now):",
         ["Skip for now", "Enter API credentials now"],
@@ -3461,7 +3465,10 @@ export function buildTelegramHandlers(
       }
       // Current mode from DB (durable truth, not .env).
       const { ModeWatcher } = await import("./mode-watcher.js");
-      const watcher = new ModeWatcher({ pool: ctx.pool, initialMode: "READ_ONLY" });
+      const watcher = new ModeWatcher({
+        pool: ctx.pool,
+        initialMode: "READ_ONLY",
+      });
       await watcher.pollOnce();
       const current = watcher.getMode();
       const rank = (m: string): number => MODE_RANK[m] ?? -1;
@@ -4340,10 +4347,7 @@ async function runModeCommand(targetMode?: string): Promise<void> {
     }
 
     const upper = targetMode.toUpperCase();
-    const MODES: readonly RuntimeMode[] = [
-      "MICRO_LIVE",
-      "LIVE",
-    ];
+    const MODES: readonly RuntimeMode[] = ["MICRO_LIVE", "LIVE"];
     if (!(MODES as readonly string[]).includes(upper)) {
       console.error(
         `❌ Invalid mode ${targetMode}. Valid modes: ${MODES.join(", ")}`,
@@ -5091,7 +5095,8 @@ async function runDoctor(): Promise<boolean> {
   }
 
   // 4. Venue credentials (required for MICRO_LIVE/LIVE)
-  const mode = (process.env["RUNTIME_MODE"] ?? "MICRO_LIVE") as "MICRO_LIVE" | "LIVE";
+  const mode = (process.env["RUNTIME_MODE"] ?? "MICRO_LIVE") as
+    "MICRO_LIVE" | "LIVE";
   const venueOk = Boolean(
     process.env["POLYMARKET_API_KEY"] &&
     process.env["POLYMARKET_API_SECRET"] &&

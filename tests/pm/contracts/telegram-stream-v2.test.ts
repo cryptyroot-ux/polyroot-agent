@@ -20,7 +20,7 @@ describe("stream v2 builders", () => {
 
   it("formatPassDigest names evaluated markets with real counts", () => {
     const text = formatPassDigest({
-      mode: "SHADOW",
+      mode: "MICRO_LIVE",
       clock: "10:58:04",
       scanned: 12,
       evaluating: [
@@ -86,7 +86,7 @@ describe("stream v2 builders", () => {
 
   it("digest and report tag YES/NO sides so duplicate names disambiguate", () => {
     const digest = formatPassDigest({
-      mode: "SHADOW",
+      mode: "MICRO_LIVE",
       clock: "10:58:04",
       scanned: 4,
       evaluating: [
@@ -132,7 +132,7 @@ describe("batched digest + instant alerts", () => {
   it("formatBatchedDigest shows counts, markets, and portfolio once", () => {
     const text = formatBatchedDigest({
       clock: "14:30:00",
-      mode: "SHADOW",
+      mode: "MICRO_LIVE",
       scanned: 12,
       gatesPassed: 2,
       trades: 0,
@@ -153,7 +153,7 @@ describe("batched digest + instant alerts", () => {
       exposureUsd: 0,
       pnlUsd: 0,
     });
-    assert.ok(text.includes("14:30:00 UTC · SHADOW"));
+    assert.ok(text.includes("14:30:00 UTC · MICRO_LIVE"));
     assert.ok(text.includes("Scanned 12 | gates passed 2 | trades 0"));
     assert.ok(text.includes("Bitcoin >$100k 2026 [YES]"));
     assert.ok(text.includes("edge +1.2% (floor +1.0%)"));
@@ -169,7 +169,7 @@ describe("batched digest + instant alerts", () => {
   it("formatBatchedDigest says so when nothing was evaluated", () => {
     const text = formatBatchedDigest({
       clock: "14:30:00",
-      mode: "SHADOW",
+      mode: "MICRO_LIVE",
       scanned: 0,
       gatesPassed: 0,
       trades: 0,
@@ -186,7 +186,7 @@ describe("batched digest + instant alerts", () => {
   it("formatBatchedDigest caps the market list and counts the rest", () => {
     const text = formatBatchedDigest({
       clock: "14:30:00",
-      mode: "SHADOW",
+      mode: "MICRO_LIVE",
       scanned: 9,
       gatesPassed: 7,
       trades: 0,

@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { SignerVault } from "@polyroot/signer";
 import { buildSignedOrder } from "@polyroot/control";
-import type { ExecutionPermit, WalletIdentity, TradeIntent } from "@polyroot/domain";
+import type {
+  ExecutionPermit,
+  WalletIdentity,
+  TradeIntent,
+} from "@polyroot/domain";
 import { randomUUID } from "crypto";
 
 /**
@@ -92,7 +96,13 @@ describe("g4-core double-UUID: does intent.intent_id reach the signer?", () => {
     );
 
     const res = await buildSignedOrder(
-      { intent, permit, wallet: WALLET, venueMode: "NORMAL", now: new Date("2026-01-01T00:00:30Z") },
+      {
+        intent,
+        permit,
+        wallet: WALLET,
+        venueMode: "NORMAL",
+        now: new Date("2026-01-01T00:00:30Z"),
+      },
       vault,
     );
 
@@ -101,7 +111,9 @@ describe("g4-core double-UUID: does intent.intent_id reach the signer?", () => {
     console.log(`intent.intent_id (2nd UUID)   = ${rogueIntentId}`);
     console.log(`permit.intent_id              = ${permit.intent_id}`);
     console.log(`signRequest.intentId (spy)    = ${seen?.intentId}`);
-    console.log(`signed order permit_id        = ${res.ok ? res.order.permit_id : "n/a"}`);
+    console.log(
+      `signed order permit_id        = ${res.ok ? res.order.permit_id : "n/a"}`,
+    );
 
     // The sign gateway is bound to the PERMIT, not the passed intent.
     assert.equal(seen, null === seen ? null : seen);
@@ -112,6 +124,10 @@ describe("g4-core double-UUID: does intent.intent_id reach the signer?", () => {
       "signer must see permit.intent_id",
     );
     assert.notEqual(seen.intentId, rogueIntentId);
-    assert.equal(res.ok, true, "buildSignedOrder must succeed despite id drift");
+    assert.equal(
+      res.ok,
+      true,
+      "buildSignedOrder must succeed despite id drift",
+    );
   });
 });
