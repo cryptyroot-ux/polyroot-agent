@@ -31,9 +31,9 @@ describe("Phase 30: release verdict (PRD 10, Blueprint 15)", () => {
     assert.equal(ci.tier, "NO_GO");
   });
 
-  it("green units without live evidence cap at GO_SHADOW, never LIVE", () => {
+  it("green units without live evidence cap at GO_MICRO_LIVE, never LIVE", () => {
     const r = releaseVerdict(green());
-    assert.equal(r.tier, "GO_SHADOW");
+    assert.equal(r.tier, "GO_MICRO_LIVE");
     assert.match(r.reasons.join(";"), /live-blocker/);
   });
 
@@ -52,7 +52,7 @@ describe("Phase 30: release verdict (PRD 10, Blueprint 15)", () => {
       }),
     );
     assert.notEqual((r as any).tier, "PROMOTE_TO_LIVE");
-    assert.ok(["GO_PAPER", "GO_SHADOW"].includes((r as any).tier));
+    assert.ok(["GO_PAPER", "GO_MICRO_LIVE"].includes((r as any).tier));
   });
 
   it("each live gap is named individually", () => {

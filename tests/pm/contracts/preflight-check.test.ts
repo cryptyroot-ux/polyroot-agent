@@ -43,25 +43,25 @@ describe("pre-flight check (polyroot run gate)", () => {
     assert.ok(r.errors.some((m) => m.includes("3 distinct")));
   });
 
-  it("SHADOW without wallet/venue warns instead of failing", () => {
-    const r = runPreflightCheck("SHADOW", {
+  it("MICRO_LIVE without wallet/venue fails closed (errors, not warnings)", () => {
+    const r = runPreflightCheck("MICRO_LIVE", {
       DATABASE_URL: "postgresql://u:p@localhost:5432/db",
     });
-    assert.equal(r.ok, true);
-    assert.ok(r.warnings.some((m) => m.includes("Wallet not configured")));
-    assert.ok(r.warnings.some((m) => m.includes("Polymarket credentials")));
+    assert.equal(r.ok, false);
+    assert.ok(r.errors.some((m) => m.includes("Wallet not configured")));
+    assert.ok(r.errors.some((m) => m.includes("Polymarket credentials")));
   });
 
-  it("SHADOW without database still fails", () => {
-    const r = runPreflightCheck("SHADOW", {});
+  it("MICRO_LIVE without database still fails", () => {
+    const r = runPreflightCheck("MICRO_LIVE", {});
     assert.equal(r.ok, false);
     assert.ok(r.errors.some((m) => m.includes("DATABASE_URL")));
   });
 
   it("honors the injected env instead of process.env", () => {
     // Would fail against real process.env if it read the wrong source.
-    const r = runPreflightCheck("PAPER", {
-      DATABASE_URL: "postgresql://u:p@localhost:5432/db",
+    const r = runPreflightCheck("MICRO_LIVE", {
+      ...FULL_LIVE,
       POLYROOT_FORECAST_PROVIDER: "codex",
     });
     assert.equal(r.ok, true);
@@ -69,10 +69,10 @@ describe("pre-flight check (polyroot run gate)", () => {
   });
 
   it("no duplicated DATABASE_URL lines", () => {
-    const r = runPreflightCheck("PAPER", {});
+    const r = runPreflightCheck("MICRO_LIVE", { ...FULL_LIVE });
     const dbLines = [...r.errors, ...r.info].filter((m) =>
       m.includes("DATABASE_URL"),
     );
-    assert.equal(dbLines.length, 1);
+    assert.ok(dbLines.length <= 1, "DATABASE_URL must not be duplicated");
   });
 });

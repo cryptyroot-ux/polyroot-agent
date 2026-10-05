@@ -4,8 +4,8 @@
  * Turns the promotion evidence into ONE auditable decision. Tiers:
  *
  *   GO_PAPER  — unit gates green (fault contracts, SDK offline contracts,
- *               traceability, CI). Paper trading needs no live evidence.
- *   GO_SHADOW — GO_PAPER plus shadow evidence plumbing proven.
+ *               traceability, CI). Reserved for offline evaluation only.
+ *   GO_MICRO_LIVE — GO_PAPER plus evidence plumbing proven (capped live).
  *   NO_GO_LIVE — anything live-facing stays blocked until live evidence
  *               exists: 30-day prospective observation, real fills,
  *               KMS wiring, and the 1271 wrapper. This function can never
@@ -32,7 +32,7 @@ export interface ReleaseEvidence {
 }
 
 export type ReleaseVerdict =
-  | { tier: "GO_PAPER" | "GO_SHADOW"; reasons: string[] }
+  | { tier: "GO_PAPER" | "GO_MICRO_LIVE"; reasons: string[] }
   | { tier: "NO_GO"; reasons: string[]; openItems: string[] };
 
 const REQUIRED_LIVE_DAYS = 30;
@@ -75,7 +75,7 @@ export function releaseVerdict(ev: ReleaseEvidence): ReleaseVerdict {
 
   if (ev.shadowPlumbingProven && liveOpen.length > 0) {
     return {
-      tier: "GO_SHADOW",
+      tier: "GO_MICRO_LIVE",
       reasons: [
         "unit gates green; shadow plumbing proven; live evidence pending",
         ...liveOpen.map((item) => `live-blocker: ${item}`),
@@ -84,7 +84,7 @@ export function releaseVerdict(ev: ReleaseEvidence): ReleaseVerdict {
   }
   if (liveOpen.length === 0 && ev.shadowPlumbingProven) {
     return {
-      tier: "GO_SHADOW",
+      tier: "GO_MICRO_LIVE",
       reasons: [
         "unit gates green; live evidence present — final owner sign-off still required out of band",
       ],
