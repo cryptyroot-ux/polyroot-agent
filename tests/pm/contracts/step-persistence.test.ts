@@ -28,10 +28,10 @@ function capturePool(opts: { failTables?: string[] } = []) {
 const INPUT = { market_id: "mkt-1", bid: 0.45, ask: 0.55 };
 
 describe("pipeline step persistence", () => {
-  it("PAPER NO_TRADE writes snapshot + paper_log, skips forecast when p is null", async () => {
+  it("MICRO_LIVE NO_TRADE writes snapshot + shadow_log, skips forecast when p is null", async () => {
     const { pool, statements } = capturePool();
     const out = await persistStep(
-      { pool, mode: "PAPER", model: "test-model" },
+      { pool, mode: "MICRO_LIVE", model: "test-model" },
       INPUT,
       {
         market_id: "mkt-1",
@@ -47,33 +47,37 @@ describe("pipeline step persistence", () => {
     });
     const tables = statements.map((s) => s.table);
     assert.ok(tables.includes("market_snapshots"));
-    assert.ok(tables.includes("paper_log"));
+    assert.ok(tables.includes("shadow_log"));
     assert.ok(
       !tables.includes("forecasts"),
       "null p must not fabricate a forecast",
     );
-    const paper = statements.find((s) => s.table === "paper_log");
-    assert.equal(paper?.params[1], "NO_TRADE");
-    assert.equal(paper?.params[4], "CANCELLED");
+    const log = statements.find((s) => s.table === "shadow_log");
+    assert.equal(log?.params[1], "NO_TRADE");
+    assert.equal(log?.params[4], 1);
   });
 
-  it("SHADOW BUY writes snapshot + forecast + shadow_log with NONE fill", async () => {
+  it("MICRO_LIVE BUY writes snapshot + forecast + shadow_log", async () => {
     const { pool, statements } = capturePool();
-    const out = await persistStep({ pool, mode: "SHADOW", model: "m" }, INPUT, {
-      market_id: "mkt-1",
-      decision: "BUY",
-      reason: undefined,
-      p: 0.65,
-      size: 100,
-      fill: {
-        status: "FILLED",
-        filledSize: 100,
-        fillPrice: 0.55,
-        makerFee: 0,
-        takerFee: 1,
-        latencyMs: 50,
+    const out = await persistStep(
+      { pool, mode: "MICRO_LIVE", model: "m" },
+      INPUT,
+      {
+        market_id: "mkt-1",
+        decision: "BUY",
+        reason: undefined,
+        p: 0.65,
+        size: 100,
+        fill: {
+          status: "FILLED",
+          filledSize: 100,
+          fillPrice: 0.55,
+          makerFee: 0,
+          takerFee: 1,
+          latencyMs: 50,
+        },
       },
-    });
+    );
     assert.deepEqual(out, {
       snapshot: true,
       forecast: true,
@@ -96,7 +100,7 @@ describe("pipeline step persistence", () => {
     const out = await persistStep(
       {
         pool,
-        mode: "PAPER",
+        mode: "MICRO_LIVE",
         onError: (table, err) => {
           errs.push({ table, message: err.message });
         },
@@ -121,7 +125,7 @@ describe("pipeline step persistence", () => {
     await persistStep(
       {
         pool,
-        mode: "SHADOW",
+        mode: "MICRO_LIVE",
         getReasoning: () => ({
           rationale: "Flow favors YES.",
           factors: ["depth"],
@@ -164,7 +168,7 @@ describe("pipeline step persistence", () => {
     const out = await persistStep(
       {
         pool,
-        mode: "SHADOW",
+        mode: "MICRO_LIVE",
         onError: (table, err) => {
           errs.push({ table, message: err.message });
         },
@@ -193,7 +197,7 @@ describe("pipeline step persistence", () => {
         return { rows: [] };
       },
     };
-    const hook = createStepPersistence({ pool: slowPool, mode: "SHADOW" });
+    const hook = createStepPersistence({ pool: slowPool, mode: "MICRO_LIVE" });
     hook.emitStepComplete(
       { ...INPUT } as never,
       {
@@ -214,7 +218,7 @@ describe("pipeline step persistence", () => {
 
   it("createStepPersistence hook is fire-and-forget and never throws", async () => {
     const { pool, statements } = capturePool();
-    const hook = createStepPersistence({ pool, mode: "SHADOW" });
+    const hook = createStepPersistence({ pool, mode: "MICRO_LIVE" });
     hook.emitStepComplete(
       { ...INPUT, forecastOverride: undefined } as never,
       {

@@ -16,8 +16,8 @@ import {
   MemLeaseStore,
   type VenueAdapter,
   type SubmitOutcome,
-  type VenueMode,
 } from "@polyroot/venue";
+import type { VenueMode } from "@polyroot/domain";
 import {
   DEFAULT_RISK_POLICY,
   type MarketSnapshot,
@@ -56,6 +56,9 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
 
   class SimpleAdapter implements VenueAdapter {
     mode: VenueMode = "NORMAL";
+    setMode(mode: VenueMode): void {
+      this.mode = mode;
+    }
     async getOrderBook(): Promise<MarketSnapshot> {
       return {
         market_id: "mkt_trans",
@@ -111,9 +114,7 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
     };
   }
 
-  function makeTestPipeline(
-    initialMode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE",
-  ) {
+  function makeTestPipeline() {
     const balance = new FakeBalanceStore();
     const kernel = new MoneyKernel({
       balance,
@@ -128,7 +129,7 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
         },
       },
       chainId: 137,
-      mode: initialMode === "LIVE" ? "LIVE" : "MICRO_LIVE",
+      mode: "MICRO_LIVE",
       permitTtlMs: 60_000,
     });
     const signer = new SignerVault({
@@ -154,15 +155,10 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
     });
     const pipeline = createG4Pipeline({
       config: {
-        mode: initialMode,
+        mode: "MICRO_LIVE",
         minEdgeAfterCost: 0.01,
-        // Deterministic fills: the paper simulator is probabilistic by
-        // default, which flakes the filledOrders assertion.
-        paperFillConfig: {
-          cancelProbability: 0,
-          partialFraction: 1,
-          latencyMs: 0,
-        },
+        microLiveCapUsd: 10_000,
+        liveLossCapPusd: 100,
       },
       kernel,
       signer,
@@ -179,44 +175,57 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
       now: () => NOW,
       forecast: async () => 0.65,
       sizeIntent: () => 10,
+      liveGuard: {
+        loadLatch: async () => null,
+        saveLatch: async () => undefined,
+        realizedLossPusd: () => 0,
+      },
     });
     return pipeline;
   }
 
-  it("supports valid mode transitions (PAPER -> SHADOW -> MICRO_LIVE)", () => {
-    const pipeline = makeTestPipeline("PAPER");
-    assert.equal(pipeline.getMode(), "PAPER");
-
-    pipeline.setMode("SHADOW");
-    assert.equal(pipeline.getMode(), "SHADOW");
-
-    pipeline.setMode("MICRO_LIVE");
+  it("supports the valid mode transition (MICRO_LIVE -> LIVE)", () => {
+    const pipeline = makeTestPipeline();
     assert.equal(pipeline.getMode(), "MICRO_LIVE");
+
+    pipeline.setMode("LIVE");
+    assert.equal(pipeline.getMode(), "LIVE");
   });
 
-  it("rejects invalid mode transitions (PAPER -> LIVE directly without intermediary)", () => {
-    const pipeline = makeTestPipeline("PAPER");
-    assert.equal(pipeline.getMode(), "PAPER");
+  it("rejects invalid mode transitions (LIVE is terminal)", () => {
+    const pipeline = makeTestPipeline();
+    pipeline.setMode("LIVE");
+    assert.equal(pipeline.getMode(), "LIVE");
 
     assert.throws(() => {
-      pipeline.setMode("LIVE");
+      pipeline.setMode("MICRO_LIVE");
     }, /Invalid mode transition/);
   });
 
   it("accumulates metrics correctly across multiple market processing steps", async () => {
-    const pipeline = makeTestPipeline("PAPER");
+    const pipeline = makeTestPipeline();
 
     const initialMetrics = pipeline.getMetrics();
     assert.equal(initialMetrics.totalOrders, 0);
     assert.equal(initialMetrics.filledOrders, 0);
     assert.equal(initialMetrics.totalPnl, 0);
 
-    await pipeline.processMarket({ market_id: "mkt_1", bid: 0.45, ask: 0.55 });
-    await pipeline.processMarket({ market_id: "mkt_2", bid: 0.45, ask: 0.55 });
+    const r1 = await pipeline.processMarket({
+      market_id: "mkt_1",
+      bid: 0.45,
+      ask: 0.55,
+    });
+    const r2 = await pipeline.processMarket({
+      market_id: "mkt_2",
+      bid: 0.45,
+      ask: 0.55,
+    });
+    assert.equal(r1.decision, "BUY");
+    assert.equal(r2.decision, "BUY");
 
     const updatedMetrics = pipeline.getMetrics();
     assert.equal(updatedMetrics.totalOrders, 2);
-    assert.equal(updatedMetrics.filledOrders, 2);
+    assert.equal(updatedMetrics.filledOrders, 0);
     assert.ok(updatedMetrics.totalPnl !== undefined);
   });
 });

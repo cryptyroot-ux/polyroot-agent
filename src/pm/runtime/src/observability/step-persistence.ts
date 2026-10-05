@@ -165,9 +165,21 @@ export async function persistStep(
     );
   }
 
-  // 3. Decision log — live fills persist through the executor path; the
-  //    PAPER/SHADOW-only decision tables are gone.
-  out.decisionLog = true; // live fills persist through the executor path
+  // 3. Decision log — one audit table for every mode. paper_log went
+  // away with PAPER; live fills persist through the executor path and
+  // this row is the step audit trail (fill columns stay NONE per schema).
+  const uncertainty = p === null ? 1 : round4(1 - certainty(p));
+  const size =
+    typeof result.size === "number" && Number.isFinite(result.size)
+      ? result.size
+      : 0;
+  out.decisionLog = await tryInsert(
+    deps,
+    "shadow_log",
+    `INSERT INTO shadow_log (market_id, action, forecast_p, size, uncertainty)
+     VALUES ($1,$2,$3,$4,$5)`,
+    [result.market_id, result.decision, p, size, uncertainty],
+  );
   return out;
 }
 

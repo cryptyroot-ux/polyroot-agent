@@ -12,7 +12,7 @@ const CLI = join(process.cwd(), "src", "pm", "runtime", "src", "cli.ts");
 function testHome(): string {
   const home = mkdtempSync(join(tmpdir(), "polyroot-cli-"));
   mkdirSync(join(home, ".polyroot"), { recursive: true });
-  writeFileSync(join(home, ".polyroot", ".env"), "RUNTIME_MODE=SHADOW\n");
+  writeFileSync(join(home, ".polyroot", ".env"), "RUNTIME_MODE=MICRO_LIVE\n");
   return home;
 }
 
@@ -49,7 +49,7 @@ describe("polyroot restart", () => {
     const { code, out } = await runCli("restart");
     assert.equal(code, 0);
     assert.ok(out.includes("Restarting PolyRoot agent"));
-    assert.ok(out.includes("paper.log"));
+    assert.ok(out.includes("agent.log"));
     assert.ok(out.includes("healthz"));
   });
 

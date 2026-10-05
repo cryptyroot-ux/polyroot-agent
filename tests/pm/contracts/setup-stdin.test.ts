@@ -20,17 +20,32 @@ function runSetupLikeHuman(home: string): Promise<{ code: number }> {
       env: { ...process.env, HOME: home },
       stdio: ["pipe", "pipe", "pipe"],
     });
+    let out = "";
+    child.stdout.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
+    child.stderr.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
     child.stdout.resume();
     child.stderr.resume();
     // Keep pressing Enter until the flow ends: extra Enters only ever
     // accept safe defaults, and stdin stays open so EOF can never cancel us.
+    // Exception: the vault passphrase is mandatory (empty loops forever),
+    // so answer it with a fixed test value.
+    let passphrasesSent = 0;
     const timer = setInterval(() => {
       if (child.exitCode !== null || child.killed) {
         clearInterval(timer);
         return;
       }
       try {
-        child.stdin.write("\n");
+        if (out.toLowerCase().includes("passphrase") && passphrasesSent < 2) {
+          child.stdin.write("test-pass-123\n");
+          passphrasesSent++;
+        } else {
+          child.stdin.write("\n");
+        }
       } catch {
         clearInterval(timer);
       }

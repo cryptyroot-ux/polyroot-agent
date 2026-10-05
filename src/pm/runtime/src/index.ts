@@ -1,9 +1,35 @@
 /**
- * @polyroot/runtime — Paper/SHADOW engine, metrics, experiment registry.
- * PR-VAL-04..08, G4-G6. Core logic is pure (no I/O); DB hooks are optional.
+ * @polyroot/runtime — live trading runtime: G4 pipeline/loop, guards, metrics,
+ * experiment registry. PR-VAL-04..08, G4-G6. Core logic is pure (no I/O);
+ * DB hooks are optional.
  */
 /* ─── Runtime entry points ──────────────────────────────────────────────── */
 export * from "./postgres-log.js";
+// Fill model + forecast-quality metrics (evaluation utilities; the
+// PAPER-loop drivers runPaperLoop/runPaperLoopWithOrchestrator are gone).
+export {
+  simulateFill,
+  evaluateShadowCandidate,
+  brierScore,
+  logLoss,
+  calibrationError,
+  sharpness,
+  coverage,
+  abstentionRate,
+  computeProbQuality,
+  maxDrawdown,
+  concentrationIndex,
+  computeEconomicMetrics,
+  ExperimentRegistry,
+  type SimulatedFill,
+  type FillModelInput,
+  type ShadowCriteria,
+  type ProbQualityInput,
+  type ProbQuality,
+  type EconomicInput,
+  type EconomicMetrics,
+  type ExperimentSpec,
+} from "./paper-engine.js";
 export { MetricsExporter } from "./metrics-exporter.js";
 export { MetricsServer, type MetricsServerOptions } from "./metrics-server.js";
 export {

@@ -53,10 +53,11 @@ describe("PgSeenStore", () => {
 });
 
 describe("hydrateSeen startup gate", () => {
-  it("PAPER resolves without a DB (warn path, zero financial I/O)", async () => {
-    const agent = await bootstrapAgent(DUMMY_DB, "PAPER");
-    await agent.hydrateSeen();
-    await agent.pool.end().catch(() => undefined);
+  it("MICRO_LIVE refuses stubs without injected signer/venue (fail-closed)", async () => {
+    await assert.rejects(
+      bootstrapAgent(DUMMY_DB, "MICRO_LIVE"),
+      /REFUSE_LIVE_WITH_STUBS/,
+    );
   });
 
   it("MICRO_LIVE refuses fail-closed when the DB is unreachable", async () => {

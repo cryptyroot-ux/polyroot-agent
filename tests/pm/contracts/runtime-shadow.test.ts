@@ -16,8 +16,8 @@ import {
   MemLeaseStore,
   type VenueAdapter,
   type SubmitOutcome,
-  type VenueMode,
 } from "@polyroot/venue";
+import type { VenueMode } from "@polyroot/domain";
 import {
   DEFAULT_RISK_POLICY,
   type MarketSnapshot,
@@ -26,7 +26,7 @@ import {
 } from "@polyroot/domain";
 import { createG4Pipeline } from "@polyroot/runtime";
 
-describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O", () => {
+describe("Runtime MICRO_LIVE — G4 pipeline live path through executor", () => {
   class FakeBalanceStore implements BalanceStore {
     available: bigint;
     committed = 0n;
@@ -106,6 +106,9 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
   class ShadowVenueAdapter implements VenueAdapter {
     mode: VenueMode = "NORMAL";
     placeOrderCalls = 0;
+    setMode(mode: VenueMode): void {
+      this.mode = mode;
+    }
     async getOrderBook(): Promise<MarketSnapshot> {
       return {
         market_id: "shadow_mkt",
@@ -168,15 +171,12 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     capitalUsd = 10_000,
   ) {
     const balance = new FakeBalanceStore(1_000_000_000n);
-    (
-      globalThis as unknown as { __fakeBalanceStore?: FakeBalanceStore }
-    ).__fakeBalanceStore = balance;
     const kernel = new MoneyKernel({
       balance,
       sink: new FakeSink(),
       authority: fakeAuthority,
       chainId: 137,
-      mode: "PAPER",
+      mode: "MICRO_LIVE",
       permitTtlMs: 60_000,
     });
     const signer = new SignerVault({
@@ -202,15 +202,10 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     });
     const pipeline = createG4Pipeline({
       config: {
-        mode: "SHADOW",
+        mode: "MICRO_LIVE",
         minEdgeAfterCost: 0.01,
-        // Deterministic fills: the paper simulator is probabilistic by
-        // default, which flakes this assertion (FILLED vs CANCELLED).
-        paperFillConfig: {
-          cancelProbability: 0,
-          partialFraction: 1,
-          latencyMs: 0,
-        },
+        microLiveCapUsd: capitalUsd,
+        liveLossCapPusd: 100,
       },
       kernel,
       signer,
@@ -227,6 +222,11 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
       now: () => NOW,
       forecast: async () => forecastP,
       sizeIntent: () => 100,
+      liveGuard: {
+        loadLatch: async () => null,
+        saveLatch: async () => undefined,
+        realizedLossPusd: () => 0,
+      },
     });
     return { pipeline, balance, venueAdapter: adapter as ShadowVenueAdapter };
   }
@@ -239,7 +239,7 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     delete (globalThis as any).__fakeBalanceStore;
   });
 
-  it("tradable market in SHADOW produces decision + simulated fill (no venue financial I/O)", async () => {
+  it("tradable market in MICRO_LIVE submits through the executor (live path)", async () => {
     // Capital sized so the honest ask-based limit ($55) clears max_order_pct.
     const { pipeline, venueAdapter } = makeShadowPipeline(
       0.65,
@@ -253,19 +253,19 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     });
 
     assert.equal(result.decision, "BUY");
-    assert.ok(result.fill !== undefined);
-    assert.equal(result.fill?.status, "FILLED");
+    assert.equal(result.outcome, "SUBMITTED");
+    assert.ok(result.orderId);
     assert.equal(pipeline.getFinancialGate(), "ALLOW");
 
-    // Critical: NO real venue financial I/O should have occurred (SHADOW uses simulator)
+    // Live path: the order reaches the venue adapter exactly once.
     assert.equal(
       venueAdapter.placeOrderCalls,
-      0,
-      "SHADOW mode should not call placeOrder on venue adapter",
+      1,
+      "MICRO_LIVE mode must submit through executor.submit → placeOrder",
     );
   });
 
-  it("uncertain forecast in SHADOW abstains with NO_TRADE (no venue financial I/O)", async () => {
+  it("uncertain forecast in MICRO_LIVE abstains with NO_TRADE (no venue financial I/O)", async () => {
     const { pipeline, venueAdapter } = makeShadowPipeline(0.5);
     const result = await pipeline.processMarket({
       market_id: "mkt_shadow_2",
@@ -279,7 +279,7 @@ describe("Runtime SHADOW — G4 pipeline with live data but zero financial I/O",
     assert.equal(venueAdapter.placeOrderCalls, 0);
   });
 
-  it("SHADOW respects ENTRY_BLOCKED when venue is UNAVAILABLE", async () => {
+  it("MICRO_LIVE respects ENTRY_BLOCKED when venue is UNAVAILABLE", async () => {
     const unavailableAdapter = new ShadowVenueAdapter();
     unavailableAdapter.mode = "UNAVAILABLE";
 

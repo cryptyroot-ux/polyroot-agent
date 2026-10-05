@@ -30,7 +30,7 @@ describe("setup guide (lay-friendly)", () => {
     });
     assert.ok(lines.includes("POLYROOT_MICRO_LIVE_CAP_USD=1000"));
     assert.ok(lines.includes("POLYROOT_MICRO_LIVE_LOSS_CAP_USD=50"));
-    assert.ok(lines.includes("RUNTIME_MODE=PAPER"));
+    assert.ok(lines.includes("RUNTIME_MODE=MICRO_LIVE"));
   });
 
   it("replaces existing keys instead of duplicating them", () => {

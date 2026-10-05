@@ -15,8 +15,6 @@ import {
   concentrationIndex,
   computeEconomicMetrics,
   ExperimentRegistry,
-  runPaperLoop,
-  runPaperLoopWithOrchestrator,
   type SimulatedFill,
 } from "@polyroot/runtime";
 
@@ -78,38 +76,10 @@ describe("PR-VAL-04: paper fill simulator", () => {
     assert.equal(fill.status, "CANCELLED");
     assert.equal(fill.filledSize, 0);
   });
-
-  it("does not simulate fill if orchestrate fails", async () => {
-    let orchestrateCalled = false;
-    const result = await runPaperLoopWithOrchestrator({
-      markets: [{ market_id: "m1", bid: 0.4, ask: 0.6 }],
-      feeInput: {
-        depth: 100,
-        taker: true,
-        makerFeeBps: 0,
-        takerFeeBps: 200,
-        latencyMs: 5,
-        cancelProbability: 0,
-        partialFraction: 0.5,
-        rng: () => 0.5,
-      },
-      forecast: () => 0.8,
-      sizeIntent: () => 10,
-      computeGate: () => "ALLOW",
-      onEntry: () => {},
-      orchestrate: async () => {
-        orchestrateCalled = true;
-        throw new Error("fail");
-      },
-    });
-
-    assert.equal(orchestrateCalled, true);
-    assert.equal(result.decisions.length, 0);
-  });
 });
 
-/* ── PR-VAL-05: SHADOW candidate gate ── */
-describe("PR-VAL-05: prospective SHADOW criterion", () => {
+/* ── PR-VAL-05: MICRO_LIVE candidate gate ── */
+describe("PR-VAL-05: prospective MICRO_LIVE criterion", () => {
   it("rejects insufficient baseline days", () => {
     const r = evaluateShadowCandidate({
       observedDays: 10,
@@ -267,75 +237,5 @@ describe("PR-VAL-08: experiment registry", () => {
     assert.equal(counts.WITHDRAWN, 1);
     // No cherry-picking: both specs remain in the registry.
     assert.equal(registry.all().length, 2);
-  });
-});
-
-/* ── G4: full autonomous paper loop (no financial I/O) ── */
-describe("G4: full autonomous paper loop", () => {
-  const markets = [
-    { market_id: "m1", bid: 0.4, ask: 0.6 },
-    { market_id: "m2", bid: 0.3, ask: 0.5 },
-    { market_id: "m3", bid: 0.7, ask: 0.9 },
-  ];
-
-  it("runs a full pass and returns decisions, quality and economic metrics", () => {
-    const result = runPaperLoop(
-      {
-        forecast: (m) => (m.bid + m.ask) / 2 + 0.05,
-        sizeIntent: (_m, p) => Math.round(100 * Math.abs(p - 0.5) * 2),
-      },
-      markets,
-      {
-        makerFeeBps: 0,
-        takerFeeBps: 200,
-        latencyMs: 5,
-        cancelProbability: 0,
-        partialFraction: 0.5,
-        rng: () => 0.5,
-      },
-      new Map([
-        ["m1", 1],
-        ["m2", 0],
-        ["m3", 1],
-      ]),
-    );
-
-    assert.equal(result.decisions.length, 3);
-    assert.equal(result.probabilities.length, 3);
-    assert.equal(result.outcomes.length, 3);
-    assert.ok(Number.isFinite(result.economic.netPnl));
-    assert.ok(result.probQuality.n === 3);
-
-    // No financial I/O guard: every decision either NO_TRADE or a simulated fill.
-    for (const d of result.decisions) {
-      if (d.action !== "NO_TRADE") {
-        assert.ok(
-          d.fill.status === "FILLED" ||
-            d.fill.status === "PARTIAL" ||
-            d.fill.status === "CANCELLED",
-        );
-      }
-    }
-  });
-
-  it("abstains on highly uncertain forecasts", () => {
-    const result = runPaperLoop(
-      {
-        forecast: () => 0.5, // perfectly uncertain -> abstain
-        sizeIntent: (_m, p) => Math.round(100 * Math.abs(p - 0.5) * 2),
-      },
-      markets,
-      {
-        makerFeeBps: 0,
-        takerFeeBps: 200,
-        latencyMs: 5,
-        cancelProbability: 0.5,
-        partialFraction: 0.5,
-        rng: () => 0.9,
-      },
-    );
-    for (const d of result.decisions) {
-      assert.equal(d.action, "NO_TRADE");
-    }
   });
 });

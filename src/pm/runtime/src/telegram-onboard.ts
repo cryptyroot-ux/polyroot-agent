@@ -486,11 +486,11 @@ export function onboardNext(
     case "mode": {
       const idx = pickIndex(t, 2);
       if (idx === null) {
-        return { state, reply: "Pilih 1-4 ya.\n\n" + modeMenu(), writes };
+        return { state, reply: "Pilih 1-2 ya.\n\n" + modeMenu(), writes };
       }
       const modes = ["MICRO_LIVE", "LIVE"] as const;
       const mode = modes[idx] as NonNullable<OnboardState["mode"]>;
-      
+
       const ns: OnboardState = { ...state, step: "mode_confirm", mode };
       return {
         state: ns,
@@ -655,10 +655,7 @@ function modeMenu(): string {
   return (
     "🚀 Langkah 3: Mode\n" +
     "MICRO_LIVE/LIVE = uang asli (butuh API key + 3 alamat + loss cap).\n" +
-    numbered([
-      "MICRO_LIVE — uang asli kecil",
-      "LIVE — trading asli",
-    ]) +
+    numbered(["MICRO_LIVE — uang asli kecil", "LIVE — trading asli"]) +
     "\nBalas: nomor (1-2)."
   );
 }

@@ -73,12 +73,11 @@ describe("Take-over audit: runtime LIVE guards (commit 6829b5d follow-up)", () =
     }
   });
 
-  it("bootstrapAgent PAPER succeeds on placeholders without touching the network", async () => {
-    const agent = await bootstrapAgent(DUMMY_DB, "PAPER");
-    assert.ok(agent.pool);
-    assert.ok(agent.kernel);
-    assert.ok(agent.pipeline);
-    await agent.pool.end().catch(() => undefined);
+  it("parseArgs rejects PAPER mode (removed operation mode)", async () => {
+    assert.throws(
+      () => parseArgs(["--mode", "PAPER", "--db", "x", "--kms-key", "y"]),
+      /Invalid mode/,
+    );
   });
 
   it("bootstrapAgent MICRO_LIVE without injected deps refuses with REFUSE_LIVE_WITH_STUBS", async () => {
