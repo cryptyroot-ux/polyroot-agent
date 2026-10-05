@@ -52,7 +52,7 @@ interface LogRow {
   source: string;
 }
 
-/** Latest simulated decisions across PAPER + SHADOW logs, newest first. */
+/** Latest simulated decisions across pre-live logs, newest first. */
 async function latestDecisions(
   pool: QueryablePool,
   limit: number,
@@ -76,7 +76,9 @@ async function latestDecisions(
       size: r["size"],
       fill_status: r["fill_status"],
       created_at: r["created_at"],
-      source: "PAPER",
+      // Tag reflects the origin log table (paper_log), a migrations-bound
+      // identifier — not a runtime mode.
+      source: "paper_log",
     });
   }
   for (const r of shadow.rows) {
@@ -87,7 +89,9 @@ async function latestDecisions(
       size: r["size"],
       fill_status: r["fill_status"],
       created_at: r["created_at"],
-      source: "SHADOW",
+      // Tag reflects the origin log table (shadow_log), a migrations-bound
+      // identifier — not a runtime mode.
+      source: "shadow_log",
     });
   }
   rows.sort((a, b) => {

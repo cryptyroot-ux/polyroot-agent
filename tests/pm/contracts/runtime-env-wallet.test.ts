@@ -13,11 +13,7 @@ const OTHER_KEY =
   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 describe("runtime env validation (fail-closed)", () => {
-  it("PAPER needs nothing extra", () => {
-    assertRuntimeEnv("PAPER", {});
-    assertRuntimeEnv("SHADOW", {});
-  });
-  it("live modes require a wallet key or keystore", () => {
+  it("MICRO_LIVE needs wallet key/keystore", () => {
     assert.throws(() => assertRuntimeEnv("MICRO_LIVE", {}), /LIVE_ENV_MISSING/);
     assertRuntimeEnv("MICRO_LIVE", {
       WALLET_PRIVATE_KEY: TEST_KEY,
@@ -74,10 +70,6 @@ describe("wallet identity derivation", () => {
     const addr = deriveAddressFromPrivateKey(TEST_KEY);
     assert.match(addr, /^0x[0-9a-f]{40}$/);
     assert.notEqual(addr, deriveAddressFromPrivateKey(OTHER_KEY));
-  });
-  it("PAPER keeps the mock placeholder", () => {
-    const w = buildWalletIdentity("PAPER", {});
-    assert.equal(w.signer_address, "0xSIGNER_ADDRESS_1111111111111111");
   });
   it("live builds a distinct, stable identity from env", () => {
     const addr = deriveAddressFromPrivateKey(TEST_KEY);

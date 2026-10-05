@@ -11,7 +11,6 @@ import {
   deriveAddressFromPrivateKey,
   sealPrivateKey,
   resolveWalletKey,
-  decimalToBase,
 } from "@polyroot/signer";
 import { randomBytes } from "node:crypto";
 import {
@@ -37,7 +36,7 @@ import type {
   TelegramPool as TelegramDbPool,
 } from "./telegram.js";
 import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
-import { bootstrapAgent, buildWalletIdentity } from "./main.js";
+import { bootstrapAgent } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
 import {
@@ -107,9 +106,8 @@ export function loadDotEnv(dotenvPath?: string): string | undefined {
 }
 
 /**
- * Fail-closed env validation beyond parseArgs. PAPER/SHADOW need only the
- * database; live modes additionally require an explicit wallet key and the
- * distinct deposit-wallet account/funder addresses.
+ * Fail-closed env validation beyond parseArgs. Live modes require an explicit
+ * wallet key and the distinct deposit-wallet account/funder addresses.
  */
 export function assertRuntimeEnv(
   mode: CLIConfig["mode"],
@@ -576,8 +574,8 @@ interface OnboardingConfig {
   walletType: "create" | "import";
   privateKey?: string;
   passphrase: string;
-  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
-  /** Owner-set capital cap in USD (MICRO_LIVE/LIVE enforce it; PAPER ignores it). */
+  mode: "MICRO_LIVE" | "LIVE";
+  /** Owner-set capital cap in USD (MICRO_LIVE/LIVE enforce it). */
   capitalUsd: number;
   /** Owner-set daily loss latch in basis points (500 = 5%). */
   lossBps: number;
@@ -1762,22 +1760,20 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   console.log(stepper(3, 3, "Mode"));
   console.log("\n🚀 Step 3/3: Trading Mode");
   console.log(
-    "   LIVE = Real money on Polymarket. SHADOW = Live data, simulated fills, $0 risk.",
+    "   MICRO_LIVE = Small real money (requires capital, API keys, loss cap).",
   );
   console.log(
-    "   PAPER = Safe simulation, mock data, $0 risk. MICRO_LIVE = Small real money with caps.",
+    "   LIVE = Real money on Polymarket (requires API keys + loss cap).",
   );
   const modeChoice = await askChoice(
-    "Choose mode (Enter = LIVE):",
+    "Choose mode (Enter = MICRO_LIVE):",
     [
+      "MICRO_LIVE — Small real money with hard loss cap",
       "LIVE — Real trading on Polymarket (requires API keys + loss cap)",
-      "SHADOW — Live data, simulated fills, $0 risk",
-      "PAPER — Safe simulation, mock data, $0 risk",
-      "MICRO_LIVE — Small real money (requires capital, API keys, loss cap)",
     ],
     0,
   );
-  let mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" = "LIVE";
+  let mode: "MICRO_LIVE" | "LIVE" = "MICRO_LIVE";
   let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
   let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
   let walletAccount = "";
@@ -1785,8 +1781,6 @@ async function runOnboarding(): Promise<OnboardingConfig> {
 
   let isLive = modeChoice.startsWith("LIVE");
   let isMicro = modeChoice.startsWith("MICRO");
-  let isShadow = modeChoice.startsWith("SHADOW");
-  let isPaper = modeChoice.startsWith("PAPER");
 
   if (isLive || isMicro) {
     const label = isLive ? "LIVE" : "MICRO_LIVE";
@@ -1800,102 +1794,88 @@ async function runOnboarding(): Promise<OnboardingConfig> {
       "addresses (signer, account, funder). `polyroot doctor --live` checks all of this.",
     );
     const confirm = await askText(
-      `Type ${label} to continue (anything else stays SHADOW)`,
+      `Type ${label} to continue (anything else = cancel setup)`,
     );
     if (confirm.trim() !== label) {
-      mode = "SHADOW";
-      console.log("Staying on SHADOW.");
-      isLive = false;
-      isMicro = false;
-      isShadow = true;
-    } else {
-      mode = label;
-      // WAL-03 addresses are asked ONLY after explicit real-money
-      // confirmation — decliners must never be interrogated for them.
-      const signerAddress = deriveAddressFromPrivateKey(privateKey!);
-      console.log(
-        "\n📍 WAL-03 requires 3 distinct addresses for live trading: Signer, Account, and Funder.",
-      );
-      console.log(`   Your Signer address is: ${signerAddress}`);
-      // Auto-detect proxy wallet addresses from Polymarket API
-      console.log("\n🔍 Auto-detecting Polymarket proxy wallet addresses...");
-      const detected = await detectProxyWalletAddresses();
-      if (detected) {
-        walletAccount = detected.account;
-        walletFunder = detected.funder;
-        console.log(`✅ Auto-detected Account: ${walletAccount}`);
-        console.log(`✅ Auto-detected Funder:  ${walletFunder}`);
-        const ok = await askText("Use these addresses? (y/n)", { defaultValue: "y" });
-        if (!ok.trim().toLowerCase().startsWith("y")) {
-          walletAccount = "";
-          walletFunder = "";
-        }
-      }
-      // Fallback to manual entry if auto-detection failed or was declined
-      if (!walletAccount) {
-        for (;;) {
-          walletAccount = await askText(
-            "Wallet Account address (0x...) — must differ from Signer:",
-            { defaultValue: "" },
-          );
-          if (!walletAccount) {
-            console.log("WALLET_ACCOUNT is required for LIVE/MICRO_LIVE mode.");
-            continue;
-          }
-          if (!/^0x[0-9a-fA-F]{40}$/.test(walletAccount)) {
-            console.log(
-              "Invalid address format — expected 0x followed by 40 hex characters.",
-            );
-            continue;
-          }
-          if (walletAccount.toLowerCase() === signerAddress.toLowerCase()) {
-            console.log("Wallet Account must differ from Signer address.");
-            continue;
-          }
-          break;
-        }
-      }
-      if (!walletFunder) {
-        for (;;) {
-          walletFunder = await askText(
-            "Wallet Funder address (0x...) — must differ from Signer and Account:",
-            { defaultValue: "" },
-          );
-          if (!walletFunder) {
-            console.log("WALLET_FUNDER is required for LIVE/MICRO_LIVE mode.");
-            continue;
-          }
-          if (!/^0x[0-9a-fA-F]{40}$/.test(walletFunder)) {
-            console.log(
-              "Invalid address format — expected 0x followed by 40 hex characters.",
-            );
-            continue;
-          }
-          if (walletFunder.toLowerCase() === signerAddress.toLowerCase()) {
-            console.log("Wallet Funder must differ from Signer address.");
-            continue;
-          }
-          if (walletFunder.toLowerCase() === walletAccount.toLowerCase()) {
-            console.log("Wallet Funder must differ from Account address.");
-            continue;
-          }
-          break;
-        }
+      console.log("\nSetup cancelled. Run again when ready for real money.");
+      process.exit(0);
+    }
+    // WAL-03 addresses are asked ONLY after explicit real-money
+    // confirmation — decliners must never be interrogated for them.
+    const signerAddress = deriveAddressFromPrivateKey(privateKey!);
+    console.log(
+      "\n📍 WAL-03 requires 3 distinct addresses for live trading: Signer, Account, and Funder.",
+    );
+    console.log(`   Your Signer address is: ${signerAddress}`);
+    // Auto-detect proxy wallet addresses from Polymarket API
+    console.log("\n🔍 Auto-detecting Polymarket proxy wallet addresses...");
+    const detected = await detectProxyWalletAddresses();
+    if (detected) {
+      walletAccount = detected.account;
+      walletFunder = detected.funder;
+      console.log(`✅ Auto-detected Account: ${walletAccount}`);
+      console.log(`✅ Auto-detected Funder:  ${walletFunder}`);
+      const ok = await askText("Use these addresses? (y/n)", { defaultValue: "y" });
+      if (!ok.trim().toLowerCase().startsWith("y")) {
+        walletAccount = "";
+        walletFunder = "";
       }
     }
-  } else if (isShadow) {
-    mode = "SHADOW";
-  } else if (isPaper) {
-    mode = "PAPER";
-    console.log(
-      "PAPER selected: safe simulation on the mock fixture, caps ignored.",
-      "Change later with: polyroot setup",
-    );
+    // Fallback to manual entry if auto-detection failed or was declined
+    if (!walletAccount) {
+      for (;;) {
+        walletAccount = await askText(
+          "Wallet Account address (0x...) — must differ from Signer:",
+          { defaultValue: "" },
+        );
+        if (!walletAccount) {
+          console.log("WALLET_ACCOUNT is required for LIVE/MICRO_LIVE mode.");
+          continue;
+        }
+        if (!/^0x[0-9a-fA-F]{40}$/.test(walletAccount)) {
+          console.log(
+            "Invalid address format — expected 0x followed by 40 hex characters.",
+          );
+          continue;
+        }
+        if (walletAccount.toLowerCase() === signerAddress.toLowerCase()) {
+          console.log("Wallet Account must differ from Signer address.");
+          continue;
+        }
+        break;
+      }
+    }
+    if (!walletFunder) {
+      for (;;) {
+        walletFunder = await askText(
+          "Wallet Funder address (0x...) — must differ from Signer and Account:",
+          { defaultValue: "" },
+        );
+        if (!walletFunder) {
+          console.log("WALLET_FUNDER is required for LIVE/MICRO_LIVE mode.");
+          continue;
+        }
+        if (!/^0x[0-9a-fA-F]{40}$/.test(walletFunder)) {
+          console.log(
+            "Invalid address format — expected 0x followed by 40 hex characters.",
+          );
+          continue;
+        }
+        if (walletFunder.toLowerCase() === signerAddress.toLowerCase()) {
+          console.log("Wallet Funder must differ from Signer address.");
+          continue;
+        }
+        if (walletFunder.toLowerCase() === walletAccount.toLowerCase()) {
+          console.log("Wallet Funder must differ from Account address.");
+          continue;
+        }
+        break;
+      }
+    }
   }
 
-  // SHADOW, MICRO_LIVE and LIVE need capital/loss caps (SHADOW simulates with
-  // real data; PAPER ignores caps and runs the mock fixture).
-  if (isLive || isMicro || isShadow) {
+  // MICRO_LIVE and LIVE need capital/loss caps.
+  {
     const capitalRaw = await askText(
       `Capital cap in USD — max money allowed in play (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
       { defaultValue: String(AUTONOMY_BOUNDS.CAPITAL_CAP_USD) },
@@ -2057,7 +2037,7 @@ async function runOnboardingFlow(): Promise<void> {
     // Reload env for current process
     process.loadEnvFile(ENV_PATH as string);
 
-    // Land in a running PAPER demo: one safe practice trade, then stop.
+    // Land in a running demo: one safe practice trade, then stop.
     // Offered only when the database and health check both passed.
     if (migrateOk && doctorOk) {
       const demo = await askText("Watch a 1-step demo trade now? (y/n)", {
@@ -2211,7 +2191,7 @@ async function askConsoleLine(): Promise<string> {
 async function printConsoleSnapshot(): Promise<void> {
   loadDotEnv();
   const env = process.env;
-  const mode = env["RUNTIME_MODE"] ?? "SHADOW";
+  const mode = env["RUNTIME_MODE"] ?? "MICRO_LIVE";
   console.log(`Mode: ${mode}`);
   const dbUrl = env["DATABASE_URL"] ?? "";
   if (!dbUrl) {
@@ -2286,7 +2266,7 @@ function printConsoleHelp(): void {
       "  restore        Verify (and --apply) a backup\n" +
       "  logs [N]       Show recent agent activity (default 15 lines)\n" +
       "  logs --follow  Watch activity live (Ctrl+C back to prompt)\n" +
-      "  shadow-fund    Credit SHADOW play bankroll: shadow-fund --amount 1000\n" +
+      
       "  markets        Show popular markets (add --search <text>)\n" +
       "  doctor         Basic health check (add --live for the strict gate)\n" +
       "  setup          Guided configuration (mode, caps, markets, wallet, API)\n" +
@@ -2310,7 +2290,7 @@ export function normalizeConsoleLine(raw: string): string {
 /** Known agent log files (newest first). */
 function findAgentLogs(): string[] {
   const home = process.env["HOME"] ?? "/tmp";
-  return ["shadow-48h.log", "agent.log"]
+  return ["agent.log"]
     .map((f) => `${home}/.polyroot/${f}`)
     .filter((p) => existsSync(p));
 }
@@ -2604,7 +2584,7 @@ async function restartBackgroundAgent(): Promise<void> {
     // pkill returns non-zero when nothing matched — that is fine
   }
 
-  const logFile = `${polyrootHome}/paper.log`;
+  const logFile = `${polyrootHome}/agent.log`;
   // Prefer the 24/7 supervisor when it owns this machine: the unit runs
   // `cli.js run` (trading loop) with Restart=always. nohup is the fallback
   // for containers/WSL/macOS without a PID-1 systemd.
@@ -2687,33 +2667,23 @@ async function runSetupFlow(): Promise<void> {
     );
 
     // 1. MODE SELECTION
-    const currentMode = process.env["RUNTIME_MODE"] ?? "PAPER";
+    const currentMode = process.env["RUNTIME_MODE"] ?? "MICRO_LIVE";
     console.log("Current mode: " + currentMode);
     console.log(
-      "PAPER = practice with play money. SHADOW = live data, sim fills. LIVE = real money. MICRO_LIVE = small cap real money.\n",
+      "MICRO_LIVE = small cap real money with hard loss latch. LIVE = full real money.\n",
     );
     const modeChoice = await askChoice(
       "Choose mode (Enter = keep current):",
       [
-        "PAPER — Safe simulation, mock data, no real money",
-        "SHADOW — Live Polymarket data, simulated fills, $0 risk",
         "MICRO_LIVE — Real trading with small cap (requires capital, API keys)",
         "LIVE — Real trading on Polymarket (requires capital, API keys)",
       ],
-      currentMode === "LIVE"
-        ? 3
-        : currentMode === "MICRO_LIVE"
-          ? 2
-          : currentMode === "SHADOW"
-            ? 1
-            : 0,
+      currentMode === "LIVE" ? 1 : 0,
     );
     const mode = (() => {
       if (modeChoice.startsWith("LIVE")) return "LIVE";
-      if (modeChoice.startsWith("MICRO")) return "MICRO_LIVE";
-      if (modeChoice.startsWith("SHADOW")) return "SHADOW";
-      return "PAPER";
-    })() as "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+      return "MICRO_LIVE";
+    })() as "MICRO_LIVE" | "LIVE";
 
     // 2. CAPITAL & LOSS CAP
     const bounds = parseBoundsEnv(process.env);
@@ -2775,7 +2745,6 @@ async function runSetupFlow(): Promise<void> {
           "Auto — agent finds the most liquid markets itself (recommended)",
           "Browse popular markets — pick by name",
           "Paste token IDs manually (advanced)",
-          "No markets (PAPER only)",
         ];
     const marketHow = await askChoice(
       hasMarketConfig
@@ -2860,25 +2829,16 @@ async function runSetupFlow(): Promise<void> {
       const walletSkip = await askChoice(
         "Wallet (Enter = skip for now):",
         [
-          "Skip for now — PAPER mode needs no wallet",
           "Create new wallet (generates keystore)",
           "Import existing private key",
         ],
         0,
       );
-      if (!walletSkip.startsWith("Skip")) {
-        if (walletSkip.startsWith("Create")) {
-          await promptWalletSetup("create");
-        } else {
-          await promptWalletSetup("import");
-        }
-      } else {
-        console.log("   Skipped — run 'polyroot setup' again to add a wallet.");
-      }
+      await promptWalletSetup(walletSkip.startsWith("Create") ? "create" : "import");
     }
 
-    // 5. VENUE API CREDENTIALS (for non-PAPER modes, skippable)
-    if (mode !== "PAPER") {
+  // 5. VENUE API CREDENTIALS (for live modes, skippable)
+  if (mode === "LIVE" || mode === "MICRO_LIVE") {
       const venueSkip = await askChoice(
         "Polymarket API credentials (Enter = skip for now):",
         ["Skip for now", "Enter API credentials now"],
@@ -2912,9 +2872,7 @@ async function runSetupFlow(): Promise<void> {
     if (universe.length > 0) {
       console.log(`   Markets: ${universe.join(", ")}`);
     }
-    console.log(
-      formatNextSteps(mode as "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE"),
-    );
+    console.log(formatNextSteps(mode as "MICRO_LIVE" | "LIVE"));
     process.loadEnvFile(ENV_PATH as string);
     closeSharedSession();
   } catch (err) {
@@ -2976,7 +2934,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
 
   // Restart idempotency gate: load durable seen_orders BEFORE the pipeline
   // accepts any intent. Fail-closed in live modes (throws after closing the
-  // pool); PAPER/SHADOW warn and continue.
+  // pool); log warnings and continue in MICRO_LIVE.
   await agent.hydrateSeen();
 
   // Single-instance guard (continuous runs only): a second loop would
@@ -3265,7 +3223,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
 }
 
 /**
- * MICRO_LIVE startup gate: refuse to start without SHADOW baseline
+ * MICRO_LIVE startup gate: refuse to start without pre-live baseline
  * evidence (30 days / 100 resolved clusters) in the database.
  */
 export async function assertMicroLiveReady(databaseUrl: string): Promise<void> {
@@ -3335,10 +3293,8 @@ const walletCreatePending = new Map<string, number>();
 const WALLET_CREATE_TTL_MS = 5 * 60_000;
 
 const MODE_RANK: Record<string, number> = {
-  PAPER: 0,
-  SHADOW: 1,
-  MICRO_LIVE: 2,
-  LIVE: 3,
+  MICRO_LIVE: 0,
+  LIVE: 1,
 };
 
 async function telegramExecFile(
@@ -3497,15 +3453,15 @@ export function buildTelegramHandlers(
 
     mode: async (args) => {
       const target = (args[0] ?? "").toUpperCase();
-      const MODES = ["PAPER", "SHADOW", "MICRO_LIVE", "LIVE"];
+      const MODES = ["MICRO_LIVE", "LIVE"];
       if (!MODES.includes(target)) {
         throw new Error(
-          `Mode: ${MODES.join(" | ")}. Contoh: mode SHADOW. Mode naik hanya via terminal.`,
+          `Mode: ${MODES.join(" | ")}. Contoh: mode MICRO_LIVE. Mode naik hanya via terminal.`,
         );
       }
       // Current mode from DB (durable truth, not .env).
       const { ModeWatcher } = await import("./mode-watcher.js");
-      const watcher = new ModeWatcher({ pool: ctx.pool, initialMode: "PAPER" });
+      const watcher = new ModeWatcher({ pool: ctx.pool, initialMode: "READ_ONLY" });
       await watcher.pollOnce();
       const current = watcher.getMode();
       const rank = (m: string): number => MODE_RANK[m] ?? -1;
@@ -3522,7 +3478,7 @@ export function buildTelegramHandlers(
         );
       }
       const res = await watcher.requestModeChange(
-        target as "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE",
+        target as "MICRO_LIVE" | "LIVE",
         "telegram",
       );
       if (!res.ok) throw new Error(`${res.code}: ${res.reason}`);
@@ -4227,7 +4183,7 @@ async function runLivePromoteCLI(args: string[]): Promise<void> {
     console.log(
       "  This signs REAL-MONEY authority with the agent wallet key.\n" +
         "  Admission still requires: schema-current, manifested tree, clear\n" +
-        "  latch, clean reconciliation, SHADOW baseline, wallet + venue creds.\n",
+        "  latch, clean reconciliation, pre-live baseline, wallet + venue creds.\n",
     );
     const strategy = await askText("Strategy name", {
       defaultValue: "default",
@@ -4372,7 +4328,7 @@ async function runModeCommand(targetMode?: string): Promise<void> {
   const pool = new Pool({ connectionString: dbUrl });
   try {
     const { ModeWatcher } = await import("./mode-watcher.js");
-    const watcher = new ModeWatcher({ pool, initialMode: "PAPER" });
+    const watcher = new ModeWatcher({ pool, initialMode: "READ_ONLY" });
     await watcher.pollOnce();
 
     if (!targetMode) {
@@ -4385,8 +4341,6 @@ async function runModeCommand(targetMode?: string): Promise<void> {
 
     const upper = targetMode.toUpperCase();
     const MODES: readonly RuntimeMode[] = [
-      "PAPER",
-      "SHADOW",
       "MICRO_LIVE",
       "LIVE",
     ];
@@ -4768,7 +4722,9 @@ async function runStatus(): Promise<void> {
   loadDotEnv();
   const env = process.env;
   // Config
-  const mode = env["RUNTIME_MODE"] || "PAPER";
+  // Display-only. Never fabricate a mode: unset RUNTIME_MODE renders "—"
+  // rather than a mode the engine never reported (see §3 display rule).
+  const mode = env["RUNTIME_MODE"] ?? "—";
   const dbUrl = env["DATABASE_URL"] ? "✅ Set" : "❌ Missing";
   const rpc = env["RPC_URL"] || "https://polygon-rpc.com";
   const metricsKey = env["POLYROOT_METRICS_OWNER_KEY"]
@@ -5134,36 +5090,32 @@ async function runDoctor(): Promise<boolean> {
     allOk = false;
   }
 
-  // 4. Venue credentials (only for live modes)
-  const mode = process.env["RUNTIME_MODE"] || "PAPER";
-  if (mode !== "PAPER") {
-    const venueOk = Boolean(
-      process.env["POLYMARKET_API_KEY"] &&
-      process.env["POLYMARKET_API_SECRET"] &&
-      process.env["POLYMARKET_API_PASSPHRASE"],
+  // 4. Venue credentials (required for MICRO_LIVE/LIVE)
+  const mode = (process.env["RUNTIME_MODE"] ?? "MICRO_LIVE") as "MICRO_LIVE" | "LIVE";
+  const venueOk = Boolean(
+    process.env["POLYMARKET_API_KEY"] &&
+    process.env["POLYMARKET_API_SECRET"] &&
+    process.env["POLYMARKET_API_PASSPHRASE"],
+  );
+  if (!venueOk) {
+    console.log(
+      "⚠️  Polymarket API credentials incomplete (required for " + mode + ")",
     );
-    if (!venueOk) {
-      console.log(
-        "⚠️  Polymarket API credentials incomplete (required for " + mode + ")",
-      );
-    } else {
-      console.log("✅ Polymarket API credentials present");
-    }
+  } else {
+    console.log("✅ Polymarket API credentials present");
   }
 
   // 5. Live caps
-  if (mode !== "PAPER") {
-    const lossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
-    if (!lossCap) {
-      console.log(
-        "⚠️  POLYROOT_MICRO_LIVE_LOSS_CAP_USD not set (required for " +
-          mode +
-          ")",
-      );
-      allOk = false;
-    } else {
-      console.log("✅ Loss cap configured: " + lossCap + " pUSD");
-    }
+  const lossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+  if (!lossCap) {
+    console.log(
+      "⚠️  POLYROOT_MICRO_LIVE_LOSS_CAP_USD not set (required for " +
+        mode +
+        ")",
+    );
+    allOk = false;
+  } else {
+    console.log("✅ Loss cap configured: " + lossCap + " pUSD");
   }
 
   console.log(

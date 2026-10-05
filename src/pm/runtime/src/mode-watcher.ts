@@ -6,8 +6,7 @@
  * database connectivity is lost for > maxFailures.
  */
 
-export type RuntimeMode =
-  "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE" | "READ_ONLY";
+export type RuntimeMode = "MICRO_LIVE" | "LIVE" | "READ_ONLY";
 
 export interface QueryablePool {
   query(
@@ -49,7 +48,7 @@ export class ModeWatcher {
     this.pool = opts.pool;
     this.pollIntervalMs = opts.pollIntervalMs ?? 5000;
     this.maxFailuresBeforeDegrade = opts.maxFailuresBeforeDegrade ?? 3;
-    this.currentMode = opts.initialMode ?? "PAPER";
+    this.currentMode = opts.initialMode ?? "READ_ONLY";
     if (opts.onModeChange !== undefined) {
       this.onModeChange = opts.onModeChange;
     }
@@ -81,7 +80,7 @@ export class ModeWatcher {
         const restoredMode =
           (row?.["runtime_mode"] as RuntimeMode) ??
           this.preDegradedMode ??
-          "PAPER";
+          "READ_ONLY";
         const oldMode = this.currentMode;
         this.currentMode = restoredMode;
         this.preDegradedMode = null;

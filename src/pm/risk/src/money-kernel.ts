@@ -118,8 +118,8 @@ export interface MoneyKernelOpts {
   maxOpenReservations?: number;
   /** Chain id enforced for identity (matches permit lease/wallet). */
   chainId: number;
-  /** Runtime mode (PAPER, SHADOW, MICRO_LIVE, LIVE). */
-  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+  /** Runtime mode (MICRO_LIVE, LIVE). */
+  mode: "MICRO_LIVE" | "LIVE";
   /** Authority for atomic reservation and permit creation. REQUIRED. */
   authority: MoneyAuthority;
 }
@@ -134,7 +134,7 @@ interface ResolvedMoneyKernelOpts {
   sink: KernelEventSink;
   chainId: number;
   authority: MoneyAuthority;
-  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+  mode: "MICRO_LIVE" | "LIVE";
 }
 
 export interface ReserveRequest {

@@ -21,7 +21,7 @@ export interface PaperLogRow {
   loopEpoch: number;
 }
 
-export type ExperimentMode = "PAPER" | "SHADOW" | "MICRO_LIVE";
+export type ExperimentMode = "MICRO_LIVE" | "LIVE";
 
 export interface ExperimentRow {
   id: string;
@@ -195,8 +195,10 @@ export interface ShadowBaselineSnapshot {
 }
 
 /**
- * PostgreSQL-backed SHADOW baseline tracker (G5). The gate is defined by
+ * PostgreSQL-backed pre-live baseline tracker (G5). The gate is defined by
  * eval criteria (30 days / 100 clusters); the DB is the source of truth.
+ * Note: `shadow_baseline` table + `PgShadowBaseline` are persisted schema
+ * identifiers (migrations) — not runtime modes; they are left untouched.
  */
 export class PgShadowBaseline {
   private readonly pool: Pool;
@@ -252,9 +254,12 @@ export class PgShadowBaseline {
 }
 
 /**
- * PostgreSQL-backed SHADOW decision log (G5).
- * Mirrors paper_log but for SHADOW mode (live data, no financial I/O).
- * No fill simulation — records actual market decisions without execution.
+ * PostgreSQL-backed pre-live decision log (G5).
+ * Mirrors paper_log table (migrations-bound identifier) for pre-live mode
+ * (live data, no financial I/O). No fill simulation — records actual market
+ * decisions without execution.
+ * Note: `shadow_log` table + `ShadowLogRow` are persisted schema identifiers
+ * (migrations) — not runtime modes; they are left untouched.
  */
 export interface ShadowLogRow {
   market_id: string;
@@ -395,8 +400,10 @@ export class PgResolvedClusters {
 }
 
 /**
- * PostgreSQL-backed SHADOW gate evaluation log.
+ * PostgreSQL-backed pre-live gate evaluation log.
  * Records each G5 gate evaluation attempt for audit trail.
+ * Note: `ShadowGateEvaluationRow` is a persisted schema identifier (migrations)
+ * — not a runtime mode; left untouched.
  */
 export interface ShadowGateEvaluationRow {
   evaluatedAt: Date;

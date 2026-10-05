@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { G4Pipeline } from "@polyroot/runtime";
 import { getDefaultModeConfig } from "@polyroot/runtime";
-import type { RuntimeMode } from "@polyroot/runtime";
+import type { G4PipelineMode } from "@polyroot/runtime";
 
-function fakeWatcher(initial: RuntimeMode) {
+function fakeWatcher(initial: G4PipelineMode) {
   const state = {
     mode: initial,
     degraded: false,
@@ -27,7 +27,7 @@ function fakeWatcher(initial: RuntimeMode) {
 }
 
 function pipelineWithWatcher(
-  bootMode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE",
+  bootMode: G4PipelineMode,
   w: ReturnType<typeof fakeWatcher>["watcher"],
 ): G4Pipeline {
   return new G4Pipeline(getDefaultModeConfig(bootMode, {}), {
@@ -47,39 +47,32 @@ function pipelineWithWatcher(
 }
 
 describe("live mode hot-reload (no restart)", () => {
-  it("valid jump SHADOW -> MICRO_LIVE applies within one sync", () => {
-    const f = fakeWatcher("SHADOW");
-    const pipe = pipelineWithWatcher("SHADOW", f.watcher);
-    assert.equal(pipe.getMode(), "SHADOW");
-    f.state.mode = "MICRO_LIVE";
-    assert.equal(pipe.syncModeFromWatcher(), true);
+  it("valid jump MICRO_LIVE -> LIVE applies within one sync", () => {
+    const f = fakeWatcher("MICRO_LIVE");
+    const pipe = pipelineWithWatcher("MICRO_LIVE", f.watcher);
     assert.equal(pipe.getMode(), "MICRO_LIVE");
+    f.state.mode = "LIVE";
+    assert.equal(pipe.syncModeFromWatcher(), true);
+    assert.equal(pipe.getMode(), "LIVE");
   });
 
-  it("PAPER -> SHADOW applies (first promotion step)", () => {
-    const f = fakeWatcher("SHADOW");
-    const pipe = pipelineWithWatcher("PAPER", f.watcher);
+  it("invalid jump LIVE -> MICRO_LIVE is refused (forward-only)", () => {
+    const f = fakeWatcher("MICRO_LIVE");
+    const pipe = pipelineWithWatcher("LIVE", f.watcher);
     assert.equal(pipe.syncModeFromWatcher(), true);
-    assert.equal(pipe.getMode(), "SHADOW");
-  });
-
-  it("invalid jump SHADOW -> LIVE is refused, loop stays trading", () => {
-    const f = fakeWatcher("LIVE");
-    const pipe = pipelineWithWatcher("SHADOW", f.watcher);
-    assert.equal(pipe.syncModeFromWatcher(), true);
-    assert.equal(pipe.getMode(), "SHADOW");
+    assert.equal(pipe.getMode(), "LIVE");
   });
 
   it("degraded watcher halts entries (fail-closed)", () => {
-    const f = fakeWatcher("SHADOW");
+    const f = fakeWatcher("MICRO_LIVE");
     f.state.degraded = true;
-    const pipe = pipelineWithWatcher("SHADOW", f.watcher);
+    const pipe = pipelineWithWatcher("MICRO_LIVE", f.watcher);
     assert.equal(pipe.syncModeFromWatcher(), false);
-    assert.equal(pipe.getMode(), "SHADOW");
+    assert.equal(pipe.getMode(), "MICRO_LIVE");
   });
 
   it("no watcher keeps the fixed boot mode", () => {
-    const pipe = new G4Pipeline(getDefaultModeConfig("SHADOW", {}), {
+    const pipe = new G4Pipeline(getDefaultModeConfig("MICRO_LIVE", {}), {
       forecast: async () => 0.65,
       sizeIntent: () => 10,
       venueMode: () => "NORMAL",
@@ -93,25 +86,6 @@ describe("live mode hot-reload (no restart)", () => {
       policyHash: "test",
     } as never);
     assert.equal(pipe.syncModeFromWatcher(), true);
-    assert.equal(pipe.getMode(), "SHADOW");
-  });
-
-  it("runContinuous starts the watcher; stop() stops it", async () => {
-    const f = fakeWatcher("SHADOW");
-    // No marketSource + SHADOW: buildLoopInputs throws every pass, the
-    // loop sleeps and retries — processMarket is never reached, so no
-    // kernel/signer/executor fakes are exercised.
-    const pipe = pipelineWithWatcher("SHADOW", f.watcher);
-    const run = pipe.runContinuous();
-    await new Promise((r) => setTimeout(r, 300));
-    assert.equal(f.state.started, true);
-    pipe.stop();
-    assert.equal(f.state.stopped, true);
-    await Promise.race([
-      run,
-      new Promise((_, rej) =>
-        setTimeout(() => rej(new Error("loop did not exit")), 8000),
-      ),
-    ]);
+    assert.equal(pipe.getMode(), "MICRO_LIVE");
   });
 });

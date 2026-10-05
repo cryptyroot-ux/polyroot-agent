@@ -7,7 +7,7 @@
  * EMERGENCY_HALT, STOPPED) never self-bypass.
  */
 
-export type OperationMode = "RESEARCH" | "PAPER" | "SHADOW" | "LIVE";
+export type OperationMode = "RESEARCH" | "MICRO_LIVE" | "LIVE";
 
 export type RuntimeHealth =
   | "STOPPED"
@@ -59,7 +59,7 @@ const ENTRY_BLOCK_VENUE: ReadonlySet<VenueMode> = new Set([
 
 /**
  * Classify whether financial activity is allowed right now.
- *  - mode !== LIVE → no financial orders (PAPER/SHADOW never spend real money).
+ *  - mode !== LIVE → no financial orders.
  *  - hard-blocking health/venue → all financial activity blocked (fail closed).
  *  - degraded/cautious venue+health → new entries blocked, cancels/reductions intact.
  *  - otherwise → ALLOW (routine autonomy, no human approval).

@@ -46,7 +46,7 @@ export const POLYROOT_MENU: MenuNode = {
         "mode-show",
         "Show current mode",
         ["mode"],
-        "PAPER | SHADOW | MICRO_LIVE | LIVE",
+        "MICRO_LIVE | LIVE",
       ),
       leaf(
         "mode-paper",
@@ -122,7 +122,7 @@ export const POLYROOT_MENU: MenuNode = {
         "shadow-fund",
         "Shadow fund (practice bankroll)",
         ["shadow-fund"],
-        "PAPER/SHADOW only",
+        "MICRO_LIVE only",
         undefined,
         { flag: "--amount", prompt: "Amount in USD" },
       ),

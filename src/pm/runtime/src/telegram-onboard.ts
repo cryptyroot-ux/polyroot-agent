@@ -46,7 +46,7 @@ export interface OnboardState {
   newSignerAddress?: string;
   /** Which .env variable the provider key lives in (set-key target). */
   keyVar?: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
-  mode?: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+  mode?: "MICRO_LIVE" | "LIVE";
   account?: string;
   funder?: string;
   capitalUsd?: number;
@@ -484,33 +484,19 @@ export function onboardNext(
     }
 
     case "mode": {
-      const idx = pickIndex(t, 4);
+      const idx = pickIndex(t, 2);
       if (idx === null) {
         return { state, reply: "Pilih 1-4 ya.\n\n" + modeMenu(), writes };
       }
-      const modes = ["SHADOW", "PAPER", "MICRO_LIVE", "LIVE"] as const;
+      const modes = ["MICRO_LIVE", "LIVE"] as const;
       const mode = modes[idx] as NonNullable<OnboardState["mode"]>;
-      if (mode === "SHADOW" || mode === "PAPER") {
-        const ns: OnboardState = {
-          ...state,
-          step: "capital",
-          mode,
-        };
-        writes.push(["RUNTIME_MODE", mode]);
-        return {
-          state: ns,
-          reply:
-            `Mode ${mode} dipilih ($0 risiko). ✅\n` +
-            `Batas modal USD? (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD}; SHADOW/PAPER tetap catat walau tak enforce)`,
-          writes,
-        };
-      }
+      
       const ns: OnboardState = { ...state, step: "mode_confirm", mode };
       return {
         state: ns,
         reply:
           `⚠️ ${mode} memakai UANG ASLI. Loss cap harian mematikan sistem otomatis.\n` +
-          `Ketik persis \`${mode}\` untuk lanjut (apapun selain itu = batal ke SHADOW).`,
+          `Ketik persis \`${mode}\` untuk lanjut (apapun selain itu = batal).`,
         writes,
       };
     }
@@ -518,13 +504,9 @@ export function onboardNext(
     case "mode_confirm": {
       const want = state.mode ?? "MICRO_LIVE";
       if (t !== want) {
-        const ns: OnboardState = { ...state, step: "capital", mode: "SHADOW" };
-        writes.push(["RUNTIME_MODE", "SHADOW"]);
         return {
-          state: ns,
-          reply:
-            "Oke, bertahan di SHADOW (aman).\n" +
-            `Batas modal USD? (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
+          state: { ...state, step: "mode" },
+          reply: "Konfirmasi batal. Pilih mode lagi:\n\n" + modeMenu(),
           writes,
         };
       }
@@ -672,15 +654,12 @@ export function onboardNext(
 function modeMenu(): string {
   return (
     "🚀 Langkah 3: Mode\n" +
-    "PAPER = simulasi mock, $0. SHADOW = data live + fill simulasi, $0 (disarankan).\n" +
     "MICRO_LIVE/LIVE = uang asli (butuh API key + 3 alamat + loss cap).\n" +
     numbered([
-      "SHADOW — live data, sim fills, $0 (disarankan)",
-      "PAPER — simulasi mock, $0",
       "MICRO_LIVE — uang asli kecil",
       "LIVE — trading asli",
     ]) +
-    "\nBalas: nomor (1-4)."
+    "\nBalas: nomor (1-2)."
   );
 }
 

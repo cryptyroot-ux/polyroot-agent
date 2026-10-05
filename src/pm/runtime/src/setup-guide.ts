@@ -13,7 +13,7 @@ import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
 export interface SetupBoundsInput {
   capitalUsd: number;
   lossBps: number;
-  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE";
+  mode: "MICRO_LIVE" | "LIVE";
   universe: string[];
   discovery?: {
     mode: "auto" | "manual";
@@ -89,7 +89,7 @@ export function upsertEnvLines(existing: string, updates: string[]): string {
 /** Numbered cheat-sheet printed after setup/onboarding. Exact commands,
  *  in order, with what PASS looks like. */
 export function formatNextSteps(
-  mode: "PAPER" | "SHADOW" | "MICRO_LIVE" | "LIVE",
+  mode: "MICRO_LIVE" | "LIVE",
 ): string {
   const lines = [
     "",
@@ -99,35 +99,25 @@ export function formatNextSteps(
     "     polyroot status",
     "     → make sure Mode, Wallet, and Loss Cap look right.",
     "",
+    "2) Test LIVE readiness (required before real money):",
+    "     polyroot doctor --live",
+    "     → everything must be ✅ PASS. Fix any ❌ first.",
+    "",
+    "3) Start small (MICRO_LIVE = real money, hard loss cap):",
+    "     polyroot setup",
+    "     → keep the smallest capital cap, then: polyroot run",
+    "     → let it run 48h, make sure there are no errors.",
+    "",
+    "4) Step up to LIVE:",
+    "     polyroot mode LIVE",
+    "     → only after the MICRO_LIVE numbers look right.",
   ];
-  if (mode !== "PAPER") {
+  if (mode === "LIVE") {
     lines.push(
-      "2) Test LIVE readiness (required before real money):",
-      "     polyroot doctor --live",
-      "     → everything must be ✅ PASS. Fix any ❌ first.",
       "",
-      "3) Practice 48 hours with no money (SHADOW mode):",
-      "     polyroot setup",
-      "     → choose SHADOW, then: polyroot run",
-      "     → let it run, make sure there are no errors.",
-      "",
-      "4) Start small first:",
-      "     polyroot run",
-      "     → watch for 1-2 days before raising capital.",
-      "",
-    );
-  } else {
-    lines.push(
-      "2) Open the console and run practice mode (play money, 100% safe):",
-      "     polyroot",
-      "     → type: run (press Ctrl+C to stop, exit to leave).",
-      "",
-      "3) When you are ready for real money, run:",
-      "     polyroot setup",
-      "     → follow the guide, then polyroot doctor --live.",
-      "",
+      "Already on LIVE: skip step 3. Watch the loss cap like a hawk.",
     );
   }
-  lines.push("Need help? Run: polyroot status", "");
+  lines.push("", "Need help? Run: polyroot status", "");
   return lines.join("\n");
 }

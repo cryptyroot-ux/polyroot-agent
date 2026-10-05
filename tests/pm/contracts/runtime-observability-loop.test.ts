@@ -124,7 +124,7 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
         },
       },
       chainId: 137,
-      mode: "PAPER",
+      mode: "MICRO_LIVE",
       permitTtlMs: 60_000,
     });
     const signer = new SignerVault({
@@ -161,11 +161,21 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
     };
 
     const pipeline = createG4Pipeline({
-      config: { mode: "PAPER", minEdgeAfterCost: 0.01 },
+      config: {
+        mode: "MICRO_LIVE",
+        minEdgeAfterCost: 0.01,
+        microLiveCapUsd: 100,
+        liveLossCapPusd: 50_000,
+      },
       kernel,
       signer,
       executor,
       wallet: makeWallet(),
+      liveGuard: {
+        loadLatch: async () => null,
+        saveLatch: async () => {},
+        realizedLossPusd: () => 0,
+      },
       policy: {
         ...DEFAULT_RISK_POLICY,
         policy_version: "v0-bootstrap",
@@ -202,7 +212,7 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
     );
   });
 
-  it("runContinuous executes without throwing for a single iteration", async () => {
+  it("runContinuous executes without throwing with a wired marketSource", async () => {
     const balance = new FakeBalanceStore();
     const kernel = new MoneyKernel({
       balance,
@@ -217,7 +227,7 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
         },
       },
       chainId: 137,
-      mode: "PAPER",
+      mode: "MICRO_LIVE",
       permitTtlMs: 60_000,
     });
     const signer = new SignerVault({
@@ -242,11 +252,21 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
       leaseEpoch: 1,
     });
     const pipeline = createG4Pipeline({
-      config: { mode: "PAPER", minEdgeAfterCost: 0.01 },
+      config: {
+        mode: "MICRO_LIVE",
+        minEdgeAfterCost: 0.01,
+        microLiveCapUsd: 100,
+        liveLossCapPusd: 50_000,
+      },
       kernel,
       signer,
       executor,
       wallet: makeWallet(),
+      liveGuard: {
+        loadLatch: async () => null,
+        saveLatch: async () => {},
+        realizedLossPusd: () => 0,
+      },
       policy: {
         ...DEFAULT_RISK_POLICY,
         policy_version: "v0-bootstrap",
@@ -258,6 +278,10 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
       now: () => NOW,
       forecast: async () => 0.65,
       sizeIntent: () => 10,
+      marketSource: {
+        universe: () => ["mkt_obs_1"],
+        snapshot: async () => ({ bid: 0.45, ask: 0.55 }),
+      },
     });
 
     const runPromise = pipeline.runContinuous();

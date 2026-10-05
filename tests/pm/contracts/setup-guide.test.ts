@@ -25,7 +25,7 @@ describe("setup guide (lay-friendly)", () => {
     const lines = buildSetupEnvUpdate({
       capitalUsd: NaN,
       lossBps: -10,
-      mode: "PAPER",
+      mode: "MICRO_LIVE",
       universe: [],
     });
     assert.ok(lines.includes("POLYROOT_MICRO_LIVE_CAP_USD=1000"));
@@ -54,7 +54,7 @@ describe("setup guide (lay-friendly)", () => {
     ]) {
       assert.ok(guide.includes(cmd), `guide must mention: ${cmd}`);
     }
-    const paper = formatNextSteps("PAPER");
+    const paper = formatNextSteps("LIVE");
     assert.ok(paper.includes("polyroot"));
   });
 });

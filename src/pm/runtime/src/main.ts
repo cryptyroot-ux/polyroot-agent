@@ -333,7 +333,7 @@ export async function bootstrapAgent(
     sink: stores.eventSink,
     authority: stores.authority,
     chainId: 137,
-    mode,
+    mode: mode as "MICRO_LIVE" | "LIVE",
   });
 
   // Fail-closed LIVE guard: placeholder signer + mock venue are PAPER/SHADOW-only.
