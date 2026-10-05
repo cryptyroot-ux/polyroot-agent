@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@polyroot/domain": "*",
-    "pg": "^8.17.0",
+    "pg": "^8.23.1",
     "drizzle-orm": "^0.45.2",
     "zod": "^3.22.4"
   },
@@ -31,7 +31,7 @@
     "@polyroot/tsconfig": "*",
     "@types/node": "^20.19.0",
     "@types/pg": "^8.16.0",
-    "drizzle-kit": "^0.24.0",
+    "drizzle-kit": "^0.31.11",
     "typescript": "^5.5.0"
   }
 }
