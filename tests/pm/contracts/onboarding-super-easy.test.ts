@@ -131,9 +131,9 @@ function runOnboardLikeHuman(
       "Wallet (Enter = create new):",
       "Create a vault password",
       "Repeat the vault password",
-      "Choose mode (Enter = SHADOW):",
+      "Choose mode (Enter = MICRO_LIVE):",
       "Capital cap in USD",
-      "Daily loss cap in bps",
+      "Daily loss cap in %",
     ];
     let i = 0;
     let lastLen = 0;
@@ -199,27 +199,48 @@ describe("onboarding contains zero maintainer-owned provider defaults", () => {
 });
 
 describe("super-easy onboarding E2E (create wallet path)", () => {
-  it("completes with OpenAI key + new wallet + SHADOW default", async () => {
+  it("completes with OpenAI key + new wallet + MICRO_LIVE default", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
-    const { code, out } = await runOnboardLikeHuman(home, [
-      "", // provider: OpenAI (default)
-      "sk-test-key-1", // API key (asked first, then live model catalog)
-      "", // model: curated fallback default (fake key, offline)
-      "y", // reachability check: continue anyway (fake key never passes the ping)
-      "", // wallet: create new (default)
-      "test-pass-123", // vault password
-      "test-pass-123", // repeat vault password
-      "1", // mode: SHADOW (default) - press 1
-      "10000", // capital cap
-      "500", // loss cap bps
-      "n", // demo trade offer (no DB here, so never asked; keeps runs fast)
-    ]);
+    const { code, out } = await runOnboardLikeHuman(
+      home,
+      [
+        "", // provider: OpenAI (default)
+        "sk-test-key-1", // API key (asked first, then live model catalog)
+        "", // model: curated fallback default (fake key, offline)
+        "y", // reachability check: continue anyway (fake key never passes the ping)
+        "", // wallet: create new (default)
+        "test-pass-123", // vault password
+        "test-pass-123", // repeat vault password
+        "1", // mode: MICRO_LIVE (default) - press 1
+        "MICRO_LIVE", // typed confirmation (real money)
+        "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
+        "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
+        "10000", // capital cap
+        "500", // loss cap bps
+        "n", // demo trade offer (no DB here, so never asked; keeps runs fast)
+      ],
+      [
+        "Choose AI provider",
+        "Paste your",
+        "Select model",
+        "Continue anyway?",
+        "Wallet (Enter = create new):",
+        "Create a vault password",
+        "Repeat the vault password",
+        "Choose mode (Enter = MICRO_LIVE):",
+        "Type MICRO_LIVE to continue",
+        "Wallet Account address",
+        "Wallet Funder address",
+        "Capital cap in USD",
+        "Daily loss cap in %",
+      ],
+    );
     assert.equal(code, 0);
     assert.ok(out.includes("Create new wallet for me (recommended)"));
     const envPath = join(home, ".polyroot", ".env");
     assert.equal(existsSync(envPath), true);
     const env = readFileSync(envPath, "utf8");
-    assert.ok(env.includes("RUNTIME_MODE=SHADOW"));
+    assert.ok(env.includes("RUNTIME_MODE=MICRO_LIVE"));
     assert.ok(env.includes("POLYROOT_FORECAST_PROVIDER=openai"));
     assert.ok(env.includes("OPENAI_BASE_URL=https://api.openai.com/v1"));
     assert.ok(env.includes("OPENAI_API_KEY=sk-test-key-1"));
@@ -252,7 +273,10 @@ describe("super-easy onboarding E2E (ChatGPT login via Codex OAuth)", () => {
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: SHADOW (default)
+        "1", // mode: MICRO_LIVE (default)
+        "MICRO_LIVE", // typed confirmation (real money)
+        "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
+        "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "10000", // capital cap
         "500", // loss cap bps
         "n", // demo trade offer (never asked without DB)
@@ -264,9 +288,12 @@ describe("super-easy onboarding E2E (ChatGPT login via Codex OAuth)", () => {
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = SHADOW):",
+        "Choose mode (Enter = MICRO_LIVE):",
+        "Type MICRO_LIVE to continue",
+        "Wallet Account address",
+        "Wallet Funder address",
         "Capital cap in USD",
-        "Daily loss cap in bps",
+        "Daily loss cap in %",
       ],
     );
     assert.equal(code, 0);
@@ -295,7 +322,10 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: SHADOW (default) - press 1
+        "1", // mode: MICRO_LIVE (default) - press 1
+        "MICRO_LIVE", // typed confirmation (real money)
+        "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
+        "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "10000", // capital cap
         "500", // loss cap bps
         "n", // demo trade offer (no DB here, so never asked; keeps runs fast)
@@ -310,9 +340,12 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = SHADOW):",
+        "Choose mode (Enter = MICRO_LIVE):",
+        "Type MICRO_LIVE to continue",
+        "Wallet Account address",
+        "Wallet Funder address",
         "Capital cap in USD",
-        "Daily loss cap in bps",
+        "Daily loss cap in %",
       ],
     );
     assert.equal(code, 0);
@@ -337,26 +370,7 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
   });
 });
 
-describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE ladder", () => {
-  it("PAPER path skips caps and writes RUNTIME_MODE=PAPER", async () => {
-    const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
-    const { code, out } = await runOnboardLikeHuman(home, [
-      "", // provider: OpenAI (default)
-      "sk-test-key-3", // API key (asked first, then live model catalog)
-      "", // model: curated fallback default (fake key, offline)
-      "y", // reachability check: continue anyway
-      "", // wallet: create new (default)
-      "test-pass-123", // vault password
-      "test-pass-123", // repeat vault password
-      "2", // mode: PAPER
-      "n", // demo trade offer (never asked without DB)
-    ]);
-    assert.equal(code, 0);
-    const env = readFileSync(join(home, ".polyroot", ".env"), "utf8");
-    assert.ok(env.includes("RUNTIME_MODE=PAPER"));
-    assert.ok(!out.includes("files.pango.fun"));
-  });
-
+describe("onboarding offers the MICRO_LIVE → LIVE ladder", () => {
   it("MICRO_LIVE path requires typed confirmation and writes caps", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(
@@ -369,7 +383,7 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "3", // mode: MICRO_LIVE
+        "1", // mode: MICRO_LIVE
         "MICRO_LIVE", // typed confirmation (real money)
         "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
         "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
@@ -385,12 +399,12 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = SHADOW):",
+        "Choose mode (Enter = MICRO_LIVE):",
         "Type MICRO_LIVE to continue",
         "Wallet Account address",
         "Wallet Funder address",
         "Capital cap in USD",
-        "Daily loss cap in bps",
+        "Daily loss cap in %",
       ],
     );
     assert.equal(code, 0);
@@ -406,9 +420,9 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
     assert.ok(!out.includes("files.pango.fun"));
   });
 
-  it("MICRO_LIVE without typed confirmation falls back to SHADOW", async () => {
+  it("MICRO_LIVE without typed confirmation cancels setup (exit 0, no env)", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
-    const { code } = await runOnboardLikeHuman(
+    const { code, out } = await runOnboardLikeHuman(
       home,
       [
         "", // provider: OpenAI (default)
@@ -418,11 +432,8 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "3", // mode: MICRO_LIVE
-        "nope", // wrong confirmation → SHADOW
-        "10000", // capital cap (SHADOW still asks)
-        "500", // loss cap bps
-        "n", // demo trade offer (never asked without DB)
+        "1", // mode: MICRO_LIVE
+        "nope", // wrong confirmation → cancel setup
       ],
       [
         "Choose AI provider",
@@ -432,15 +443,17 @@ describe("onboarding offers the full PAPER → SHADOW → MICRO_LIVE → LIVE la
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = SHADOW):",
+        "Choose mode (Enter = MICRO_LIVE):",
         "Type MICRO_LIVE to continue",
-        "Capital cap in USD",
-        "Daily loss cap in bps",
       ],
     );
     assert.equal(code, 0);
-    const env = readFileSync(join(home, ".polyroot", ".env"), "utf8");
-    assert.ok(env.includes("RUNTIME_MODE=SHADOW"));
+    assert.ok(out.includes("Setup cancelled"));
+    assert.equal(
+      existsSync(join(home, ".polyroot", ".env")),
+      false,
+      "cancelled setup must not write env",
+    );
   });
 });
 describe("onboarding finish is resilient without a database", () => {
@@ -458,12 +471,29 @@ describe("onboarding finish is resilient without a database", () => {
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: SHADOW (default) - press 1
+        "1", // mode: MICRO_LIVE (default) - press 1
+        "MICRO_LIVE", // typed confirmation (real money)
+        "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
+        "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "10000", // capital cap
         "500", // loss cap bps
         "n", // demo trade offer (no DB here, so never asked; keeps runs fast)
       ],
-      undefined,
+      [
+        "Choose AI provider",
+        "Paste your",
+        "Select model",
+        "Continue anyway?",
+        "Wallet (Enter = create new):",
+        "Create a vault password",
+        "Repeat the vault password",
+        "Choose mode (Enter = MICRO_LIVE):",
+        "Type MICRO_LIVE to continue",
+        "Wallet Account address",
+        "Wallet Funder address",
+        "Capital cap in USD",
+        "Daily loss cap in %",
+      ],
       { DATABASE_URL: "postgresql://onboard_test:none@127.0.0.1:1/nodb" },
     );
     assert.equal(code, 0);
@@ -496,7 +526,10 @@ describe("onboarding E2E (Anthropic official key: key→live-catalog contract)",
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: SHADOW (default)
+        "1", // mode: MICRO_LIVE (default)
+        "MICRO_LIVE", // typed confirmation (real money)
+        "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
+        "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "10000", // capital cap
         "500", // loss cap bps
         "n", // no demo trade
@@ -509,9 +542,12 @@ describe("onboarding E2E (Anthropic official key: key→live-catalog contract)",
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = SHADOW):",
+        "Choose mode (Enter = MICRO_LIVE):",
+        "Type MICRO_LIVE to continue",
+        "Wallet Account address",
+        "Wallet Funder address",
         "Capital cap in USD",
-        "Daily loss cap in bps",
+        "Daily loss cap in %",
       ],
     );
     assert.equal(code, 0);
