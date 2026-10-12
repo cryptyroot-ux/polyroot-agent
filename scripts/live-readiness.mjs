@@ -1,57 +1,230 @@
 #!/usr/bin/env node
 /**
- * Live-readiness rehearsal (No.5): evaluates the 4 live-blockers named by
+ * Live-readiness rehearsal (No.5): evaluates the 5 live-blockers named by
  * the release verdict against THIS environment and prints exactly what is
  * missing, with the remediation for each. Read-only: it never mutates the
  * database, never touches keys (presence checks only, values never
  * printed), never submits anything.
  *
- * Usage: node scripts/live-readiness.mjs [--json]
- * Exit 0 always (it is a report, not a gate); machine output via --json.
+ * Usage: node scripts/live-readiness.mjs [--json] [--gate]
+ *   --json  machine-readable output
+ *   --gate  exit 1 when any blocker is BLOCKED (default: exit 0, it is a report)
  */
 import { Pool } from "pg";
+import {
+  SHADOW_BASELINE_ID,
+  SHADOW_BASELINE_MIN_DAYS,
+  SHADOW_BASELINE_MIN_CLUSTERS,
+  checkShadowBaselineRow,
+} from "@polyroot/runtime";
 
-async function checkObservationDays() {
-  const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
-  if (!url) {
-    return {
-      blocker: "prospective observation",
-      status: "BLOCKED",
-      detail: "no database URL configured",
-      remediation:
-        "export TEST_DATABASE_URL=postgresql://... (read-only user is enough)",
-    };
-  }
-  let pool = null;
+const NO_URL = {
+  blocker: "",
+  status: "BLOCKED",
+  detail: "no database URL configured",
+  remediation:
+    "export TEST_DATABASE_URL=postgresql://... (read-only user is enough)",
+};
+
+function row(blocker, status, detail, remediation) {
+  return { blocker, status, detail, remediation };
+}
+
+async function withPool(url, fn) {
+  const pool = new Pool({
+    connectionString: url,
+    connectionTimeoutMillis: 5000,
+  });
   try {
-    pool = new Pool({ connectionString: url, connectionTimeoutMillis: 5000 });
-    const r = await pool.query(
-      "SELECT observed_days FROM shadow_gate_evaluations ORDER BY evaluated_at DESC LIMIT 1",
-    );
-    const days = r.rows.length > 0 ? Number(r.rows[0].observed_days) : 0;
-    return days >= 30
-      ? {
-          blocker: "prospective observation",
-          status: "READY",
-          detail: `${days}/30 days`,
-          remediation: null,
-        }
-      : {
-          blocker: "prospective observation",
-          status: "BLOCKED",
-          detail: `${days}/30 days`,
-          remediation:
-            "keep the SHADOW loop running; re-run this rehearsal daily",
-        };
-  } catch (e) {
-    return {
-      blocker: "prospective observation",
-      status: "BLOCKED",
-      detail: `database unreachable: ${e instanceof Error ? e.message : String(e)}`,
-      remediation: "provide TEST_DATABASE_URL with valid credentials",
-    };
+    return await fn(pool);
   } finally {
-    if (pool) await pool.end().catch(() => undefined);
+    await pool.end().catch(() => undefined);
+  }
+}
+
+function dbError(e) {
+  return `database unreachable: ${e instanceof Error ? e.message : String(e)}`;
+}
+
+/**
+ * Prospective observation (G5): the SAME baseline row and the SAME rule the
+ * MICRO_LIVE startup gate enforces, so a rehearsal that says READY cannot be
+ * contradicted at boot. Provenance (frozen version + preregistration) is
+ * required too: observation without a frozen pre-live spec is not evidence.
+ */
+async function checkObservationDays(url) {
+  if (!url)
+    return row(
+      "prospective observation",
+      "BLOCKED",
+      NO_URL.detail,
+      NO_URL.remediation,
+    );
+  try {
+    const result = await withPool(url, (pool) =>
+      pool.query(
+        `SELECT observed_days, resolved_clusters, versions_frozen_sha,
+                preregistered, observed_started_at::text AS started,
+                updated_at::text AS updated
+           FROM shadow_baseline WHERE id = $1`,
+        [SHADOW_BASELINE_ID],
+      ),
+    );
+    const r = result.rows[0];
+    if (!r) {
+      return row(
+        "prospective observation",
+        "BLOCKED",
+        `no baseline row ${SHADOW_BASELINE_ID}`,
+        "npm run migrate:latest (migration 0006 seeds the baseline row)",
+      );
+    }
+    const verdict = checkShadowBaselineRow(r);
+    const days = Number(r.observed_days);
+    const clusters = Number(r.resolved_clusters);
+    const detail =
+      `${days}/${SHADOW_BASELINE_MIN_DAYS} days, ` +
+      `${clusters}/${SHADOW_BASELINE_MIN_CLUSTERS} clusters, ` +
+      `preregistered=${r.preregistered}, frozen=${r.versions_frozen_sha ?? "none"}`;
+
+    if (verdict.ok !== true) {
+      return row(
+        "prospective observation",
+        "BLOCKED",
+        detail,
+        `collect evidence up to ${SHADOW_BASELINE_MIN_DAYS}d / ${SHADOW_BASELINE_MIN_CLUSTERS} clusters (polyroot shadow-baseline)`,
+      );
+    }
+    if (r.preregistered !== true || !r.versions_frozen_sha) {
+      return row(
+        "prospective observation",
+        "BLOCKED",
+        detail,
+        "freeze the pre-live spec: polyroot shadow-baseline --freeze <git-sha> --rule <text>",
+      );
+    }
+    return row("prospective observation", "READY", detail, null);
+  } catch (e) {
+    return row(
+      "prospective observation",
+      "BLOCKED",
+      dbError(e),
+      "verify the DB is migrated and reachable",
+    );
+  }
+}
+
+/**
+ * Authenticated live fills: reconciled consumed fill quantity, NOT
+ * resolved_state='ACKNOWLEDGED'. An acknowledgement is a submission handshake
+ * — the domain contract states explicitly that an ACK is not a fill.
+ */
+async function checkLiveFills(url) {
+  if (!url)
+    return row(
+      "authenticated live fills",
+      "BLOCKED",
+      NO_URL.detail,
+      NO_URL.remediation,
+    );
+  try {
+    const result = await withPool(url, (pool) =>
+      pool.query(
+        `SELECT consumed_fill_shares_base, consumed_fill_cash_base,
+                resolved_at::text AS last_at
+           FROM recovery_ledger
+          WHERE venue_order_id IS NOT NULL AND venue_order_id <> ''`,
+      ),
+    );
+    const isPositive = (v) =>
+      typeof v === "string" &&
+      /^[0-9]+$/.test(v.trim()) &&
+      BigInt(v.trim()) > 0n;
+    const filled = result.rows.filter(
+      (r) =>
+        isPositive(r.consumed_fill_shares_base) ||
+        isPositive(r.consumed_fill_cash_base),
+    );
+    const n = filled.length;
+    if (n === 0) {
+      return row(
+        "authenticated live fills",
+        "BLOCKED",
+        "0 reconciled live fills on record",
+        "run bounded MICRO_LIVE first; an acknowledged submission is not a fill",
+      );
+    }
+    const last = filled
+      .map((r) => r.last_at)
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    return row(
+      "authenticated live fills",
+      "READY",
+      `${n} reconciled fill(s), latest ${last ?? "unknown"}`,
+      null,
+    );
+  } catch (e) {
+    const missing =
+      e instanceof Error && /does not exist|relation/i.test(e.message);
+    return row(
+      "authenticated live fills",
+      "BLOCKED",
+      missing
+        ? "recovery_ledger missing — run migrations through 0026"
+        : dbError(e),
+      missing
+        ? "npm run migrate:latest"
+        : "provide TEST_DATABASE_URL with valid credentials",
+    );
+  }
+}
+
+async function checkPromotion(url) {
+  if (!url)
+    return row(
+      "owner-signed LIVE promotion",
+      "BLOCKED",
+      NO_URL.detail,
+      NO_URL.remediation,
+    );
+  try {
+    const result = await withPool(url, (pool) =>
+      pool.query(
+        `SELECT id::text AS id, strategy, profile, to_cap_usd, expires_at::text AS exp
+           FROM live_promotions
+          WHERE revoked_at IS NULL AND expires_at > now()
+          ORDER BY created_at DESC LIMIT 1`,
+      ),
+    );
+    const r = result.rows[0];
+    return r
+      ? row(
+          "owner-signed LIVE promotion",
+          "READY",
+          `${r.strategy}/${r.profile} → $${r.to_cap_usd} until ${r.exp} (${r.id})`,
+          null,
+        )
+      : row(
+          "owner-signed LIVE promotion",
+          "BLOCKED",
+          "no live owner-signed promotion row",
+          "grant one in the terminal: `polyroot live-promote` (typed PROMOTE, wallet-signed)",
+        );
+  } catch (e) {
+    const missing =
+      e instanceof Error && /does not exist|relation/i.test(e.message);
+    return row(
+      "owner-signed LIVE promotion",
+      "BLOCKED",
+      missing
+        ? "live_promotions table missing — run migrations through 0027"
+        : dbError(e),
+      missing
+        ? "npm run migrate:latest"
+        : "provide TEST_DATABASE_URL with valid credentials",
+    );
   }
 }
 
@@ -59,182 +232,92 @@ function checkEnvPresence(name) {
   return typeof process.env[name] === "string" && process.env[name].length > 0;
 }
 
-async function checkLiveFills(url) {
-  if (!url) {
-    return {
-      blocker: "authenticated live fills",
-      status: "BLOCKED",
-      detail: "no database URL configured",
-      remediation:
-        "export TEST_DATABASE_URL=postgresql://... (read-only user is enough)",
-    };
-  }
-  let pool = null;
-  try {
-    pool = new Pool({ connectionString: url, connectionTimeoutMillis: 5000 });
-    // Real venue acknowledgements: resolved rows carrying a venue order id.
-    // Paper/shadow sim fills never write venue_order_id — this counts only
-    // venue-confirmed executions.
-    const r = await pool.query(
-      `SELECT count(*)::text AS n,
-              max(resolved_at)::text AS last_at
-       FROM recovery_ledger
-       WHERE resolved = true AND resolved_state = 'ACKNOWLEDGED'
-         AND venue_order_id IS NOT NULL AND venue_order_id <> ''`,
-    );
-    const n = Number(r.rows[0]?.n ?? 0);
-    return n > 0
-      ? {
-          blocker: "authenticated live fills",
-          status: "READY",
-          detail: `${n} venue-confirmed fill(s), latest ${r.rows[0]?.last_at ?? "unknown"}`,
-          remediation: null,
-        }
-      : {
-          blocker: "authenticated live fills",
-          status: "BLOCKED",
-          detail: "0 venue-confirmed fills on record",
-          remediation:
-            "run bounded MICRO_LIVE first; SHADOW/PAPER sim fills do not count",
-        };
-  } catch (e) {
-    return {
-      blocker: "authenticated live fills",
-      status: "BLOCKED",
-      detail: `database unreachable: ${e instanceof Error ? e.message : String(e)}`,
-      remediation: "provide TEST_DATABASE_URL with valid credentials",
-    };
-  } finally {
-    if (pool) await pool.end().catch(() => undefined);
-  }
-}
-
-async function checkPromotion(url) {
-  if (!url) {
-    return {
-      blocker: "owner-signed LIVE promotion",
-      status: "BLOCKED",
-      detail: "no database URL configured",
-      remediation:
-        "export TEST_DATABASE_URL=postgresql://... (read-only user is enough)",
-    };
-  }
-  let pool = null;
-  try {
-    pool = new Pool({ connectionString: url, connectionTimeoutMillis: 5000 });
-    const r = await pool.query(
-      `SELECT id::text AS id, strategy, profile, to_cap_usd, expires_at::text AS exp
-       FROM live_promotions
-       WHERE revoked_at IS NULL AND expires_at > now()
-       ORDER BY created_at DESC LIMIT 1`,
-    );
-    const row = r.rows[0];
-    return row
-      ? {
-          blocker: "owner-signed LIVE promotion",
-          status: "READY",
-          detail: `${row.strategy}/${row.profile} → $${row.to_cap_usd} until ${row.exp} (${row.id})`,
-          remediation: null,
-        }
-      : {
-          blocker: "owner-signed LIVE promotion",
-          status: "BLOCKED",
-          detail: "no live owner-signed promotion row",
-          remediation:
-            "grant one in the terminal: `polyroot live-promote` (typed PROMOTE, wallet-signed)",
-        };
-  } catch (e) {
-    const missing =
-      e instanceof Error && /does not exist|relation/i.test(e.message);
-    return {
-      blocker: "owner-signed LIVE promotion",
-      status: "BLOCKED",
-      detail: missing
-        ? "live_promotions table missing — run migrations through 0027"
-        : `database unreachable: ${e instanceof Error ? e.message : String(e)}`,
-      remediation: missing
-        ? "npm run migrate:latest"
-        : "provide TEST_DATABASE_URL with valid credentials",
-    };
-  } finally {
-    if (pool) await pool.end().catch(() => undefined);
-  }
-}
-
-async function main() {
-  const rows = [];
-  rows.push(await checkObservationDays());
-  const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
-  rows.push(await checkLiveFills(url));
-  rows.push(await checkPromotion(url));
+function checkSigningPath() {
   const kmsKey = checkEnvPresence("KMS_KEY_ID");
   const awsKey = checkEnvPresence("AWS_ACCESS_KEY_ID");
-  const keystoreJson = checkEnvPresence("POLYROOT_KEYSTORE_JSON");
-  const keystoreFile = checkEnvPresence("POLYROOT_KEYSTORE_FILE");
-  const hasKeystore = keystoreJson || keystoreFile;
-  rows.push(
-    (kmsKey && awsKey) || hasKeystore
-      ? {
-          blocker: "Signing path (KMS/HSM or keystore)",
-          status: "READY",
-          detail: hasKeystore
-            ? "POLYROOT_KEYSTORE_JSON/FILE present (keystore at rest)"
-            : "KMS_KEY_ID + AWS credentials present (presence only, never printed)",
-          remediation: null,
-        }
-      : {
-          blocker: "Signing path (KMS/HSM or keystore)",
-          status: "BLOCKED",
-          detail: `KMS_KEY_ID ${kmsKey ? "present" : "missing"}, AWS credentials ${awsKey ? "present" : "missing"}, Keystore ${hasKeystore ? "present" : "missing"}`,
-          remediation:
-            "Option A: export KMS_KEY_ID + AWS credentials via systemd credentials\nOption B: seal key with 'polyroot wallet seal' and set POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE",
-        },
+  const hasKeystore =
+    checkEnvPresence("POLYROOT_KEYSTORE_JSON") ||
+    checkEnvPresence("POLYROOT_KEYSTORE_FILE");
+  if ((kmsKey && awsKey) || hasKeystore) {
+    return row(
+      "Signing path (KMS/HSM or keystore)",
+      "READY",
+      hasKeystore
+        ? "POLYROOT_KEYSTORE_JSON/FILE present (keystore at rest)"
+        : "KMS_KEY_ID + AWS credentials present (presence only, never printed)",
+      null,
+    );
+  }
+  return row(
+    "Signing path (KMS/HSM or keystore)",
+    "BLOCKED",
+    `KMS_KEY_ID ${kmsKey ? "present" : "missing"}, AWS credentials ${awsKey ? "present" : "missing"}, Keystore ${hasKeystore ? "present" : "missing"}`,
+    "Option A: export KMS_KEY_ID + AWS credentials via systemd credentials\nOption B: seal key with 'polyroot wallet seal' and set POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE",
   );
-  let wrapper = "BLOCKED";
-  let wrapperDetail = "eip712 module missing";
+}
+
+async function checkPoly1271Wrapper() {
   try {
     const m = await import("@polyroot/signer");
-    const fns = [
+    const missing = [
       "encodeField",
       "hashStruct",
       "signingDigest",
       "hashNested1271",
-    ];
-    const missing = fns.filter((f) => typeof m[f] !== "function");
-    if (missing.length === 0) {
-      wrapper = "READY";
-      wrapperDetail =
-        "offline EIP-712/7739 encoding present; on-chain validator call stays G4";
-    } else {
-      wrapperDetail = `missing exports: ${missing.join(", ")}`;
-    }
+    ].filter((f) => typeof m[f] !== "function");
+    return missing.length === 0
+      ? row(
+          "POLY_1271 wrapper",
+          "READY",
+          "offline EIP-712/7739 encoding present; on-chain validator call stays G4",
+          null,
+        )
+      : row(
+          "POLY_1271 wrapper",
+          "BLOCKED",
+          `missing exports: ${missing.join(", ")}`,
+          "complete the offline 1271 encoder, then schedule the validator-contract call (G4)",
+        );
   } catch (e) {
-    wrapperDetail = `signer package not loadable: ${e instanceof Error ? e.message : String(e)}`;
+    return row(
+      "POLY_1271 wrapper",
+      "BLOCKED",
+      `signer package not loadable: ${e instanceof Error ? e.message : String(e)}`,
+      "build the workspace: npm run build:all",
+    );
   }
-  rows.push({
-    blocker: "POLY_1271 wrapper",
-    status: wrapper,
-    detail: wrapperDetail,
-    remediation:
-      wrapper === "READY"
-        ? null
-        : "complete the offline 1271 encoder, then schedule the validator-contract call (G4)",
-  });
+}
+
+async function main() {
+  const url = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+  const rows = [
+    await checkObservationDays(url),
+    await checkLiveFills(url),
+    await checkPromotion(url),
+    checkSigningPath(),
+    await checkPoly1271Wrapper(),
+  ];
 
   if (process.argv.includes("--json")) {
     console.log(JSON.stringify(rows, null, 1));
-    return;
+  } else {
+    console.log("blocker | status | detail | remediation");
+    for (const r of rows) {
+      console.log(
+        `${r.blocker} | ${r.status} | ${r.detail} | ${r.remediation ?? "-"}`,
+      );
+    }
   }
-  console.log("blocker | status | detail | remediation");
-  for (const r of rows) {
+
+  const blocked = rows.filter((r) => r.status === "BLOCKED").length;
+  if (!process.argv.includes("--json")) {
     console.log(
-      `${r.blocker} | ${r.status} | ${r.detail} | ${r.remediation ?? "-"}`,
+      `live-readiness: ${rows.length - blocked}/${rows.length} ready (${blocked} blocked)`,
     );
   }
-  const blocked = rows.filter((r) => r.status === "BLOCKED").length;
-  console.log(
-    `live-readiness: ${rows.length - blocked}/${rows.length} ready (${blocked} blocked)`,
-  );
+  if (blocked > 0 && process.argv.includes("--gate")) {
+    process.exitCode = 1;
+  }
 }
 
 await main();
