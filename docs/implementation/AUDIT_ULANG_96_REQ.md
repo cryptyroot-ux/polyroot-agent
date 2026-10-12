@@ -1,8 +1,27 @@
 # RE-AUDIT — 96 PRD v1.1 REQUIREMENTS ↔ REAL CODE
 
-Date: 2026-09-11
+Date: 2026-09-11 (original) · re-verified 2026-10-12 (partial, see below)
 Source: `PolyRoot_PRD_v1.1.docx` (96 reqs: 86 P0 + 10 P1, 12 groups × 8)
 Method: read code per package (not claims), verify real exports & wiring.
+
+## Re-verification 2026-10-12 — scope and honesty note
+
+This section re-checked the original audit's **5 stated CRITICAL GAPS** against
+`ade4699` + the fixes on branch `fix/verified-audit-findings`. **All five are
+now resolved**, so the "Honest summary" and "Re-audit conclusions" below are
+STALE for those items and must not be quoted as current.
+
+| Original critical gap | Verdict 2026-10-12 | Evidence |
+|-----|-----|-------|
+| #1 No real Polymarket VenueAdapter | **RESOLVED** | `PolymarketVenueAdapter` (`src/pm/venue/src/polymarket-adapter.ts:170`) satisfies the `VenueAdapter` contract (`get mode():187`, `getOrderBook`, `placeOrder`, `cancelOrder`, `getOrderStatus`, `setMode:191`); wired at 4 call sites via `buildLiveVenueAdapter` (`runtime/src/cli.ts:2929,3403,4564`); 7 contract test files under `tests/pm/contracts/venue-*.test.ts` |
+| #2 Autonomous loop unwired | **RESOLVED (differently)** | `runPaperLoopWithOrchestrator` does call `params.orchestrate(...)` (`runtime/src/paper-engine.ts:664`), but it is deliberately **not exported** (`runtime/src/index.ts:9`: "PAPER-loop drivers … are gone"). PAPER/SHADOW are no longer runtime modes; the live path is `bootstrapAgent` → MoneyKernel/Executor. The paper loop survives only as an evaluation utility. |
+| #3 Observability placeholder | **RESOLVED** | `@polyroot/observability` is a real package (pino + prom-client) with `status-board.ts` + `telegram-stream.ts`; metrics server lives in `runtime/src/metrics-server.ts`; CI runs a Security Scan + SBOM + Trivy job. |
+| #4 Security/sandbox/API missing | **PARTIALLY RESOLVED** | `ci.yml` now has `Security Scan (Gitleaks + SBOM + Trivy)` and `Dependency Security Scan (npm audit, sbom)` jobs. SEC-02/03/05/07 and OPS-01/04/06/08 were **not** re-verified — treat as open. |
+| #5 G5/G6/G7 cannot PASS | **STILL TRUE for the evidence itself** | Calendar evidence has still never been produced. What changed is that the gate is now *reachable*: `baseline-sync.ts` derives both G5 counters from durable facts, and `polyroot shadow-baseline freeze|status|refresh` makes preregistration possible. Reaching 30d/100 clusters still requires real elapsed time. |
+
+**Coverage: 5 of 5 critical gaps re-verified. The remaining 91 requirement rows
+below were NOT re-verified on 2026-10-12** and keep their 2026-09-11 status.
+That is an honest statement of coverage, not a claim of completeness.
 
 ## Honest summary
 
