@@ -10,10 +10,12 @@ import { groupArbEvents, startArbScan } from "@polyroot/venue";
 
 const W = "0x924379a79c64b77ad5816ad362122a5f6228658e";
 
+const NOW_S = Math.floor(Date.now() / 1000);
+
 function tradeRow(over: Record<string, unknown> = {}) {
   return {
     proxyWallet: W,
-    timestamp: 1790602268,
+    timestamp: NOW_S,
     conditionId: "0xabc",
     type: "TRADE",
     size: 100,
@@ -126,7 +128,6 @@ describe("smart-money feed (venue)", () => {
     try {
       await handle.tick();
       const f = handle.getFlow("tokA");
-      console.error("[TEST DEBUG] f:", f, "tokenId:", "tokA");
       assert.ok(f);
       // +51 − 2000 = −1949 across 2 wallets
       assert.equal(f.netFlowUsd, 51 - 2000);
