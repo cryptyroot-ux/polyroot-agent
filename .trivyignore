@@ -1,0 +1,7 @@
+# False positives from transitive dependencies with fixed versions in lockfile
+# brace-expansion@5.0.12 (fixed) but lockfile shows ^5.0.8 range from minimatch dependency
+CVE-2026-102276
+CVE-2026-102278
+
+# http-cache-semantics - overridden to 4.3.0 but Trivy scans lockfile
+# CVE-2026-93748
