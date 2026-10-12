@@ -105,10 +105,7 @@ export const nowSec = () => Math.floor(Date.now() / 1000);
 /* ─── Orthogonal state axes (PRD P3.2, Blueprint B3.2) ─── */
 
 /** Operation mode — RESEARCH/LIVE (PM-GOV-02); only LIVE can send financial orders. */
-export const OperationModeSchema = z.enum([
-  "RESEARCH",
-  "LIVE",
-]);
+export const OperationModeSchema = z.enum(["RESEARCH", "LIVE"]);
 export type OperationMode = z.infer<typeof OperationModeSchema>;
 /** Backwards-compatible alias used by older scaffolds. */
 export const ExecutionModeSchema = OperationModeSchema;
