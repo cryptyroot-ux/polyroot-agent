@@ -174,30 +174,22 @@ describe("telegram setup wizard (dry-run, no network needed)", () => {
       child.stdout.resume();
       child.stderr.resume();
       let i = 0;
-      let waitingForPrompt = false;
+      let lastWriteAt = 0;
+      const GRACE_MS = 10_000;
+      const countOf = (needle: string): number => text.split(needle).length - 1;
       const feeder = setInterval(() => {
-        if (i < lines.length && !waitingForPrompt) {
-          if (
-            text.includes("Tempel token bot dari BotFather") ||
-            text.includes("Tempel token")
-          ) {
-            waitingForPrompt = true;
-            try {
-              child.stdin.write(`${lines[i++]}\n`);
-            } catch {
-              clearInterval(feeder);
-            }
+        const tokenPrompts = countOf("Tempel token bot dari BotFather");
+        const retryPrompts = countOf("Coba token lain");
+        const shouldWrite =
+          i === lines.length - 1 ? retryPrompts >= 1 : tokenPrompts >= i + 1;
+        if (i < lines.length && shouldWrite) {
+          lastWriteAt = Date.now();
+          try {
+            child.stdin.write(`${lines[i++]}\n`);
+          } catch {
+            clearInterval(feeder);
           }
-        } else if (i < lines.length && waitingForPrompt) {
-          if (
-            text.includes("Tempel token bot dari BotFather") ||
-            text.includes("Coba token lain") ||
-            text.includes("Terhubung sebagai") ||
-            text.includes("Setup dibatalkan")
-          ) {
-            waitingForPrompt = false;
-          }
-        } else {
+        } else if (i >= lines.length && Date.now() - lastWriteAt > GRACE_MS) {
           clearInterval(feeder);
           try {
             child.stdin.end();
@@ -205,7 +197,7 @@ describe("telegram setup wizard (dry-run, no network needed)", () => {
             // already closed
           }
         }
-      }, 500);
+      }, 250);
       const killer = setTimeout(() => {
         clearInterval(feeder);
         child.kill("SIGKILL");
