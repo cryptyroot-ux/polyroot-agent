@@ -11,11 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ Added
 
+- **`polyroot shadow-baseline status|refresh|freeze <git-sha> --rule <text>`** — operates the G5 prospective-observation baseline that gates MICRO_LIVE. `status` prints observed days, resolved clusters, preregistration and the frozen spec sha; `refresh` re-derives both counters; `freeze` registers the pre-live spec and refuses without a stopping rule. Previously nothing in production could write this row, so the MICRO_LIVE startup gate was unreachable
 - **PM-OBS-01 Telegram agent stream** — every G4 loop stage (research ingest, evidence weight, universe scan, forecast, reasoning, risk gate, order submit/fill, no-trade, errors) is pushed in real time to the owner's Telegram DM via a `G4CoreObservability` fan-out in `bootstrapAgent`. Fire-and-forget with failure backoff, 30/min rate cap, HTML-escaped fields, and outbound secret redaction — a dead Bot API never touches the trading loop
 
 ### ✨ Changed
 
 - **Telegram agent stream v2 (PM-OBS-01 refinement)** — per-pass digest with real market names and scanned/evaluated/deferred counts; per-market reports (question, book, AI probability + verbatim reasoning, decision + reason, money at stake) in full English; NO_TRADE reported once per reason; `--once` runs stay silent
+
+### 🐛 Fixed
+
+- **Build was red on `main`** — `smart-money-feed.ts` referenced `flows`, `tokenId` and `f` outside their scope (5 × TS2304), failing `@polyroot/venue#build` and skipping every downstream CI job. Restored the token-flow aggregation; build is 13/13 again
+- **`smart-money-arb` test died on a calendar** — its fixtures pinned `timestamp: 1790602268` against a 7-day lookback, so the test failed deterministically from 2026-10-05. Fixtures are now wall-clock independent
+- **Telegram setup dispatch test failed ~40% of runs** — the prompt feeder matched cumulative output, closed stdin while the child was still in its 12s API call, and the child died with `ERR_USE_AFTER_CLOSE`
+- **Live readiness counted acknowledgements as fills** — it counted `resolved_state='ACKNOWLEDGED'` rows, but an ACK is a submission handshake, not a fill. It now counts the reconciled `consumed_fill_*` counters, requires `resolved_clusters` and preregistration alongside `observed_days`, and gained `--gate` for CI
+- **Two different baseline gates** — the runtime read `shadow_baseline` by `ORDER BY id DESC` while the CLI pinned a fixed UUID; both now share `SHADOW_BASELINE_ID`
 
 ## [1.14.2] - 2026-09-30
 
