@@ -68,6 +68,7 @@
     "nanoid": "^3.3.8",
     "minimatch": "^10.2.1",
     "qs": "^6.15.0",
+    "proxy-addr": "^2.0.8",
     "bigint-buffer": "npm:@vekexasia/bigint-buffer2@^1.0.4"
   },
   "dependencies": {
