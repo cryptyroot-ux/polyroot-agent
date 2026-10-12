@@ -1,10 +1,13 @@
-# Runbook: SHADOW 48 Hours → MICRO_LIVE Small Cap
+# Runbook: G5 Baseline → MICRO_LIVE Small Cap
 
 > English. Exact commands; do not improvise the order.
 
 ## 0. Principles
 
-- SHADOW = live data reads, simulated fills, **zero financial I/O**.
+- Runtime modes are **MICRO_LIVE** and **LIVE** only. `SHADOW`/`PAPER` are
+  migration-table identifiers, not selectable modes.
+- Observation happens by *running the agent*: it records market decisions and
+  Gamma resolutions, and derives the G5 baseline counters from them.
 - MICRO_LIVE = real orders with an explicit cap. Real money = real risk.
 - Any failed gate = STOP, never bypass.
 
@@ -31,28 +34,26 @@ polyroot venue check --asset <token-id>
 # PASS = live order-book read OK
 ```
 
-SHADOW needs no private key or API credentials (public client). If
-`venue check` FAILs, stop here: fix connectivity first.
+If `venue check` FAILs, stop here: fix connectivity first.
 
 ## 3. Configure (guided, safe defaults)
 
 ```bash
 polyroot setup
-# Choose SHADOW. Market discovery defaults to Auto: the agent finds the
-# most liquid markets itself (min 24h volume + max spread guardrails).
-# No manual token-ID pasting required.
-polyroot shadow-fund --amount 1000   # $1000 play bankroll (SHADOW only)
+# Choose MICRO_LIVE with a small capital cap. Market discovery defaults to
+# Auto: the agent finds the most liquid markets itself (min 24h volume +
+# max spread guardrails). No manual token-ID pasting required.
 polyroot doctor                      # all checks must pass
 ```
 
-Without a market universe (neither Auto nor curated IDs), non-PAPER modes
+Without a market universe (neither Auto nor curated IDs), the live modes
 refuse to start (`MARKET_UNIVERSE_MISSING`) — the loop never falls back to
-mock data when live/SHADOW is configured.
+mock data when MICRO_LIVE/LIVE is configured.
 
-## 4. Run SHADOW 48 hours
+## 4. Run and accumulate observation
 
 ```bash
-setsid nohup polyroot run > ~/.polyroot/shadow-48h.log 2>&1 < /dev/null &
+setsid nohup polyroot run > ~/.polyroot/observe.log 2>&1 < /dev/null &
 curl http://127.0.0.1:9090/healthz   # must be {"status":"ok"}
 ```
 
@@ -70,10 +71,10 @@ Daily monitoring:
   `⏭️  No trade: NEGATIVE_EDGE (AI p=..., edge=-...)` is normal thinking,
   not an error.
 - `✅ Fill: FILLED @ <price> x <size> (AI p=..., edge=+...)` proves the
-  full decide → reserve → fill → settle path runs on sim funds.
+  full decide → reserve → fill → settle path runs.
 - Restart any time: state is durable in PostgreSQL.
 
-## 5. SHADOW evidence (read from the DB, never claimed)
+## 5. Observation evidence (read from the DB, never claimed)
 
 ```sql
 -- Simulated decision volume (must grow daily)
@@ -89,23 +90,35 @@ SELECT COUNT(*) FROM reservations
 WHERE status = 'ACTIVE' AND expires_at < now();
 
 -- 30-day baseline row (G5 gate source of truth)
-SELECT observed_days, resolved_clusters, preregistered, updated_at
+-- Prefer: polyroot shadow-baseline status
+SELECT observed_days, resolved_clusters, preregistered, versions_frozen_sha, updated_at
 FROM shadow_baseline
 WHERE id = '00000000-0000-0000-0000-000000000001';
 ```
 
-Promotion criteria SHADOW → MICRO_LIVE (code: `g4-core.ts`, `micro-live-guard.ts`):
+Promotion criteria observation → MICRO_LIVE (code: `g4-core.ts`, `micro-live-guard.ts`):
 
-1. 48 clean hours minimum (30 days + 100 resolved clusters for full G5).
+1. `polyroot shadow-baseline status` reports 30/30 observed days AND
+   100/100 resolved clusters, `preregistered: true`, and a frozen spec sha.
 2. Fills settle: bankroll moves, no stuck reservations, no repeated ERROR.
 3. Owner-explicit loss cap set (a number, e.g. 100 USDC).
+
+Both counters are derived by the agent itself — never hand-edit them. The
+only manual step is freezing the pre-live spec, which must happen BEFORE the
+observation window counts:
+
+```bash
+polyroot shadow-baseline freeze <git-sha> --rule "<stopping rule text>"
+```
+
+`--rule` is mandatory; the command refuses without it.
 
 ## 6. Go-live MICRO_LIVE (small cap) — checklist
 
 - [ ] DEDICATED test wallet (not the main wallet), 3 distinct addresses (signer/account/funder) — `polyroot wallet verify`, all PASS.
 - [ ] USDC funded + CTF approval done (manual, via Polymarket UI/cast).
 - [ ] `POLYMARKET_API_KEY/_SECRET/_PASSPHRASE` filled from the Polymarket profile.
-- [ ] SHADOW evidence from section 5 complete.
+- [ ] Observation evidence from section 5 complete (`polyroot shadow-baseline status`).
 - [ ] Caps: keep the $1000 capital default until 2 weeks of results are reviewed.
 - [ ] `/metrics` (Bearer key) monitored + daily-loss alert active.
 
@@ -126,7 +139,7 @@ Kill criteria (stop when any one happens):
 ## 7. Honest warnings (read before funding a wallet)
 
 1. **Automatic enforcement IS wired**: exposure cap, persistent loss-cap
-   latch (DB `live_guard_state`, survives restarts), and SHADOW gates.
+   latch (DB `live_guard_state`, survives restarts), and the G5 baseline gates.
    Unlock the latch only via `polyroot guard reset --loss <pusd>` once loss
    is back under cap. The manual kill criteria in section 6 stay as a
    second layer.
