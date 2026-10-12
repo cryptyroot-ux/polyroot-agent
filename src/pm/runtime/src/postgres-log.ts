@@ -5,6 +5,7 @@
 
 import { Pool, type PoolConfig } from "pg";
 import type { SimulatedFill, ProbQuality } from "./paper-engine.js";
+import { SHADOW_BASELINE_ID } from "./live-guard-store.js";
 
 export interface PaperLogRow {
   market_id: string;
@@ -217,14 +218,16 @@ export class PgShadowBaseline {
       `UPDATE shadow_baseline
        SET observed_days = EXTRACT(EPOCH FROM (now() - observed_started_at))/86400.0,
            updated_at = now()
-       WHERE id='00000000-0000-0000-0000-000000000001'`,
+       WHERE id = $1`,
+      [SHADOW_BASELINE_ID],
     );
   }
 
   async snapshot(_account = "default"): Promise<ShadowBaselineSnapshot> {
     const r = await this.pool.query(
       `SELECT observed_days, resolved_clusters, versions_frozen_sha, preregistered, pr_stopping_rule
-       FROM shadow_baseline WHERE id='00000000-0000-0000-0000-000000000001'`,
+       FROM shadow_baseline WHERE id = $1`,
+      [SHADOW_BASELINE_ID],
     );
     const s = r.rows[0];
     const observedDays = Number(s?.observed_days ?? 0);
@@ -247,8 +250,8 @@ export class PgShadowBaseline {
     await this.pool.query(
       `UPDATE shadow_baseline
        SET versions_frozen_sha=$1, pr_stopping_rule=$2, preregistered=TRUE, updated_at=now()
-       WHERE id='00000000-0000-0000-0000-000000000001'`,
-      [sha, prerule],
+       WHERE id = $3`,
+      [sha, prerule, SHADOW_BASELINE_ID],
     );
   }
 }

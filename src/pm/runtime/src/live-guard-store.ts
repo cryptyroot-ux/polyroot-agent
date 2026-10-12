@@ -19,6 +19,10 @@ import {
 export const SHADOW_BASELINE_MIN_DAYS = 30;
 export const SHADOW_BASELINE_MIN_CLUSTERS = 100;
 
+/** Canonical baseline row. Migration 0006 seeds exactly this id, and every
+ *  reader/writer of the G5 baseline must address this same row. */
+export const SHADOW_BASELINE_ID = "00000000-0000-0000-0000-000000000001";
+
 export interface ShadowBaselineRow {
   observed_days: unknown;
   resolved_clusters: unknown;
@@ -428,7 +432,8 @@ export async function resolveStartupAdmission(
   // G4: SHADOW baseline (30d / 100 clusters) from the durable row.
   try {
     const r = await deps.pool.query(
-      `SELECT observed_days, resolved_clusters FROM shadow_baseline ORDER BY id DESC LIMIT 1`,
+      `SELECT observed_days, resolved_clusters FROM shadow_baseline WHERE id = $1`,
+      [SHADOW_BASELINE_ID],
     );
     const check = checkShadowBaselineRow(
       (r.rows[0] as ShadowBaselineRow | undefined) ?? null,

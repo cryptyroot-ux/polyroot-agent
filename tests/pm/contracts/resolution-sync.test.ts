@@ -293,13 +293,15 @@ describe("resolution sync scheduler", () => {
       },
     });
     const s = await handle.tick();
+    handle.stop();
     assert.deepEqual(s, {
       decidedMarkets: 0,
       recordedNew: 0,
       calibrationGroups: 0,
       calibrationSamples: 0,
+      observedDays: 0,
+      resolvedClusters: 0,
     });
     assert.ok(errMsg.includes("gamma down"));
-    handle.stop();
   });
 });

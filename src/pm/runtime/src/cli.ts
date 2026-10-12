@@ -15,6 +15,9 @@ import {
 import { randomBytes } from "node:crypto";
 import {
   PgLiveGuardStore,
+  SHADOW_BASELINE_ID,
+  SHADOW_BASELINE_MIN_CLUSTERS,
+  SHADOW_BASELINE_MIN_DAYS,
   checkShadowBaselineRow,
   decideGuardReset,
 } from "./live-guard-store.js";
@@ -1110,7 +1113,10 @@ async function detectProxyWalletAddresses(): Promise<DetectedProxyWallets | null
       },
     });
     if (!resp.ok) return null;
-    const data = (await resp.json()) as any;
+    const data = (await resp.json()) as {
+      account?: unknown;
+      funder?: unknown;
+    };
     if (data && data.account && data.funder) {
       return {
         account: String(data.account),
@@ -3235,7 +3241,8 @@ export async function assertMicroLiveReady(databaseUrl: string): Promise<void> {
   try {
     const res = await pool.query(
       `SELECT observed_days, resolved_clusters FROM shadow_baseline
-       WHERE id = '00000000-0000-0000-0000-000000000001'`,
+       WHERE id = $1`,
+      [SHADOW_BASELINE_ID],
     );
     const verdict = checkShadowBaselineRow(
       (res.rows[0] ?? null) as {
@@ -4321,6 +4328,82 @@ async function runSetKeyCommand(): Promise<void> {
       process.exit(0);
     }
     throw e;
+  }
+}
+
+async function runShadowBaselineCommand(args: string[]): Promise<void> {
+  loadDotEnv();
+  const dbUrl = process.env["DATABASE_URL"];
+  if (!dbUrl) {
+    console.error(
+      "❌ DATABASE_URL required to read or update the G5 baseline.",
+    );
+    process.exit(1);
+  }
+  const sub = args[0] ?? "status";
+  const pool = new Pool({ connectionString: dbUrl });
+  try {
+    const { PgShadowBaseline } = await import("./postgres-log.js");
+    const { syncBaselineRow } = await import("./baseline-sync.js");
+    const baseline = new PgShadowBaseline(pool);
+
+    if (sub === "refresh") {
+      const out = await syncBaselineRow(pool);
+      if (!out) {
+        console.error(
+          "❌ No baseline row — run migrations first (npm run migrate:latest).",
+        );
+        process.exit(1);
+      }
+      console.log(
+        `Baseline refreshed: ${out.observedDays.toFixed(2)}/${SHADOW_BASELINE_MIN_DAYS} days, ` +
+          `${out.resolvedClusters}/${SHADOW_BASELINE_MIN_CLUSTERS} clusters.`,
+      );
+      return;
+    }
+
+    if (sub === "freeze") {
+      const sha = args[1] ?? "";
+      const ruleIdx = args.indexOf("--rule");
+      const rule = ruleIdx >= 0 ? (args[ruleIdx + 1] ?? "") : "";
+      if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
+        console.error(
+          "Usage: polyroot shadow-baseline freeze <git-sha> --rule <stopping rule text>",
+        );
+        process.exit(1);
+      }
+      if (rule.trim().length === 0) {
+        console.error(
+          "Refusing to freeze without a stopping rule: --rule is required.",
+        );
+        process.exit(1);
+      }
+      await baseline.freezeVersion(sha, rule.trim());
+      console.log(`✅ Pre-live spec frozen at ${sha}.`);
+      return;
+    }
+
+    if (sub !== "status") {
+      console.error(
+        "Usage: polyroot shadow-baseline [status|refresh|freeze <git-sha> --rule <text>]",
+      );
+      process.exit(1);
+    }
+
+    const snap = await baseline.snapshot();
+    console.log(`G5 baseline (id ${SHADOW_BASELINE_ID})`);
+    console.log(
+      `   observed days     : ${snap.observedDays}/${SHADOW_BASELINE_MIN_DAYS}`,
+    );
+    console.log(
+      `   resolved clusters : ${snap.resolvedClusters}/${SHADOW_BASELINE_MIN_CLUSTERS}`,
+    );
+    console.log(`   preregistered     : ${snap.preregistered}`);
+    console.log(`   versions frozen   : ${snap.versionsFrozenSha ?? "—"}`);
+    console.log(`   stopping rule     : ${snap.stStoppingRule ?? "—"}`);
+    console.log(`   gate passed       : ${snap.gatePassed ? "YES" : "NO"}`);
+  } finally {
+    await pool.end().catch(() => undefined);
   }
 }
 
@@ -5489,6 +5572,10 @@ export async function main(
     await runModeCommand(argv[1]);
     return;
   }
+  if (argv[0] === "shadow-baseline") {
+    await runShadowBaselineCommand(argv.slice(1));
+    return;
+  }
   if (argv[0] === "set-key") {
     await runSetKeyCommand();
     return;
@@ -5563,7 +5650,7 @@ export async function main(
     "onboard",
     "setup",
     "mode",
-    "shadow-fund",
+    "shadow-baseline",
     "wallet",
     "venue",
     "markets",
@@ -5613,7 +5700,7 @@ export async function main(
     argv[0] !== "restart" &&
     argv[0] !== "onboard" &&
     argv[0] !== "setup" &&
-    argv[0] !== "shadow-fund"
+    argv[0] !== "shadow-baseline"
   ) {
     await runFirstTimeSetup();
   }

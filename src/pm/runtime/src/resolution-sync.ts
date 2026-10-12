@@ -18,6 +18,7 @@ import {
   type InsertablePool,
 } from "@polyroot/venue";
 import { PgCalibrationService } from "@polyroot/intelligence";
+import { syncBaselineRow } from "./baseline-sync.js";
 
 export interface ResolutionSyncDeps {
   pool: InsertablePool;
@@ -34,6 +35,8 @@ export interface ResolutionSyncSummary {
   recordedNew: number;
   calibrationGroups: number;
   calibrationSamples: number;
+  observedDays: number;
+  resolvedClusters: number;
 }
 
 export interface ResolutionSyncHandle {
@@ -56,6 +59,8 @@ export function startResolutionSync(
       recordedNew: 0,
       calibrationGroups: 0,
       calibrationSamples: 0,
+      observedDays: 0,
+      resolvedClusters: 0,
     };
     try {
       const raw = deps.fetchClosed
@@ -75,6 +80,14 @@ export function startResolutionSync(
         empty.calibrationSamples = trained.samplesTotal;
       } catch {
         // Training failure must never fail the tick (recording succeeded).
+      }
+      try {
+        const baseline = await syncBaselineRow(deps.pool);
+        empty.observedDays = baseline?.observedDays ?? 0;
+        empty.resolvedClusters = baseline?.resolvedClusters ?? 0;
+      } catch {
+        // A stale baseline blocks the MICRO_LIVE gate; it must never fail the
+        // tick. The next pass retries.
       }
       deps.onTick?.(empty);
       return empty;

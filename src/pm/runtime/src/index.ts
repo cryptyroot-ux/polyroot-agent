@@ -56,6 +56,7 @@ export * from "./g4-core.js";
 export * from "./reality-gap.js";
 export * from "./micro-live-guard.js";
 export * from "./resolution-sync.js";
+export * from "./baseline-sync.js";
 export * from "./console-ui.js";
 export * from "./instance-guard.js";
 export * from "./telegram.js";
