@@ -187,7 +187,7 @@ export interface G4ReadinessResult {
 }
 
 /**
- * Single promotion gate for SHADOW → MICRO_LIVE.
+ * Single promotion gate for going live.
  *
  *   PROMOTE — baseline met, reality gap PASS, loss latch clear.
  *   HOLD    — baseline growing or evidence insufficient (time/data, not a fault).

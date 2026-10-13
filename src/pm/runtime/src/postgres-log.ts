@@ -22,7 +22,7 @@ export interface PaperLogRow {
   loopEpoch: number;
 }
 
-export type ExperimentMode = "MICRO_LIVE" | "LIVE";
+export type ExperimentMode = "LIVE";
 
 export interface ExperimentRow {
   id: string;

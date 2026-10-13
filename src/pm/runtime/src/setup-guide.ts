@@ -8,12 +8,17 @@
  * they are operator UI only.
  */
 
-import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
+import {
+  AUTONOMY_BOUNDS,
+  LIVE_CAP_ENV,
+  LIVE_LOSS_CAP_ENV,
+  resolveLossCapPusd,
+} from "./autonomy-bounds.js";
 
 export interface SetupBoundsInput {
   capitalUsd: number;
   lossBps: number;
-  mode: "MICRO_LIVE" | "LIVE";
+  mode: "LIVE";
   universe: string[];
   discovery?: {
     mode: "auto" | "manual";
@@ -36,8 +41,8 @@ export function buildSetupEnvUpdate(input: SetupBoundsInput): string[] {
       : AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
   const lossCap = resolveLossCapPusd(capital, bps) ?? 0;
   const lines = [
-    `POLYROOT_MICRO_LIVE_CAP_USD=${capital}`,
-    `POLYROOT_MICRO_LIVE_LOSS_CAP_USD=${lossCap}`,
+    `${LIVE_CAP_ENV}=${capital}`,
+    `${LIVE_LOSS_CAP_ENV}=${lossCap}`,
     `RUNTIME_MODE=${input.mode}`,
   ];
   if (input.universe.length > 0) {
@@ -88,7 +93,7 @@ export function upsertEnvLines(existing: string, updates: string[]): string {
 
 /** Numbered cheat-sheet printed after setup/onboarding. Exact commands,
  *  in order, with what PASS looks like. */
-export function formatNextSteps(mode: "MICRO_LIVE" | "LIVE"): string {
+export function formatNextSteps(mode: "LIVE"): string {
   const lines = [
     "",
     "═══ Next steps (run one at a time) ═══",
@@ -101,14 +106,14 @@ export function formatNextSteps(mode: "MICRO_LIVE" | "LIVE"): string {
     "     polyroot doctor --live",
     "     → everything must be ✅ PASS. Fix any ❌ first.",
     "",
-    "3) Start small (MICRO_LIVE = real money, hard loss cap):",
+    "3) Start small (LIVE = real money, hard loss cap):",
     "     polyroot setup",
     "     → keep the smallest capital cap, then: polyroot run",
     "     → let it run 48h, make sure there are no errors.",
     "",
     "4) Step up to LIVE:",
     "     polyroot mode LIVE",
-    "     → only after the MICRO_LIVE numbers look right.",
+    "     → only after the LIVE numbers look right.",
   ];
   if (mode === "LIVE") {
     lines.push(

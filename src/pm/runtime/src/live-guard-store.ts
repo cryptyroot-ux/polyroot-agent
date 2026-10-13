@@ -14,8 +14,8 @@ import {
   type RollbackPlan,
 } from "@polyroot/control";
 
-/** SHADOW baseline required before MICRO_LIVE may start (mirrors the
- *  G4 defaults in getDefaultModeConfig: 30 days, 100 resolved clusters). */
+/** Observation baseline thresholds (30 days, 100 resolved clusters).
+ *  Advisory: reported, but no longer required before LIVE may start. */
 export const SHADOW_BASELINE_MIN_DAYS = 30;
 export const SHADOW_BASELINE_MIN_CLUSTERS = 100;
 
@@ -33,7 +33,7 @@ function toFiniteNumber(value: unknown): number | undefined {
   return typeof n === "number" && Number.isFinite(n) ? n : undefined;
 }
 
-/** Pure startup-gate decision: may MICRO_LIVE start given this baseline row? */
+/** Pure decision: has the observation baseline reached its thresholds? */
 export function checkShadowBaselineRow(
   row: ShadowBaselineRow | null,
 ): { ok: true } | { ok: false; code: string; reason: string } {
@@ -42,7 +42,7 @@ export function checkShadowBaselineRow(
   if (days === undefined || clusters === undefined) {
     return {
       ok: false,
-      code: "MICRO_LIVE_NOT_READY",
+      code: "BASELINE_NOT_MET",
       reason: "no shadow baseline row found: run SHADOW mode first",
     };
   }
@@ -52,7 +52,7 @@ export function checkShadowBaselineRow(
   ) {
     return {
       ok: false,
-      code: "MICRO_LIVE_NOT_READY",
+      code: "BASELINE_NOT_MET",
       reason:
         `shadow baseline ${days}d/${clusters} clusters < ` +
         `${SHADOW_BASELINE_MIN_DAYS}d/${SHADOW_BASELINE_MIN_CLUSTERS} clusters`,

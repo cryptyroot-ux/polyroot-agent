@@ -15,7 +15,7 @@
  * - paper_log.fill_status ∈ {FILLED,PARTIAL,CANCELLED}: missing fill → CANCELLED.
  * - shadow_log.fill_status MUST be 'NONE' (schema CHECK): SHADOW records
  *   decisions only, never fills.
- * - MICRO_LIVE/LIVE write snapshots + forecasts only; fills/orders persist
+ * - LIVE write snapshots + forecasts only; fills/orders persist
  *   through the executor path, never here.
  *
  * Persistence NEVER throws into the trading loop: createStepPersistence

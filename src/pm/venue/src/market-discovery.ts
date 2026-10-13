@@ -335,7 +335,7 @@ export interface TouchGuards {
   nowMs?: number;
   /**
    * Fail-open policy for incomplete data (default "standard" = historic
-   * behavior). "strict" (LIVE/MICRO_LIVE) blocks unknown expiries and
+   * behavior). "strict" (LIVE) blocks unknown expiries and
    * price-only touches without depth: real money never trades what it
    * cannot see. "permissive" equals standard today and stays reserved
    * for PAPER experimentation.
@@ -432,7 +432,7 @@ export function resolveDiscoveryMode(env: {
 }
 
 /**
- * Resolve the trading universe for SHADOW/MICRO_LIVE/LIVE.
+ * Resolve the trading universe for SHADOW/LIVE.
  *
  * - manual: exact owner-curated POLYROOT_MARKET_IDS (unchanged).
  * - auto: the agent fetches active markets itself, keeps the most liquid

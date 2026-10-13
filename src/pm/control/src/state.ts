@@ -7,7 +7,7 @@
  * EMERGENCY_HALT, STOPPED) never self-bypass.
  */
 
-export type OperationMode = "RESEARCH" | "MICRO_LIVE" | "LIVE";
+export type OperationMode = "RESEARCH" | "LIVE";
 
 export type RuntimeHealth =
   | "STOPPED"

@@ -42,14 +42,8 @@ export const POLYROOT_MENU: MenuNode = {
   label: "Polyroot Agent Menu",
   children: [
     branch("mode", "Mode", [
-      leaf("mode-show", "Show current mode", ["mode"], "MICRO_LIVE | LIVE"),
+      leaf("mode-show", "Show current mode", ["mode"], "LIVE"),
 
-      leaf(
-        "mode-micro",
-        "Switch to MICRO_LIVE",
-        ["mode", "MICRO_LIVE"],
-        "Small real money (loss latch enforced)",
-      ),
       leaf(
         "mode-live",
         "Switch to LIVE",
@@ -106,7 +100,7 @@ export const POLYROOT_MENU: MenuNode = {
         "shadow-fund",
         "Shadow fund (practice bankroll)",
         ["shadow-fund"],
-        "MICRO_LIVE only",
+        "LIVE only",
         undefined,
         { flag: "--amount", prompt: "Amount in USD" },
       ),

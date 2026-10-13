@@ -86,7 +86,7 @@ export function startResolutionSync(
         empty.observedDays = baseline?.observedDays ?? 0;
         empty.resolvedClusters = baseline?.resolvedClusters ?? 0;
       } catch {
-        // A stale baseline blocks the MICRO_LIVE gate; it must never fail the
+        // A stale baseline misreports readiness; it must never fail the
         // tick. The next pass retries.
       }
       deps.onTick?.(empty);

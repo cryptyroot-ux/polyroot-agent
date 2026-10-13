@@ -6,7 +6,7 @@
  * database connectivity is lost for > maxFailures.
  */
 
-export type RuntimeMode = "MICRO_LIVE" | "LIVE" | "READ_ONLY";
+export type RuntimeMode = "LIVE" | "READ_ONLY";
 
 export interface QueryablePool {
   query(
@@ -131,7 +131,7 @@ export class ModeWatcher {
     newMode: RuntimeMode,
     _operator: string,
   ): Promise<ModeChangeResult> {
-    if (newMode === "LIVE" || newMode === "MICRO_LIVE") {
+    if (newMode === "LIVE") {
       const res = await this.pool.query(
         `SELECT halted FROM live_guard_state WHERE key = $1`,
         [LATCH_KEY],

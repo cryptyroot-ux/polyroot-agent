@@ -6,6 +6,7 @@
  * and an actionable detail. This is evidence, not a promotion — passing
  * preflight does not authorize trading (owner sign-off still required).
  */
+import { LIVE_CAP_ENV, LIVE_LOSS_CAP_ENV } from "./autonomy-bounds.js";
 
 export interface PreflightCheck {
   name: string;
@@ -102,7 +103,7 @@ export async function runLivePreflight(
       checks.push(
         fail(
           "bounds",
-          "POLYROOT_MICRO_LIVE_CAP_USD and POLYROOT_MICRO_LIVE_LOSS_CAP_USD must both be set — run `polyroot setup`",
+          `${LIVE_CAP_ENV} and ${LIVE_LOSS_CAP_ENV} must both be set — run \`polyroot setup\``,
         ),
       );
     } else {

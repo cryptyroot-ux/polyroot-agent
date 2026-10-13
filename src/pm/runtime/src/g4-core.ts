@@ -25,11 +25,11 @@ import {
 
 /* ─── Core G4 Types ──────────────────────────────────────────────────────── */
 
-export type G4Mode = "MICRO_LIVE" | "LIVE";
+export type G4Mode = "LIVE";
 
 export interface G4CoreConfig {
   mode: G4Mode;
-  /** Explicit capital cap for MICRO_LIVE (USD). Required for MICRO_LIVE. */
+  /** Explicit capital cap in USD. Required for LIVE. */
   microLiveCapUsd?: number;
   /** SHADOW baseline criteria (minimum days & resolved clusters). */
   shadowCriteria?: { minDays: number; minResolvedClusters: number };
@@ -42,7 +42,7 @@ export interface G4CoreConfig {
   /** Microlive explicit cap (base units). */
   microLiveCapBase?: bigint;
   /**
-   * Owner loss cap in pUSD for MICRO_LIVE/LIVE. REQUIRED in live modes:
+   * Owner loss cap in pUSD for LIVE. REQUIRED in live modes:
    * the order path refuses to submit without a finite positive cap.
    */
   liveLossCapPusd?: number;
@@ -111,7 +111,7 @@ export interface G4CoreDeps {
   /** Observability hooks for metrics and logging */
   observability?: G4CoreObservability;
   /**
-   * Live enforcement dependencies (MICRO_LIVE/LIVE only). REQUIRED in live
+   * Live enforcement dependencies (LIVE only). REQUIRED in live
    * modes: without a wired guard the order path refuses to submit.
    */
   liveGuard?: LiveGuardDeps;
@@ -599,7 +599,6 @@ export function createG4Core(options: CreateG4CoreOptions) {
 /* ─── Mode Transition Logic ──────────────────────────────────────────────── */
 
 export const G4_MODE_TRANSITIONS: Record<G4Mode, G4Mode[]> = {
-  MICRO_LIVE: ["LIVE"],
   LIVE: [],
 };
 
@@ -661,12 +660,12 @@ export function computeFinancialGate(
   liveAdmission?: LiveAdmission,
 ): "ALLOW" | "ENTRY_BLOCKED" | "FINANCIAL_BLOCKED" {
   // LIVE without explicit admission is hard-blocked (fail-closed default).
-  // An admitted LIVE run faces exactly the MICRO_LIVE venue/edge checks.
+  // An admitted LIVE run faces the full venue and edge checks.
   if (mode === "LIVE" && liveAdmission?.admitted !== true) {
     return "FINANCIAL_BLOCKED";
   }
 
-  if (mode === "MICRO_LIVE" || mode === "LIVE") {
+  if (mode === "LIVE") {
     const venue = venueMode();
     if (
       venue === "UNAVAILABLE" ||
@@ -695,7 +694,7 @@ export async function buildLoopInputs(
 ): Promise<LiveMarketInput[]> {
   if (!deps.marketSource) {
     throw new Error(
-      "LIVE_LOOP_UNWIRED: MICRO_LIVE/LIVE require a wired marketSource; refusing to run on mock data",
+      "LIVE_LOOP_UNWIRED: LIVE require a wired marketSource; refusing to run on mock data",
     );
   }
   return collectLiveInputs(deps.marketSource);
@@ -961,7 +960,7 @@ export async function executeG4Step(
   const cap = config.microLiveCapUsd;
   if (cap === undefined || !Number.isFinite(cap) || cap <= 0) {
     return noTrade(
-      "MICRO_LIVE_CAP_UNCONFIGURED: live modes require a finite positive microLiveCapUsd",
+      "LIVE_CAP_UNCONFIGURED: live modes require a finite positive capital cap",
     );
   }
   const notional = size * built.order.price;
@@ -1021,7 +1020,7 @@ export async function executeG4Step(
   if (fill) {
     decision = intentSide;
   } else if (
-    (config.mode === "MICRO_LIVE" || config.mode === "LIVE") &&
+    config.mode === "LIVE" &&
     (outcome === "SUBMITTED" || outcome === "NEEDS_RECONCILIATION")
   ) {
     decision = intentSide;

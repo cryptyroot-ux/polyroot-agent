@@ -5,7 +5,7 @@
  *   INTELLIGENCE → STRATEGY → ORCHESTRATOR → EXECUTOR → VENUE
  *
  * Modes:
- * - MICRO_LIVE: Real wallet, explicit cap, real fills
+ * - LIVE: Real wallet, explicit cap, real fills
  * - LIVE: Full autonomy (requires Autonomy Charter gate)
  *
  * The pipeline enforces the financial gate at every step (PR-GOV-06, PR-EXE-01).
@@ -40,7 +40,7 @@ import { AUTONOMY_BOUNDS } from "./autonomy-bounds.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
-export type G4PipelineMode = "MICRO_LIVE" | "LIVE";
+export type G4PipelineMode = "LIVE";
 
 export interface G4PipelineConfig extends G4CoreConfig {}
 export interface G4PipelineDeps extends G4CoreDeps {}
@@ -51,7 +51,7 @@ export interface G4PipelineMetrics extends G4CoreMetrics {}
 /* ─── G4 Pipeline ─────────────────────────────────────────────────── */
 
 /**
- * G4 Pipeline — implements MICRO_LIVE → LIVE sequence.
+ * G4 Pipeline — drives the LIVE trading sequence.
  *
  * The pipeline integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.

@@ -6,7 +6,7 @@ import type { StrategyProposal } from "@polyroot/domain";
 export interface StrategyDefinition {
   name: string;
   version: string;
-  qualifiedForMode: ("MICRO_LIVE" | "LIVE")[];
+  qualifiedForMode: "LIVE"[];
   run: (
     input: unknown,
   ) => Promise<StrategyProposal | StrategyProposal[] | null>;
@@ -24,7 +24,7 @@ export class StrategyRegistry {
     return this.strategies.get(`${name}@${version}`);
   }
 
-  listQualified(mode: "MICRO_LIVE" | "LIVE"): StrategyDefinition[] {
+  listQualified(mode: "LIVE"): StrategyDefinition[] {
     const result: StrategyDefinition[] = [];
     for (const def of this.strategies.values()) {
       if (def.qualifiedForMode.includes(mode)) {

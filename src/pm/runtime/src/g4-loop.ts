@@ -2,7 +2,7 @@
  * @polyroot/runtime — G4 Autonomous Runtime Loop.
  *
  * Implements the G4 autonomous loop per Blueprint B17.3:
- * MICRO_LIVE → autonomous-LIVE
+ * autonomous LIVE
  *
  * The loop integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.
@@ -48,7 +48,7 @@ export type G4LoopMetrics = G4CoreMetrics;
 /* ─── G4 Autonomous Loop ─────────────────────────────────────────────────── */
 
 /**
- * G4 Autonomous Loop — implements MICRO_LIVE → LIVE sequence.
+ * G4 Autonomous Loop — drives the LIVE trading sequence.
  *
  * The loop integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.

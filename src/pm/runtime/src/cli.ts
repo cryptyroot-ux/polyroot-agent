@@ -38,7 +38,15 @@ import type {
   CommandHandler as TelegramCommandHandler,
   TelegramPool as TelegramDbPool,
 } from "./telegram.js";
-import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
+import {
+  AUTONOMY_BOUNDS,
+  LIVE_CAP_ENV,
+  LIVE_LOSS_CAP_ENV,
+  parseBoundsEnv,
+  readCapEnv,
+  readLossCapEnv,
+  resolveLossCapPusd,
+} from "./autonomy-bounds.js";
 import { bootstrapAgent } from "./main.js";
 import { MetricsExporter } from "./metrics-exporter.js";
 import { MetricsServer } from "./metrics-server.js";
@@ -116,7 +124,7 @@ export function assertRuntimeEnv(
   mode: CLIConfig["mode"],
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  const isLive = mode === "MICRO_LIVE" || mode === "LIVE";
+  const isLive = mode === "LIVE";
   if (!isLive) return;
   const hasKeystore = Boolean(env["POLYROOT_KEYSTORE_JSON"]);
   const hasPassphrase = Boolean(env["POLYROOT_KEYSTORE_PASSPHRASE"]);
@@ -125,7 +133,7 @@ export function assertRuntimeEnv(
   );
   if (!hasKeystore && !hasRawKey) {
     throw new Error(
-      "LIVE_ENV_MISSING: PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY) is required for MICRO_LIVE/LIVE when not using a keystore.\n" +
+      "LIVE_ENV_MISSING: PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY) is required for LIVE when not using a keystore.\n" +
         "Option A: set PRIVATE_KEY_HEX or WALLET_PRIVATE_KEY.\n" +
         "Option B: use a sealed keystore (POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE).",
     );
@@ -139,7 +147,7 @@ export function assertRuntimeEnv(
   const funder = env["WALLET_FUNDER"];
   if (!account || !funder) {
     throw new Error(
-      "LIVE_ENV_MISSING: WALLET_ACCOUNT and WALLET_FUNDER are required for MICRO_LIVE/LIVE (must differ from the signer address)",
+      "LIVE_ENV_MISSING: WALLET_ACCOUNT and WALLET_FUNDER are required for LIVE (must differ from the signer address)",
     );
   }
   if (account.toLowerCase() === funder.toLowerCase()) {
@@ -175,7 +183,7 @@ export function runPreflightCheck(
     info: [],
   };
 
-  const isLiveMode = mode === "MICRO_LIVE" || mode === "LIVE";
+  const isLiveMode = mode === "LIVE";
 
   // Always required: database
   if (!env["DATABASE_URL"]) {
@@ -221,7 +229,7 @@ export function runPreflightCheck(
 
     if (!account || !funder) {
       result.errors.push(
-        "LIVE/MICRO_LIVE requires WALLET_ACCOUNT and WALLET_FUNDER (must be 3 distinct addresses: signer, account, funder)",
+        "LIVE requires WALLET_ACCOUNT and WALLET_FUNDER (must be 3 distinct addresses: signer, account, funder)",
       );
     } else if (signer) {
       const addrs = [
@@ -353,7 +361,7 @@ export function displayPreflightResult(result: PreflightCheck): void {
 }
 
 export interface CLIConfig {
-  mode: "MICRO_LIVE" | "LIVE";
+  mode: "LIVE";
   databaseUrl: string;
   kmsKeyId: string;
   kmsEndpoint: string;
@@ -421,7 +429,7 @@ export function formatOnceTranscript(
   return lines.join("\n");
 }
 
-const MODES = ["MICRO_LIVE", "LIVE"] as const;
+const MODES = ["LIVE"] as const;
 
 /**
  * Closest known command by edit distance (typo rescue for
@@ -502,7 +510,7 @@ export function printHelp(): void {
     "  polyroot set-key         Store a provider API key (hidden prompt, never argv)\n" +
     "  polyroot live-promote [grant|list|revoke]  Owner-signed LIVE admission (terminal only)\n" +
     "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
-    "  polyroot mode <MODE>     Switch runtime mode (MICRO_LIVE|LIVE)\n" +
+    "  polyroot mode <MODE>     Switch runtime mode (LIVE)\n" +
     "  polyroot mode            Show current runtime mode\n" +
     "  polyroot telegram setup          Wizard: hubungkan bot Telegram (tanpa edit file)\n" +
     "  polyroot telegram <approve|list|revoke|allow|status>  Pairing management\n" +
@@ -512,7 +520,7 @@ export function printHelp(): void {
 }
 
 export function parseArgs(argv: string[] = process.argv.slice(2)): CLIConfig {
-  let mode: CLIConfig["mode"] = "MICRO_LIVE";
+  let mode: CLIConfig["mode"] = "LIVE";
   let modeFromFlag = false;
   let databaseUrl = "";
   let kmsKeyId = "";
@@ -577,14 +585,14 @@ interface OnboardingConfig {
   walletType: "create" | "import";
   privateKey?: string;
   passphrase: string;
-  mode: "MICRO_LIVE" | "LIVE";
-  /** Owner-set capital cap in USD (MICRO_LIVE/LIVE enforce it). */
+  mode: "LIVE";
+  /** Owner-set capital cap in USD (LIVE enforce it). */
   capitalUsd: number;
   /** Owner-set daily loss latch in basis points (500 = 5%). */
   lossBps: number;
-  /** Distinct deposit wallet address (required for LIVE/MICRO_LIVE). */
+  /** Distinct deposit wallet address (required for LIVE). */
   walletAccount?: string;
-  /** Distinct funder wallet address (required for LIVE/MICRO_LIVE). */
+  /** Distinct funder wallet address (required for LIVE). */
   walletFunder?: string;
 }
 
@@ -1766,31 +1774,25 @@ async function runOnboarding(): Promise<OnboardingConfig> {
   // 3. Mode selection — Live-First: default to LIVE, single confirmation.
   console.log(stepper(3, 3, "Mode"));
   console.log("\n🚀 Step 3/3: Trading Mode");
-  console.log(
-    "   MICRO_LIVE = Small real money (requires capital, API keys, loss cap).",
-  );
+  console.log("   LIVE = real money (requires capital, API keys, loss cap).");
   console.log(
     "   LIVE = Real money on Polymarket (requires API keys + loss cap).",
   );
   const modeChoice = await askChoice(
-    "Choose mode (Enter = MICRO_LIVE):",
-    [
-      "MICRO_LIVE — Small real money with hard loss cap",
-      "LIVE — Real trading on Polymarket (requires API keys + loss cap)",
-    ],
+    "Choose mode (Enter = LIVE):",
+    ["LIVE — Real trading on Polymarket (requires API keys + loss cap)"],
     0,
   );
-  let mode: "MICRO_LIVE" | "LIVE" = "MICRO_LIVE";
+  let mode: "LIVE" = "LIVE";
   let capitalUsd: number = AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
   let lossBps: number = AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS;
   let walletAccount = "";
   let walletFunder = "";
 
-  let isLive = modeChoice.startsWith("LIVE");
-  let isMicro = modeChoice.startsWith("MICRO");
+  const isLive = modeChoice.startsWith("LIVE");
 
-  if (isLive || isMicro) {
-    const label = isLive ? "LIVE" : "MICRO_LIVE";
+  if (isLive) {
+    const label = "LIVE";
     mode = label;
     console.log(
       `\n${label} uses REAL MONEY. The daily loss cap shuts the system`,
@@ -1838,7 +1840,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           { defaultValue: "" },
         );
         if (!walletAccount) {
-          console.log("WALLET_ACCOUNT is required for LIVE/MICRO_LIVE mode.");
+          console.log("WALLET_ACCOUNT is required for LIVE mode.");
           continue;
         }
         if (!/^0x[0-9a-fA-F]{40}$/.test(walletAccount)) {
@@ -1861,7 +1863,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
           { defaultValue: "" },
         );
         if (!walletFunder) {
-          console.log("WALLET_FUNDER is required for LIVE/MICRO_LIVE mode.");
+          console.log("WALLET_FUNDER is required for LIVE mode.");
           continue;
         }
         if (!/^0x[0-9a-fA-F]{40}$/.test(walletFunder)) {
@@ -1883,7 +1885,7 @@ async function runOnboarding(): Promise<OnboardingConfig> {
     }
   }
 
-  // MICRO_LIVE and LIVE need capital/loss caps.
+  // LIVE needs a capital and loss cap.
   {
     const capitalRaw = await askText(
       `Capital cap in USD — max money allowed in play (default ${AUTONOMY_BOUNDS.CAPITAL_CAP_USD})`,
@@ -1961,7 +1963,7 @@ function writeEnv(config: OnboardingConfig): void {
     `WALLET_ADDRESS=${deriveAddressFromPrivateKey(config.privateKey!)}`,
     ...(config.walletAccount ? [`WALLET_ACCOUNT=${config.walletAccount}`] : []),
     ...(config.walletFunder ? [`WALLET_FUNDER=${config.walletFunder}`] : []),
-    ...((config.mode === "LIVE" || config.mode === "MICRO_LIVE") &&
+    ...(config.mode === "LIVE" &&
     (!config.walletAccount || !config.walletFunder)
       ? [
           `# WALLET_ACCOUNT and WALLET_FUNDER must be set for LIVE mode (3 distinct addresses)`,
@@ -1999,8 +2001,8 @@ function writeEnv(config: OnboardingConfig): void {
     `POLYROOT_DISCOVERY_MAX_SPREAD=0.1`,
     "",
     "# Owner-set autonomy bounds (managed via `polyroot setup`; the AI path is read-only):",
-    `POLYROOT_MICRO_LIVE_CAP_USD=${config.capitalUsd}`,
-    `POLYROOT_MICRO_LIVE_LOSS_CAP_USD=${resolveLossCapPusd(config.capitalUsd, config.lossBps) ?? 0}`,
+    `${LIVE_CAP_ENV}=${config.capitalUsd}`,
+    `${LIVE_LOSS_CAP_ENV}=${resolveLossCapPusd(config.capitalUsd, config.lossBps) ?? 0}`,
     "",
     "# For LIVE mode, uncomment and configure:",
     "# POLYMARKET_API_KEY=",
@@ -2055,7 +2057,7 @@ async function runOnboardingFlow(): Promise<void> {
       if (demo.trim().toLowerCase().startsWith("y")) {
         try {
           await startAgent({
-            mode: "MICRO_LIVE",
+            mode: "LIVE",
             databaseUrl: process.env["DATABASE_URL"] ?? "",
             kmsKeyId: "",
             kmsEndpoint: "",
@@ -2200,7 +2202,7 @@ async function askConsoleLine(): Promise<string> {
 async function printConsoleSnapshot(): Promise<void> {
   loadDotEnv();
   const env = process.env;
-  const mode = env["RUNTIME_MODE"] ?? "MICRO_LIVE";
+  const mode = env["RUNTIME_MODE"] ?? "LIVE";
   console.log(`Mode: ${mode}`);
   const dbUrl = env["DATABASE_URL"] ?? "";
   if (!dbUrl) {
@@ -2548,9 +2550,6 @@ async function runConsole(): Promise<void> {
         closeSharedSession();
         const config = parseArgs(args);
         assertRuntimeEnv(config.mode);
-        if (config.mode === "MICRO_LIVE") {
-          await assertMicroLiveReady(config.databaseUrl);
-        }
         await startAgent(config);
         return;
       } else {
@@ -2675,23 +2674,19 @@ async function runSetupFlow(): Promise<void> {
     );
 
     // 1. MODE SELECTION
-    const currentMode = process.env["RUNTIME_MODE"] ?? "MICRO_LIVE";
+    const currentMode = process.env["RUNTIME_MODE"] ?? "LIVE";
     console.log("Current mode: " + currentMode);
     console.log(
-      "MICRO_LIVE = small cap real money with hard loss latch. LIVE = full real money.\n",
+      "LIVE = real money with an explicit capital cap and a hard daily loss latch.\n",
     );
     const modeChoice = await askChoice(
       "Choose mode (Enter = keep current):",
-      [
-        "MICRO_LIVE — Real trading with small cap (requires capital, API keys)",
-        "LIVE — Real trading on Polymarket (requires capital, API keys)",
-      ],
-      currentMode === "LIVE" ? 1 : 0,
+      ["LIVE — Real trading on Polymarket (requires capital, API keys)"],
+      0,
     );
-    const mode = (() => {
-      if (modeChoice.startsWith("LIVE")) return "LIVE";
-      return "MICRO_LIVE";
-    })() as "MICRO_LIVE" | "LIVE";
+    const mode = (
+      modeChoice.startsWith("LIVE") ? "LIVE" : currentMode
+    ) as "LIVE";
 
     // 2. CAPITAL & LOSS CAP
     const bounds = parseBoundsEnv(process.env);
@@ -2848,7 +2843,7 @@ async function runSetupFlow(): Promise<void> {
     }
 
     // 5. VENUE API CREDENTIALS (for live modes, skippable)
-    if (mode === "LIVE" || mode === "MICRO_LIVE") {
+    if (mode === "LIVE") {
       const venueSkip = await askChoice(
         "Polymarket API credentials (Enter = skip for now):",
         ["Skip for now", "Enter API credentials now"],
@@ -2882,7 +2877,7 @@ async function runSetupFlow(): Promise<void> {
     if (universe.length > 0) {
       console.log(`   Markets: ${universe.join(", ")}`);
     }
-    console.log(formatNextSteps(mode as "MICRO_LIVE" | "LIVE"));
+    console.log(formatNextSteps(mode as "LIVE"));
     process.loadEnvFile(ENV_PATH as string);
     closeSharedSession();
   } catch (err) {
@@ -2910,7 +2905,6 @@ import {
   resolveMarketUniverse,
   runVenueCheck,
 } from "@polyroot/venue";
-import { parseBoundsEnv } from "./autonomy-bounds.js";
 import { runLivePreflight } from "./live-preflight.js";
 import {
   buildSetupEnvUpdate,
@@ -2920,7 +2914,7 @@ import {
 
 export async function startAgent(config: CLIConfig): Promise<void> {
   console.log("PolyRoot Agent starting in " + config.mode + " mode");
-  const isLive = config.mode === "MICRO_LIVE" || config.mode === "LIVE";
+  const isLive = config.mode === "LIVE";
   const baseOpts = isLive
     ? {
         cryptoSigner: createSignerFromEnv(),
@@ -2944,7 +2938,7 @@ export async function startAgent(config: CLIConfig): Promise<void> {
 
   // Restart idempotency gate: load durable seen_orders BEFORE the pipeline
   // accepts any intent. Fail-closed in live modes (throws after closing the
-  // pool); log warnings and continue in MICRO_LIVE.
+  // pool); log warnings and continue in LIVE.
   await agent.hydrateSeen();
 
   // Single-instance guard (continuous runs only): a second loop would
@@ -3233,8 +3227,10 @@ export async function startAgent(config: CLIConfig): Promise<void> {
 }
 
 /**
- * MICRO_LIVE startup gate: refuse to start without pre-live baseline
- * evidence (30 days / 100 resolved clusters) in the database.
+ * Advisory only — no longer a startup gate. Reports whether the G5
+ * observation baseline (30 days / 100 resolved clusters) has been met,
+ * so an operator can judge readiness. `polyroot shadow-baseline status`
+ * exposes the same evidence.
  */
 export async function assertMicroLiveReady(databaseUrl: string): Promise<void> {
   const pool = new Pool({ connectionString: databaseUrl });
@@ -3304,7 +3300,6 @@ const walletCreatePending = new Map<string, number>();
 const WALLET_CREATE_TTL_MS = 5 * 60_000;
 
 const MODE_RANK: Record<string, number> = {
-  MICRO_LIVE: 0,
   LIVE: 1,
 };
 
@@ -3348,7 +3343,7 @@ function telegramHelpText(): string {
     "status, explain [--last N], insight, health, markets, logs, wallet, onboard — baca/bebas",
     "halt, restart, update, mode, model, provider — butuh konfirmasi YA",
     "wallet create — buat signer baru (konfirmasi 2 langkah di chat)",
-    "import key, mode naik (ke MICRO_LIVE/LIVE), setup, guard reset — HANYA via terminal",
+    "import key, mode naik (ke LIVE), setup, guard reset — HANYA via terminal",
   ].join("\n");
 }
 
@@ -3464,10 +3459,10 @@ export function buildTelegramHandlers(
 
     mode: async (args) => {
       const target = (args[0] ?? "").toUpperCase();
-      const MODES = ["MICRO_LIVE", "LIVE"];
+      const MODES = ["LIVE"];
       if (!MODES.includes(target)) {
         throw new Error(
-          `Mode: ${MODES.join(" | ")}. Contoh: mode MICRO_LIVE. Mode naik hanya via terminal.`,
+          `Mode: ${MODES.join(" | ")}. Contoh: mode LIVE. Mode naik hanya via terminal.`,
         );
       }
       // Current mode from DB (durable truth, not .env).
@@ -3491,10 +3486,7 @@ export function buildTelegramHandlers(
           `Mode switch ditolak: $${exposure.toFixed(2)} posisi terbuka (akan yatim). Tutup/flat dulu, atau via terminal.`,
         );
       }
-      const res = await watcher.requestModeChange(
-        target as "MICRO_LIVE" | "LIVE",
-        "telegram",
-      );
+      const res = await watcher.requestModeChange(target as "LIVE", "telegram");
       if (!res.ok) throw new Error(`${res.code}: ${res.reason}`);
       return `✅ Mode → ${res.mode} (berlaku tanpa restart).`;
     },
@@ -4430,7 +4422,7 @@ async function runModeCommand(targetMode?: string): Promise<void> {
     }
 
     const upper = targetMode.toUpperCase();
-    const MODES: readonly RuntimeMode[] = ["MICRO_LIVE", "LIVE"];
+    const MODES: readonly RuntimeMode[] = ["LIVE"];
     if (!(MODES as readonly string[]).includes(upper)) {
       console.error(
         `❌ Invalid mode ${targetMode}. Valid modes: ${MODES.join(", ")}`,
@@ -4878,8 +4870,8 @@ async function runStatus(): Promise<void> {
     : "❌ Missing";
 
   // Live caps
-  const lossCap = env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] || "Not set";
-  const expCap = env["POLYROOT_MICRO_LIVE_CAP_USD"] || "500 (default)";
+  const lossCap = readLossCapEnv(env) || "Not set";
+  const expCap = readCapEnv(env) || "500 (default)";
 
   const t = theme();
   console.log(banner("PolyRoot Agent — Status"));
@@ -5177,9 +5169,8 @@ async function runDoctor(): Promise<boolean> {
     allOk = false;
   }
 
-  // 4. Venue credentials (required for MICRO_LIVE/LIVE)
-  const mode = (process.env["RUNTIME_MODE"] ?? "MICRO_LIVE") as
-    "MICRO_LIVE" | "LIVE";
+  // 4. Venue credentials (required for LIVE)
+  const mode = (process.env["RUNTIME_MODE"] ?? "LIVE") as "LIVE";
   const venueOk = Boolean(
     process.env["POLYMARKET_API_KEY"] &&
     process.env["POLYMARKET_API_SECRET"] &&
@@ -5194,13 +5185,9 @@ async function runDoctor(): Promise<boolean> {
   }
 
   // 5. Live caps
-  const lossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+  const lossCap = readLossCapEnv(process.env);
   if (!lossCap) {
-    console.log(
-      "⚠️  POLYROOT_MICRO_LIVE_LOSS_CAP_USD not set (required for " +
-        mode +
-        ")",
-    );
+    console.log("⚠️  ${LIVE_LOSS_CAP_ENV} not set (required for " + mode + ")");
     allOk = false;
   } else {
     console.log("✅ Loss cap configured: " + lossCap + " pUSD");
@@ -5496,13 +5483,13 @@ export async function main(
   if (argv[0] === "guard" && argv[1] === "reset") {
     const lossRaw = argv[argv.indexOf("--loss") + 1] ?? "";
     const loss = Number(lossRaw);
-    const capRaw = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] ?? "";
+    const capRaw = readLossCapEnv(process.env) ?? "";
     const cap = Number(capRaw);
     const dbUrl = process.env["DATABASE_URL"] ?? "";
     if (!dbUrl || !Number.isFinite(loss) || !Number.isFinite(cap)) {
       console.error(
         "Usage: polyroot guard reset --loss <realized-loss-pusd> " +
-          "(requires DATABASE_URL + POLYROOT_MICRO_LIVE_LOSS_CAP_USD)",
+          "(requires DATABASE_URL + ${LIVE_LOSS_CAP_ENV})",
       );
       process.exit(1);
     }
@@ -5634,9 +5621,6 @@ export async function main(
     }
 
     assertRuntimeEnv(runConfig.mode);
-    if (runConfig.mode === "MICRO_LIVE") {
-      await assertMicroLiveReady(runConfig.databaseUrl);
-    }
     await startAgent(runConfig);
     return;
   }
@@ -5707,9 +5691,6 @@ export async function main(
 
   const config = parseArgs(argv);
   assertRuntimeEnv(config.mode);
-  if (config.mode === "MICRO_LIVE") {
-    await assertMicroLiveReady(config.databaseUrl);
-  }
   await startAgent(config);
 }
 

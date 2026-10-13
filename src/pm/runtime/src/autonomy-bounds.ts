@@ -34,13 +34,28 @@ export interface ParsedBoundsEnv {
   lossCapPusd?: number;
 }
 
+export const LIVE_CAP_ENV = "POLYROOT_LIVE_CAP_USD";
+export const LIVE_LOSS_CAP_ENV = "POLYROOT_LIVE_LOSS_CAP_USD";
+
+/** Pre-LIVE-only names, still honoured so existing .env files keep working. */
+const LEGACY_CAP_ENV = "POLYROOT_MICRO_LIVE_CAP_USD";
+const LEGACY_LOSS_CAP_ENV = "POLYROOT_MICRO_LIVE_LOSS_CAP_USD";
+
+export function readCapEnv(env: NodeJS.ProcessEnv): string | undefined {
+  return env[LIVE_CAP_ENV] ?? env[LEGACY_CAP_ENV];
+}
+
+export function readLossCapEnv(env: NodeJS.ProcessEnv): string | undefined {
+  return env[LIVE_LOSS_CAP_ENV] ?? env[LEGACY_LOSS_CAP_ENV];
+}
+
 /**
  * Parse owner-set bound overrides. Invalid values are dropped (undefined),
  * so callers fail closed instead of trading on a misconfigured cap.
  */
 export function parseBoundsEnv(env: NodeJS.ProcessEnv): ParsedBoundsEnv {
-  const capRaw = env["POLYROOT_MICRO_LIVE_CAP_USD"];
-  const lossRaw = env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+  const capRaw = readCapEnv(env);
+  const lossRaw = readLossCapEnv(env);
   const capUsd = capRaw === undefined ? undefined : Number(capRaw);
   const lossCapPusd = lossRaw === undefined ? undefined : Number(lossRaw);
   return {

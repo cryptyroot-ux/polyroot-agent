@@ -2,7 +2,7 @@
  * @polyroot/venue — Authenticated Polymarket secure-client factory.
  *
  * Builds the real `@polymarket/client` `SecureClient` used by the live CLI
- * path (SHADOW reads, MICRO_LIVE/LIVE submission). Fail-closed by
+ * path (SHADOW reads, LIVE submission). Fail-closed by
  * construction: every required credential is validated up front and a
  * precise `SECURE_CLIENT_ENV_MISSING` error names what is absent.
  *

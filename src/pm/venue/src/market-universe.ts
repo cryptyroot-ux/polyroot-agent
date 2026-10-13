@@ -20,7 +20,7 @@ export function readMarketUniverse(env: {
     .filter((s) => s.length > 0);
   if (ids.length === 0) {
     throw new Error(
-      "MARKET_UNIVERSE_MISSING: POLYROOT_MARKET_IDS must list at least one CLOB token id for SHADOW/MICRO_LIVE/LIVE",
+      "MARKET_UNIVERSE_MISSING: POLYROOT_MARKET_IDS must list at least one CLOB token id for SHADOW/LIVE",
     );
   }
   const bad = ids.filter((id) => !isClobAssetId(id));

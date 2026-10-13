@@ -18,7 +18,12 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { upsertEnvLines } from "./setup-guide.js";
-import { AUTONOMY_BOUNDS, resolveLossCapPusd } from "./autonomy-bounds.js";
+import {
+  AUTONOMY_BOUNDS,
+  LIVE_CAP_ENV,
+  LIVE_LOSS_CAP_ENV,
+  resolveLossCapPusd,
+} from "./autonomy-bounds.js";
 
 export type OnboardStep =
   | "provider"
@@ -46,7 +51,7 @@ export interface OnboardState {
   newSignerAddress?: string;
   /** Which .env variable the provider key lives in (set-key target). */
   keyVar?: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
-  mode?: "MICRO_LIVE" | "LIVE";
+  mode?: "LIVE";
   account?: string;
   funder?: string;
   capitalUsd?: number;
@@ -484,12 +489,11 @@ export function onboardNext(
     }
 
     case "mode": {
-      const idx = pickIndex(t, 2);
+      const idx = pickIndex(t, 1);
       if (idx === null) {
-        return { state, reply: "Pilih 1-2 ya.\n\n" + modeMenu(), writes };
+        return { state, reply: "Pilih 1 ya.\n\n" + modeMenu(), writes };
       }
-      const modes = ["MICRO_LIVE", "LIVE"] as const;
-      const mode = modes[idx] as NonNullable<OnboardState["mode"]>;
+      const mode: NonNullable<OnboardState["mode"]> = "LIVE";
 
       const ns: OnboardState = { ...state, step: "mode_confirm", mode };
       return {
@@ -502,7 +506,7 @@ export function onboardNext(
     }
 
     case "mode_confirm": {
-      const want = state.mode ?? "MICRO_LIVE";
+      const want = state.mode ?? "LIVE";
       if (t !== want) {
         return {
           state: { ...state, step: "mode" },
@@ -596,7 +600,7 @@ export function onboardNext(
         };
       }
       const ns: OnboardState = { ...state, step: "loss", capitalUsd: capital };
-      writes.push(["POLYROOT_MICRO_LIVE_CAP_USD", String(capital)]);
+      writes.push([LIVE_CAP_ENV, String(capital)]);
       return {
         state: ns,
         reply: `Daily loss cap (bps, 500 = 5%; default ${AUTONOMY_BOUNDS.DAILY_LOSS_CAP_BPS})?`,
@@ -621,7 +625,7 @@ export function onboardNext(
       }
       const capital = state.capitalUsd ?? AUTONOMY_BOUNDS.CAPITAL_CAP_USD;
       const lossUsd = resolveLossCapPusd(capital, bps) ?? 0;
-      writes.push(["POLYROOT_MICRO_LIVE_LOSS_CAP_USD", String(lossUsd)]);
+      writes.push([LIVE_LOSS_CAP_ENV, String(lossUsd)]);
       const keyNote = state.needsTerminalKey
         ? `\n• ⏳ API key provider: jalankan \`polyroot set-key\` di server (${state.keyVar ?? "OPENAI_API_KEY"})`
         : "";
@@ -633,7 +637,7 @@ export function onboardNext(
           `• Provider: ${state.provider} → model ${state.model}${keyNote}\n` +
           `• Mode: ${state.mode}, modal $${capital}, stop-loss $${lossUsd}/hari\n` +
           "Lanjut: `/status` cek service, `polyroot doctor` di server untuk validasi penuh." +
-          (state.mode === "MICRO_LIVE" || state.mode === "LIVE"
+          (state.mode === "LIVE"
             ? " Untuk LIVE penuh masih perlu `polyroot live-promote` (owner sign-off)."
             : ""),
         writes,
@@ -654,9 +658,9 @@ export function onboardNext(
 function modeMenu(): string {
   return (
     "🚀 Langkah 3: Mode\n" +
-    "MICRO_LIVE/LIVE = uang asli (butuh API key + 3 alamat + loss cap).\n" +
-    numbered(["MICRO_LIVE — uang asli kecil", "LIVE — trading asli"]) +
-    "\nBalas: nomor (1-2)."
+    "LIVE = uang asli (butuh API key + 3 alamat + loss cap).\n" +
+    numbered(["LIVE — trading dengan uang asli"]) +
+    "\nBalas: nomor (1)."
   );
 }
 

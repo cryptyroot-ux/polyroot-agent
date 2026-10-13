@@ -49,7 +49,11 @@ import {
 } from "./live-guard-store.js";
 import { PgResolvedClusters } from "./postgres-log.js";
 import { createStepPersistence } from "./observability/index.js";
-import { AUTONOMY_BOUNDS, parseBoundsEnv } from "./autonomy-bounds.js";
+import {
+  AUTONOMY_BOUNDS,
+  parseBoundsEnv,
+  readCapEnv,
+} from "./autonomy-bounds.js";
 import {
   resolveMarketUniverseWithSides,
   parseWatchlist,
@@ -150,7 +154,7 @@ export function deterministicWalletId(signerAddress: string): string {
  * addresses (WAL-03); PAPER/SHADOW keep the mock placeholder.
  */
 export function buildWalletIdentity(
-  mode: "MICRO_LIVE" | "LIVE",
+  mode: "LIVE",
   env: NodeJS.ProcessEnv = process.env,
 ): WalletIdentity {
   const rawKey = env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"] ?? "";
@@ -159,7 +163,7 @@ export function buildWalletIdentity(
   const funder = env["WALLET_FUNDER"] ?? "";
   if (!account || !funder) {
     throw new Error(
-      "LIVE_WALLET_MISSING: WALLET_ACCOUNT and WALLET_FUNDER are required for MICRO_LIVE/LIVE",
+      "LIVE_WALLET_MISSING: WALLET_ACCOUNT and WALLET_FUNDER are required for LIVE",
     );
   }
   const lower = (a: string): string => a.toLowerCase();
@@ -186,13 +190,13 @@ export function buildWalletIdentity(
 
 export interface BootstrapAgentOptions {
   /**
-   * Production signer (KMS, HSM, or encrypted keystore). REQUIRED for MICRO_LIVE/LIVE.
+   * Production signer (KMS, HSM, or encrypted keystore). REQUIRED for LIVE.
    * When omitted, a PAPER/SHADOW-only placeholder signer is used that
    * rejects unhashed requests and must never touch real funds.
    */
   cryptoSigner?: CryptoSigner;
   /**
-   * Real venue adapter. REQUIRED for MICRO_LIVE/LIVE.
+   * Real venue adapter. REQUIRED for LIVE.
    * When omitted, a mock venue adapter is used (PAPER/SHADOW-only).
    */
   venueAdapter?: VenueAdapter;
@@ -313,7 +317,7 @@ async function resolveLiveAdmissionAtStartup(
 
 export async function bootstrapAgent(
   connectionString: string,
-  mode: "MICRO_LIVE" | "LIVE" = "MICRO_LIVE",
+  mode: "LIVE" = "LIVE",
   opts: BootstrapAgentOptions = {},
 ) {
   const pool = new Pool({ connectionString });
@@ -332,16 +336,16 @@ export async function bootstrapAgent(
     sink: stores.eventSink,
     authority: stores.authority,
     chainId: 137,
-    mode: mode as "MICRO_LIVE" | "LIVE",
+    mode: mode as "LIVE",
   });
 
   // Fail-closed LIVE guard: placeholder signer + mock venue are PAPER/SHADOW-only.
-  // MICRO_LIVE/LIVE require explicitly injected production dependencies.
-  const isLive = mode === "MICRO_LIVE" || mode === "LIVE";
+  // LIVE require explicitly injected production dependencies.
+  const isLive = mode === "LIVE";
   if (isLive && (!opts.cryptoSigner || !opts.venueAdapter)) {
     await pool.end().catch(() => undefined);
     throw new Error(
-      "REFUSE_LIVE_WITH_STUBS: MICRO_LIVE/LIVE requires explicit cryptoSigner (keystore/KMS/HSM) " +
+      "REFUSE_LIVE_WITH_STUBS: LIVE requires explicit cryptoSigner (keystore/KMS/HSM) " +
         "and venueAdapter; the placeholder signer and mock venue are PAPER/SHADOW-only",
     );
   }
@@ -576,22 +580,19 @@ export async function bootstrapAgent(
   // REQUIRED in live modes; the exposure cap defaults to the approved
   // AUTONOMY_BOUNDS.CAPITAL_CAP_USD and can only be changed by the owner
   // via `polyroot setup` (never by the AI path).
-  const isLiveMode = mode === "MICRO_LIVE" || mode === "LIVE";
+  const isLiveMode = mode === "LIVE";
   const bounds = parseBoundsEnv(process.env);
   const liveLossCapPusd = bounds.lossCapPusd;
   if (isLiveMode && liveLossCapPusd === undefined) {
     await pool.end().catch(() => undefined);
     throw new Error(
-      "LIVE_LOSS_CAP_UNCONFIGURED: POLYROOT_MICRO_LIVE_LOSS_CAP_USD must be a positive number for MICRO_LIVE/LIVE",
+      "LIVE_LOSS_CAP_UNCONFIGURED: ${LIVE_LOSS_CAP_ENV} must be a positive number for LIVE",
     );
   }
-  if (
-    process.env["POLYROOT_MICRO_LIVE_CAP_USD"] !== undefined &&
-    bounds.capUsd === undefined
-  ) {
+  if (readCapEnv(process.env) !== undefined && bounds.capUsd === undefined) {
     await pool.end().catch(() => undefined);
     throw new Error(
-      "LIVE_CAP_INVALID: POLYROOT_MICRO_LIVE_CAP_USD must be a positive number when set",
+      "LIVE_CAP_INVALID: ${LIVE_CAP_ENV} must be a positive number when set",
     );
   }
   const microLiveCapUsd =
