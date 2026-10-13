@@ -75,7 +75,7 @@ describe("setup survives sequential prompts (shared stdin)", () => {
       "setup must write ~/.polyroot/.env instead of cancelling",
     );
     const env = readFileSync(envPath, "utf8");
-    assert.ok(env.includes("POLYROOT_MICRO_LIVE_CAP_USD=1000"));
-    assert.ok(env.includes("POLYROOT_MICRO_LIVE_LOSS_CAP_USD=50"));
+    assert.ok(env.includes("POLYROOT_LIVE_CAP_USD=1000"));
+    assert.ok(env.includes("POLYROOT_LIVE_LOSS_CAP_USD=50"));
   });
 });

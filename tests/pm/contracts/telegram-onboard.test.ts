@@ -65,13 +65,13 @@ describe("telegram /onboard wizard (pure machine)", () => {
     assert.match(r.reply, /Dibatalkan/);
   });
 
-  it("MICRO_LIVE path completes end to end (terminal key noted, never asked)", () => {
+  it("LIVE path completes end to end (terminal key noted, never asked)", () => {
     const r = scripted([
       "5", // openai
       "1", // gpt-4o-mini
       "2", // keep existing wallet
-      "1", // MICRO_LIVE
-      "MICRO_LIVE", // typed confirmation (real money)
+      "1", // LIVE
+      "LIVE", // typed confirmation (real money)
       "0x1111111111111111111111111111111111111111", // account
       "0x2222222222222222222222222222222222222222", // funder
       "", // default capital
@@ -81,9 +81,9 @@ describe("telegram /onboard wizard (pure machine)", () => {
     const keys = Object.fromEntries(r.writes);
     assert.equal(keys["POLYROOT_FORECAST_PROVIDER"], "openai");
     assert.equal(keys["POLYROOT_FORECAST_MODEL"], "gpt-4o-mini");
-    assert.equal(keys["RUNTIME_MODE"], "MICRO_LIVE");
-    assert.ok(keys["POLYROOT_MICRO_LIVE_CAP_USD"]);
-    assert.ok(keys["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"]);
+    assert.equal(keys["RUNTIME_MODE"], "LIVE");
+    assert.ok(keys["POLYROOT_LIVE_CAP_USD"]);
+    assert.ok(keys["POLYROOT_LIVE_LOSS_CAP_USD"]);
     assert.match(r.reply, /Setup selesai/);
     // No secret ever requested or stored.
     const blob = JSON.stringify(r.writes) + r.reply;
@@ -133,22 +133,22 @@ describe("telegram /onboard wizard (pure machine)", () => {
     assert.match(r.reply, /telegram setup/);
   });
 
-  it("MICRO_LIVE demands typed confirm + 3 distinct addresses", () => {
+  it("LIVE demands typed confirm + 3 distinct addresses", () => {
     let s = start();
     const seq = ["5", "1", "2"]; // openai, model, keep wallet
     for (const t of seq) s = turn(s, t).state;
-    let r = turn(s, "1"); // MICRO_LIVE
+    let r = turn(s, "1"); // LIVE
     assert.equal(r.state.step, "mode_confirm");
     s = r.state;
     r = turn(s, "nope");
     assert.equal(r.state.step, "mode");
-    assert.equal(r.state.mode, "MICRO_LIVE");
+    assert.equal(r.state.mode, "LIVE");
   });
 
-  it("MICRO_LIVE full path validates distinctness", () => {
+  it("LIVE full path validates distinctness", () => {
     let s = start();
     const seen: Array<[string, string]> = [];
-    for (const t of ["5", "1", "2", "1", "MICRO_LIVE"]) {
+    for (const t of ["5", "1", "2", "1", "LIVE"]) {
       const r0 = turn(s, t);
       s = r0.state;
       seen.push(...r0.writes);
@@ -182,7 +182,7 @@ describe("telegram /onboard wizard (pure machine)", () => {
     const keys = Object.fromEntries(seen);
     assert.equal(keys["WALLET_ACCOUNT"], acct);
     assert.equal(keys["WALLET_FUNDER"], fund);
-    assert.equal(keys["RUNTIME_MODE"], "MICRO_LIVE");
+    assert.equal(keys["RUNTIME_MODE"], "LIVE");
     assert.match(r.reply, /live-promote/);
   });
 
@@ -200,7 +200,7 @@ describe("telegram /onboard wizard (pure machine)", () => {
     assert.equal(onboardSessionGet("u1", 1002), null);
   });
 
-  it("full MICRO_LIVE conversation through the real handler persists .env", async () => {
+  it("full LIVE conversation through the real handler persists .env", async () => {
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -224,16 +224,16 @@ describe("telegram /onboard wizard (pure machine)", () => {
       await say(["5"]); // openai
       await say(["1"]); // gpt-4o-mini
       await say(["2"]); // keep wallet
-      const m = await say(["1"]); // MICRO_LIVE
-      assert.match(m, /MICRO_LIVE/);
-      await say(["MICRO_LIVE"]); // typed confirmation (real money)
+      const m = await say(["1"]); // LIVE (the only mode)
+      assert.match(m, /LIVE/);
+      await say(["LIVE"]); // typed confirmation (real money)
       await say(["0x1111111111111111111111111111111111111111"]); // account
       await say(["0x2222222222222222222222222222222222222222"]); // funder
       await say([""]); // default capital
       const done = await say([""]); // default loss
       assert.match(done, /Setup selesai/);
       const text = readFileSync(join(home, ".polyroot", ".env"), "utf8");
-      assert.ok(text.includes("RUNTIME_MODE=MICRO_LIVE"));
+      assert.ok(text.includes("RUNTIME_MODE=LIVE"));
       assert.ok(text.includes("POLYROOT_FORECAST_MODEL=gpt-4o-mini"));
       assert.ok(!/sk-|PRIVATE/i.test(text));
     } finally {
@@ -254,11 +254,11 @@ describe("telegram /onboard wizard (pure machine)", () => {
       const p = onboardPaths();
       assert.ok(p.envPath.startsWith(home));
       applyOnboardWrites([
-        ["RUNTIME_MODE", "MICRO_LIVE"],
+        ["RUNTIME_MODE", "LIVE"],
         ["POLYROOT_FORECAST_MODEL", "gpt-4o-mini"],
       ]);
       const text = readFileSync(join(home, ".polyroot", ".env"), "utf8");
-      assert.ok(text.includes("RUNTIME_MODE=MICRO_LIVE"));
+      assert.ok(text.includes("RUNTIME_MODE=LIVE"));
       assert.ok(existsSync(join(home, ".polyroot")));
     } finally {
       if (saved === undefined) delete process.env["HOME"];

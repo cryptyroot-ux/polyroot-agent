@@ -14,9 +14,9 @@ describe("setup guide (lay-friendly)", () => {
       mode: "LIVE",
       universe: ["12345"],
     });
-    assert.ok(lines.includes("POLYROOT_MICRO_LIVE_CAP_USD=1000"));
+    assert.ok(lines.includes("POLYROOT_LIVE_CAP_USD=1000"));
     // 5% of 1000 = 50 loss cap.
-    assert.ok(lines.includes("POLYROOT_MICRO_LIVE_LOSS_CAP_USD=50"));
+    assert.ok(lines.includes("POLYROOT_LIVE_LOSS_CAP_USD=50"));
     assert.ok(lines.includes("RUNTIME_MODE=LIVE"));
     assert.ok(lines.includes("POLYROOT_MARKET_IDS=12345"));
   });
@@ -25,21 +25,21 @@ describe("setup guide (lay-friendly)", () => {
     const lines = buildSetupEnvUpdate({
       capitalUsd: NaN,
       lossBps: -10,
-      mode: "MICRO_LIVE",
+      mode: "LIVE",
       universe: [],
     });
-    assert.ok(lines.includes("POLYROOT_MICRO_LIVE_CAP_USD=1000"));
-    assert.ok(lines.includes("POLYROOT_MICRO_LIVE_LOSS_CAP_USD=50"));
-    assert.ok(lines.includes("RUNTIME_MODE=MICRO_LIVE"));
+    assert.ok(lines.includes("POLYROOT_LIVE_CAP_USD=1000"));
+    assert.ok(lines.includes("POLYROOT_LIVE_LOSS_CAP_USD=50"));
+    assert.ok(lines.includes("RUNTIME_MODE=LIVE"));
   });
 
   it("replaces existing keys instead of duplicating them", () => {
-    const out = upsertEnvLines("A=1\nPOLYROOT_MICRO_LIVE_CAP_USD=500\nB=2\n", [
-      "POLYROOT_MICRO_LIVE_CAP_USD=1000",
+    const out = upsertEnvLines("A=1\nPOLYROOT_LIVE_CAP_USD=500\nB=2\n", [
+      "POLYROOT_LIVE_CAP_USD=1000",
     ]);
     const hits = out
       .split("\n")
-      .filter((l) => l.startsWith("POLYROOT_MICRO_LIVE_CAP_USD="));
+      .filter((l) => l.startsWith("POLYROOT_LIVE_CAP_USD="));
     assert.equal(hits.length, 1);
     assert.ok(out.includes("A=1"));
     assert.ok(out.includes("B=2"));

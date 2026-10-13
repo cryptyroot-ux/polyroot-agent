@@ -14,8 +14,8 @@ const OTHER_KEY =
 
 describe("runtime env validation (fail-closed)", () => {
   it("MICRO_LIVE needs wallet key/keystore", () => {
-    assert.throws(() => assertRuntimeEnv("MICRO_LIVE", {}), /LIVE_ENV_MISSING/);
-    assertRuntimeEnv("MICRO_LIVE", {
+    assert.throws(() => assertRuntimeEnv("LIVE", {}), /LIVE_ENV_MISSING/);
+    assertRuntimeEnv("LIVE", {
       WALLET_PRIVATE_KEY: TEST_KEY,
       WALLET_ACCOUNT: "0x1111111111111111111111111111111111111111",
       WALLET_FUNDER: "0x2222222222222222222222222222222222222222",
@@ -78,9 +78,9 @@ describe("wallet identity derivation", () => {
       WALLET_ACCOUNT: "0x1111111111111111111111111111111111111111",
       WALLET_FUNDER: "0x2222222222222222222222222222222222222222",
     };
-    const w = buildWalletIdentity("MICRO_LIVE", env);
+    const w = buildWalletIdentity("LIVE", env);
     assert.equal(w.signer_address, addr);
-    assert.equal(w.wallet_id, buildWalletIdentity("MICRO_LIVE", env).wallet_id);
+    assert.equal(w.wallet_id, buildWalletIdentity("LIVE", env).wallet_id);
     assert.match(
       w.wallet_id,
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
@@ -91,7 +91,7 @@ describe("wallet identity derivation", () => {
     const addr = deriveAddressFromPrivateKey(TEST_KEY);
     assert.throws(
       () =>
-        buildWalletIdentity("MICRO_LIVE", {
+        buildWalletIdentity("LIVE", {
           WALLET_PRIVATE_KEY: TEST_KEY,
           WALLET_ACCOUNT: addr,
           WALLET_FUNDER: "0x2222222222222222222222222222222222222222",

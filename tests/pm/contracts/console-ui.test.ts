@@ -76,13 +76,13 @@ describe("console UI kit", () => {
   it("kv aligns values, table aligns columns", () => {
     const k = kv(
       [
-        ["Mode:", "MICRO_LIVE"],
+        ["Mode:", "LIVE"],
         ["Database:", "✅ Set"],
       ],
       theme(OFF),
     );
     const [l1, l2] = k.split("\n");
-    assert.equal(l1?.indexOf("MICRO_LIVE"), l2?.indexOf("✅ Set"));
+    assert.equal(l1?.indexOf("LIVE"), l2?.indexOf("✅ Set"));
     const tb = table(["#", "Market"], [["1", "Will X?"]], {}, theme(OFF));
     assert.ok(tb.includes("#") && tb.includes("Will X?"));
   });
@@ -95,7 +95,7 @@ describe("console UI kit", () => {
   });
 
   it("pill wraps text verbatim", () => {
-    assert.ok(pill("MICRO_LIVE", "cyan", theme(OFF)).includes("MICRO_LIVE"));
+    assert.ok(pill("LIVE", "cyan", theme(OFF)).includes("LIVE"));
   });
 
   it("menuFrame shows identical options in order with cursor + default", () => {

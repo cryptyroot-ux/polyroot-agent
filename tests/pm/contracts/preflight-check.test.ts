@@ -44,7 +44,7 @@ describe("pre-flight check (polyroot run gate)", () => {
   });
 
   it("MICRO_LIVE without wallet/venue fails closed (errors, not warnings)", () => {
-    const r = runPreflightCheck("MICRO_LIVE", {
+    const r = runPreflightCheck("LIVE", {
       DATABASE_URL: "postgresql://u:p@localhost:5432/db",
     });
     assert.equal(r.ok, false);
@@ -53,14 +53,14 @@ describe("pre-flight check (polyroot run gate)", () => {
   });
 
   it("MICRO_LIVE without database still fails", () => {
-    const r = runPreflightCheck("MICRO_LIVE", {});
+    const r = runPreflightCheck("LIVE", {});
     assert.equal(r.ok, false);
     assert.ok(r.errors.some((m) => m.includes("DATABASE_URL")));
   });
 
   it("honors the injected env instead of process.env", () => {
     // Would fail against real process.env if it read the wrong source.
-    const r = runPreflightCheck("MICRO_LIVE", {
+    const r = runPreflightCheck("LIVE", {
       ...FULL_LIVE,
       POLYROOT_FORECAST_PROVIDER: "codex",
     });
@@ -69,7 +69,7 @@ describe("pre-flight check (polyroot run gate)", () => {
   });
 
   it("no duplicated DATABASE_URL lines", () => {
-    const r = runPreflightCheck("MICRO_LIVE", { ...FULL_LIVE });
+    const r = runPreflightCheck("LIVE", { ...FULL_LIVE });
     const dbLines = [...r.errors, ...r.info].filter((m) =>
       m.includes("DATABASE_URL"),
     );

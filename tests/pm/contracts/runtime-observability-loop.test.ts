@@ -124,7 +124,7 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
         },
       },
       chainId: 137,
-      mode: "MICRO_LIVE",
+      mode: "LIVE",
       permitTtlMs: 60_000,
     });
     const signer = new SignerVault({
@@ -162,10 +162,11 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
 
     const pipeline = createG4Pipeline({
       config: {
-        mode: "MICRO_LIVE",
+        mode: "LIVE",
         minEdgeAfterCost: 0.01,
         microLiveCapUsd: 100,
         liveLossCapPusd: 50_000,
+        liveAdmission: { admitted: true },
       },
       kernel,
       signer,
@@ -227,7 +228,7 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
         },
       },
       chainId: 137,
-      mode: "MICRO_LIVE",
+      mode: "LIVE",
       permitTtlMs: 60_000,
     });
     const signer = new SignerVault({
@@ -253,10 +254,11 @@ describe("Runtime Observability Hooks & Continuous Run (Gaps 8.5, 8.7)", () => {
     });
     const pipeline = createG4Pipeline({
       config: {
-        mode: "MICRO_LIVE",
+        mode: "LIVE",
         minEdgeAfterCost: 0.01,
         microLiveCapUsd: 100,
         liveLossCapPusd: 50_000,
+        liveAdmission: { admitted: true },
       },
       kernel,
       signer,

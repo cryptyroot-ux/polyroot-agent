@@ -17,7 +17,7 @@ import {
  * the active deployment. A candidate older than the active schema is refused
  * even when live orders remain reconcilable — the migration is forward-only.
  *
- * DeploymentMode is "LIVE" only: the PAPER/MICRO_LIVE/MICRO_LIVE canary ladder
+ * DeploymentMode is "LIVE" only: the PAPER/MICRO_LIVE canary ladder
  * has been removed, so every rollout now reaches real money and every LIVE
  * promotion demands explicit owner approval.
  */

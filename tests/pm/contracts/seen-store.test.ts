@@ -55,7 +55,7 @@ describe("PgSeenStore", () => {
 describe("hydrateSeen startup gate", () => {
   it("MICRO_LIVE refuses stubs without injected signer/venue (fail-closed)", async () => {
     await assert.rejects(
-      bootstrapAgent(DUMMY_DB, "MICRO_LIVE"),
+      bootstrapAgent(DUMMY_DB, "LIVE"),
       /REFUSE_LIVE_WITH_STUBS/,
     );
   });
@@ -64,17 +64,17 @@ describe("hydrateSeen startup gate", () => {
     const prevKey = process.env["WALLET_PRIVATE_KEY"];
     const prevAccount = process.env["WALLET_ACCOUNT"];
     const prevFunder = process.env["WALLET_FUNDER"];
-    const prevLossCap = process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
+    const prevLossCap = process.env["POLYROOT_LIVE_LOSS_CAP_USD"];
     const prevUniverse = process.env["POLYROOT_MARKET_IDS"];
     process.env["WALLET_PRIVATE_KEY"] =
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     process.env["WALLET_ACCOUNT"] =
       "0x1111111111111111111111111111111111111111";
     process.env["WALLET_FUNDER"] = "0x2222222222222222222222222222222222222222";
-    process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = "100";
+    process.env["POLYROOT_LIVE_LOSS_CAP_USD"] = "100";
     process.env["POLYROOT_MARKET_IDS"] = "12345";
     try {
-      const agent = await bootstrapAgent(DUMMY_DB, "MICRO_LIVE", {
+      const agent = await bootstrapAgent(DUMMY_DB, "LIVE", {
         cryptoSigner: async () => "0x_test_sig",
         venueAdapter: fakeVenueAdapter(),
       });
@@ -88,8 +88,8 @@ describe("hydrateSeen startup gate", () => {
       if (prevFunder === undefined) delete process.env["WALLET_FUNDER"];
       else process.env["WALLET_FUNDER"] = prevFunder;
       if (prevLossCap === undefined)
-        delete process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"];
-      else process.env["POLYROOT_MICRO_LIVE_LOSS_CAP_USD"] = prevLossCap;
+        delete process.env["POLYROOT_LIVE_LOSS_CAP_USD"];
+      else process.env["POLYROOT_LIVE_LOSS_CAP_USD"] = prevLossCap;
       if (prevUniverse === undefined) delete process.env["POLYROOT_MARKET_IDS"];
       else process.env["POLYROOT_MARKET_IDS"] = prevUniverse;
     }

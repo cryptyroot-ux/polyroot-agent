@@ -12,26 +12,20 @@ describe("Domain baseline — canonical enums vs spec pack 124 PM-*", () => {
   it("PM-GOV-02: operation modes exclude PAPER/MICRO_LIVE (simulation modes removed)", () => {
     const modes = OperationModeSchema.options;
     // Assert PAPER/MICRO_LIVE are gone without hardcoding the exact surviving set.
-    assert.equal(
-      modes.includes("PAPER" as never),
-      false,
-      "PAPER must be removed",
-    );
-    assert.equal(
-      modes.includes("MICRO_LIVE" as never),
-      false,
-      "MICRO_LIVE must be removed",
-    );
-    assert.equal(
-      OperationModeSchema.safeParse("PAPER").success,
-      false,
-      "PAPER must not parse",
-    );
-    assert.equal(
-      OperationModeSchema.safeParse("MICRO_LIVE").success,
-      false,
-      "MICRO_LIVE must not parse",
-    );
+    for (const gone of ["PAPER", "MICRO_LIVE", "SHADOW"] as const) {
+      assert.equal(
+        modes.includes(gone as never),
+        false,
+        `${gone} must be removed`,
+      );
+      assert.equal(
+        OperationModeSchema.safeParse(gone).success,
+        false,
+        `${gone} must not parse`,
+      );
+    }
+    // LIVE is the only operation mode left, alongside RESEARCH.
+    assert.equal(OperationModeSchema.safeParse("LIVE").success, true);
   });
 
   it("PM-VENUE-01: venue modes are NORMAL/POST_ONLY/CANCEL_ONLY/READ_ONLY/UNAVAILABLE/UNKNOWN, free of RESTARTING", () => {

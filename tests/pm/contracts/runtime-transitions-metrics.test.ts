@@ -129,7 +129,7 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
         },
       },
       chainId: 137,
-      mode: "MICRO_LIVE",
+      mode: "LIVE",
       permitTtlMs: 60_000,
     });
     const signer = new SignerVault({
@@ -155,10 +155,11 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
     });
     const pipeline = createG4Pipeline({
       config: {
-        mode: "MICRO_LIVE",
+        mode: "LIVE",
         minEdgeAfterCost: 0.01,
         microLiveCapUsd: 10_000,
         liveLossCapPusd: 100,
+        liveAdmission: { admitted: true },
       },
       kernel,
       signer,
@@ -184,22 +185,25 @@ describe("Runtime Mode Transitions & Metrics Accumulation (Gaps 8.4, 8.6)", () =
     return pipeline;
   }
 
-  it("supports the valid mode transition (MICRO_LIVE -> LIVE)", () => {
+  it("LIVE is the only mode, and it is terminal", () => {
     const pipeline = makeTestPipeline();
-    assert.equal(pipeline.getMode(), "MICRO_LIVE");
-
-    pipeline.setMode("LIVE");
     assert.equal(pipeline.getMode(), "LIVE");
+
+    // No upward transition exists any more: there is nothing above LIVE.
+    assert.throws(() => {
+      pipeline.setMode("LIVE");
+    }, /Invalid mode transition/);
   });
 
-  it("rejects invalid mode transitions (LIVE is terminal)", () => {
+  it("rejects every mode that is not LIVE", () => {
     const pipeline = makeTestPipeline();
-    pipeline.setMode("LIVE");
-    assert.equal(pipeline.getMode(), "LIVE");
-
-    assert.throws(() => {
-      pipeline.setMode("MICRO_LIVE");
-    }, /Invalid mode transition/);
+    for (const gone of ["PAPER", "SHADOW", "MICRO_LIVE"] as const) {
+      assert.throws(
+        () => pipeline.setMode(gone as never),
+        /Invalid mode transition/,
+        `${gone} must not be a runtime mode`,
+      );
+    }
   });
 
   it("accumulates metrics correctly across multiple market processing steps", async () => {

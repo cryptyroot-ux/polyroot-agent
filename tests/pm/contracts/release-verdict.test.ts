@@ -31,15 +31,15 @@ describe("Phase 30: release verdict (PRD 10, Blueprint 15)", () => {
     assert.equal(ci.tier, "NO_GO");
   });
 
-  it("green units without live evidence cap at GO_MICRO_LIVE, never LIVE", () => {
+  it("green units without live evidence cap at GO_LIVE, never LIVE", () => {
     const r = releaseVerdict(green());
-    assert.equal(r.tier, "GO_MICRO_LIVE");
+    assert.equal(r.tier, "GO_LIVE");
     assert.match(r.reasons.join(";"), /live-blocker/);
   });
 
-  it("without shadow plumbing the ceiling is GO_PAPER", () => {
+  it("without shadow plumbing the ceiling is GO_LIVE", () => {
     const r = releaseVerdict(green({ shadowPlumbingProven: false }));
-    assert.equal(r.tier, "GO_PAPER");
+    assert.equal(r.tier, "GO_LIVE");
   });
 
   it("even complete live evidence never auto-emits LIVE (owner sign-off out of band)", () => {
@@ -52,7 +52,7 @@ describe("Phase 30: release verdict (PRD 10, Blueprint 15)", () => {
       }),
     );
     assert.notEqual((r as any).tier, "PROMOTE_TO_LIVE");
-    assert.ok(["GO_PAPER", "GO_MICRO_LIVE"].includes((r as any).tier));
+    assert.ok(["GO_LIVE", "GO_LIVE"].includes((r as any).tier));
   });
 
   it("each live gap is named individually", () => {

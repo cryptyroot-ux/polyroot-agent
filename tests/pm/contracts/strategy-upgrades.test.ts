@@ -154,7 +154,10 @@ describe("research-backed edge guards", () => {
 describe("executeG4Step enforces book regime (no longer display-only)", () => {
   function core() {
     return {
-      config: getDefaultModeConfig("MICRO_LIVE", { minEdgeAfterCost: 0.03 }),
+      config: getDefaultModeConfig("LIVE", {
+        minEdgeAfterCost: 0.03,
+        liveAdmission: { admitted: true },
+      }),
       deps: {
         venueMode: () => "NORMAL",
         forecast: async () => 0.65,
@@ -500,7 +503,10 @@ describe("smart-money contradiction guard (one-way)", () => {
       getSmartMoneyFlow: () => flow(),
     };
     const core = {
-      config: getDefaultModeConfig("MICRO_LIVE", { minEdgeAfterCost: 0.03 }),
+      config: getDefaultModeConfig("LIVE", {
+        minEdgeAfterCost: 0.03,
+        liveAdmission: { admitted: true },
+      }),
       deps,
     };
     const res = await executeG4Step(

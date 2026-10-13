@@ -131,7 +131,7 @@ function runOnboardLikeHuman(
       "Wallet (Enter = create new):",
       "Create a vault password",
       "Repeat the vault password",
-      "Choose mode (Enter = MICRO_LIVE):",
+      "Choose mode (Enter = LIVE):",
       "Capital cap in USD",
       "Daily loss cap in %",
     ];
@@ -199,7 +199,7 @@ describe("onboarding contains zero maintainer-owned provider defaults", () => {
 });
 
 describe("super-easy onboarding E2E (create wallet path)", () => {
-  it("completes with OpenAI key + new wallet + MICRO_LIVE default", async () => {
+  it("completes with OpenAI key + new wallet + LIVE default", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(
       home,
@@ -211,8 +211,8 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: MICRO_LIVE (default) - press 1
-        "MICRO_LIVE", // typed confirmation (real money)
+        "1", // mode: LIVE (the only mode)
+        "LIVE", // typed confirmation (real money)
         "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
         "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "10000", // capital cap
@@ -227,8 +227,8 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = MICRO_LIVE):",
-        "Type MICRO_LIVE to continue",
+        "Choose mode (Enter = LIVE):",
+        "Type LIVE to continue",
         "Wallet Account address",
         "Wallet Funder address",
         "Capital cap in USD",
@@ -240,7 +240,7 @@ describe("super-easy onboarding E2E (create wallet path)", () => {
     const envPath = join(home, ".polyroot", ".env");
     assert.equal(existsSync(envPath), true);
     const env = readFileSync(envPath, "utf8");
-    assert.ok(env.includes("RUNTIME_MODE=MICRO_LIVE"));
+    assert.ok(env.includes("RUNTIME_MODE=LIVE"));
     assert.ok(env.includes("POLYROOT_FORECAST_PROVIDER=openai"));
     assert.ok(env.includes("OPENAI_BASE_URL=https://api.openai.com/v1"));
     assert.ok(env.includes("OPENAI_API_KEY=sk-test-key-1"));
@@ -273,8 +273,8 @@ describe("super-easy onboarding E2E (ChatGPT login via Codex OAuth)", () => {
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: MICRO_LIVE (default)
-        "MICRO_LIVE", // typed confirmation (real money)
+        "1", // mode: LIVE
+        "LIVE", // typed confirmation (real money)
         "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
         "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "10000", // capital cap
@@ -288,8 +288,8 @@ describe("super-easy onboarding E2E (ChatGPT login via Codex OAuth)", () => {
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = MICRO_LIVE):",
-        "Type MICRO_LIVE to continue",
+        "Choose mode (Enter = LIVE):",
+        "Type LIVE to continue",
         "Wallet Account address",
         "Wallet Funder address",
         "Capital cap in USD",
@@ -322,8 +322,8 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: MICRO_LIVE (default) - press 1
-        "MICRO_LIVE", // typed confirmation (real money)
+        "1", // mode: LIVE (the only mode)
+        "LIVE", // typed confirmation (real money)
         "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
         "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "10000", // capital cap
@@ -340,8 +340,8 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = MICRO_LIVE):",
-        "Type MICRO_LIVE to continue",
+        "Choose mode (Enter = LIVE):",
+        "Type LIVE to continue",
         "Wallet Account address",
         "Wallet Funder address",
         "Capital cap in USD",
@@ -370,8 +370,8 @@ describe("super-easy onboarding E2E (custom gateway path)", () => {
   });
 });
 
-describe("onboarding offers the MICRO_LIVE → LIVE ladder", () => {
-  it("MICRO_LIVE path requires typed confirmation and writes caps", async () => {
+describe("onboarding confirms LIVE (the only mode)", () => {
+  it("LIVE path requires typed confirmation and writes caps", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(
       home,
@@ -383,8 +383,8 @@ describe("onboarding offers the MICRO_LIVE → LIVE ladder", () => {
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: MICRO_LIVE
-        "MICRO_LIVE", // typed confirmation (real money)
+        "1", // mode: LIVE
+        "LIVE", // typed confirmation (real money)
         "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
         "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "100", // capital cap
@@ -399,8 +399,8 @@ describe("onboarding offers the MICRO_LIVE → LIVE ladder", () => {
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = MICRO_LIVE):",
-        "Type MICRO_LIVE to continue",
+        "Choose mode (Enter = LIVE):",
+        "Type LIVE to continue",
         "Wallet Account address",
         "Wallet Funder address",
         "Capital cap in USD",
@@ -409,8 +409,8 @@ describe("onboarding offers the MICRO_LIVE → LIVE ladder", () => {
     );
     assert.equal(code, 0);
     const env = readFileSync(join(home, ".polyroot", ".env"), "utf8");
-    assert.ok(env.includes("RUNTIME_MODE=MICRO_LIVE"));
-    assert.ok(env.includes("POLYROOT_MICRO_LIVE_CAP_USD=100"));
+    assert.ok(env.includes("RUNTIME_MODE=LIVE"));
+    assert.ok(env.includes("POLYROOT_LIVE_CAP_USD=100"));
     assert.ok(
       env.includes("WALLET_ACCOUNT=0x1111111111111111111111111111111111111111"),
     );
@@ -420,7 +420,7 @@ describe("onboarding offers the MICRO_LIVE → LIVE ladder", () => {
     assert.ok(!out.includes("files.pango.fun"));
   });
 
-  it("MICRO_LIVE without typed confirmation cancels setup (exit 0, no env)", async () => {
+  it("LIVE without typed confirmation cancels setup (exit 0, no env)", async () => {
     const home = mkdtempSync(join(tmpdir(), "polyroot-onboard-"));
     const { code, out } = await runOnboardLikeHuman(
       home,
@@ -432,7 +432,7 @@ describe("onboarding offers the MICRO_LIVE → LIVE ladder", () => {
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: MICRO_LIVE
+        "1", // mode: LIVE
         "nope", // wrong confirmation → cancel setup
       ],
       [
@@ -443,8 +443,8 @@ describe("onboarding offers the MICRO_LIVE → LIVE ladder", () => {
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = MICRO_LIVE):",
-        "Type MICRO_LIVE to continue",
+        "Choose mode (Enter = LIVE):",
+        "Type LIVE to continue",
       ],
     );
     assert.equal(code, 0);
@@ -471,8 +471,8 @@ describe("onboarding finish is resilient without a database", () => {
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: MICRO_LIVE (default) - press 1
-        "MICRO_LIVE", // typed confirmation (real money)
+        "1", // mode: LIVE (the only mode)
+        "LIVE", // typed confirmation (real money)
         "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
         "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "10000", // capital cap
@@ -487,8 +487,8 @@ describe("onboarding finish is resilient without a database", () => {
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = MICRO_LIVE):",
-        "Type MICRO_LIVE to continue",
+        "Choose mode (Enter = LIVE):",
+        "Type LIVE to continue",
         "Wallet Account address",
         "Wallet Funder address",
         "Capital cap in USD",
@@ -526,8 +526,8 @@ describe("onboarding E2E (Anthropic official key: key→live-catalog contract)",
         "", // wallet: create new (default)
         "test-pass-123", // vault password
         "test-pass-123", // repeat vault password
-        "1", // mode: MICRO_LIVE (default)
-        "MICRO_LIVE", // typed confirmation (real money)
+        "1", // mode: LIVE
+        "LIVE", // typed confirmation (real money)
         "0x1111111111111111111111111111111111111111", // WALLET_ACCOUNT (WAL-03)
         "0x2222222222222222222222222222222222222222", // WALLET_FUNDER (WAL-03)
         "10000", // capital cap
@@ -542,8 +542,8 @@ describe("onboarding E2E (Anthropic official key: key→live-catalog contract)",
         "Wallet (Enter = create new):",
         "Create a vault password",
         "Repeat the vault password",
-        "Choose mode (Enter = MICRO_LIVE):",
-        "Type MICRO_LIVE to continue",
+        "Choose mode (Enter = LIVE):",
+        "Type LIVE to continue",
         "Wallet Account address",
         "Wallet Funder address",
         "Capital cap in USD",

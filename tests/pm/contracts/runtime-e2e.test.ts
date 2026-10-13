@@ -164,7 +164,7 @@ function makePipeline(forecastP: number | null) {
     sink: new FakeSink(),
     authority: fakeAuthority,
     chainId: 137,
-    mode: "MICRO_LIVE",
+    mode: "LIVE",
     permitTtlMs: 60_000,
   });
   const signer = new SignerVault({
@@ -189,10 +189,11 @@ function makePipeline(forecastP: number | null) {
   });
   const pipeline = createG4Pipeline({
     config: {
-      mode: "MICRO_LIVE",
+      mode: "LIVE",
       minEdgeAfterCost: 0.01,
       microLiveCapUsd: 100,
       liveLossCapPusd: 50_000,
+      liveAdmission: { admitted: true },
     },
     kernel,
     signer,

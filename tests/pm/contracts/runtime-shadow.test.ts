@@ -176,7 +176,7 @@ describe("Runtime MICRO_LIVE — G4 pipeline live path through executor", () => 
       sink: new FakeSink(),
       authority: fakeAuthority,
       chainId: 137,
-      mode: "MICRO_LIVE",
+      mode: "LIVE",
       permitTtlMs: 60_000,
     });
     const signer = new SignerVault({
@@ -202,10 +202,11 @@ describe("Runtime MICRO_LIVE — G4 pipeline live path through executor", () => 
     });
     const pipeline = createG4Pipeline({
       config: {
-        mode: "MICRO_LIVE",
+        mode: "LIVE",
         minEdgeAfterCost: 0.01,
         microLiveCapUsd: capitalUsd,
         liveLossCapPusd: 100,
+        liveAdmission: { admitted: true },
       },
       kernel,
       signer,

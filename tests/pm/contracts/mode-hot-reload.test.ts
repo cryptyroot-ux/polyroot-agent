@@ -48,31 +48,31 @@ function pipelineWithWatcher(
 
 describe("live mode hot-reload (no restart)", () => {
   it("valid jump MICRO_LIVE -> LIVE applies within one sync", () => {
-    const f = fakeWatcher("MICRO_LIVE");
-    const pipe = pipelineWithWatcher("MICRO_LIVE", f.watcher);
-    assert.equal(pipe.getMode(), "MICRO_LIVE");
+    const f = fakeWatcher("LIVE");
+    const pipe = pipelineWithWatcher("LIVE", f.watcher);
+    assert.equal(pipe.getMode(), "LIVE");
     f.state.mode = "LIVE";
     assert.equal(pipe.syncModeFromWatcher(), true);
     assert.equal(pipe.getMode(), "LIVE");
   });
 
   it("invalid jump LIVE -> MICRO_LIVE is refused (forward-only)", () => {
-    const f = fakeWatcher("MICRO_LIVE");
+    const f = fakeWatcher("LIVE");
     const pipe = pipelineWithWatcher("LIVE", f.watcher);
     assert.equal(pipe.syncModeFromWatcher(), true);
     assert.equal(pipe.getMode(), "LIVE");
   });
 
   it("degraded watcher halts entries (fail-closed)", () => {
-    const f = fakeWatcher("MICRO_LIVE");
+    const f = fakeWatcher("LIVE");
     f.state.degraded = true;
-    const pipe = pipelineWithWatcher("MICRO_LIVE", f.watcher);
+    const pipe = pipelineWithWatcher("LIVE", f.watcher);
     assert.equal(pipe.syncModeFromWatcher(), false);
-    assert.equal(pipe.getMode(), "MICRO_LIVE");
+    assert.equal(pipe.getMode(), "LIVE");
   });
 
   it("no watcher keeps the fixed boot mode", () => {
-    const pipe = new G4Pipeline(getDefaultModeConfig("MICRO_LIVE", {}), {
+    const pipe = new G4Pipeline(getDefaultModeConfig("LIVE", {}), {
       forecast: async () => 0.65,
       sizeIntent: () => 10,
       venueMode: () => "NORMAL",
@@ -86,6 +86,6 @@ describe("live mode hot-reload (no restart)", () => {
       policyHash: "test",
     } as never);
     assert.equal(pipe.syncModeFromWatcher(), true);
-    assert.equal(pipe.getMode(), "MICRO_LIVE");
+    assert.equal(pipe.getMode(), "LIVE");
   });
 });

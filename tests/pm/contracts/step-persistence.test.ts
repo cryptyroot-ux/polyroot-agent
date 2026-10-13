@@ -31,7 +31,7 @@ describe("pipeline step persistence", () => {
   it("MICRO_LIVE NO_TRADE writes snapshot + shadow_log, skips forecast when p is null", async () => {
     const { pool, statements } = capturePool();
     const out = await persistStep(
-      { pool, mode: "MICRO_LIVE", model: "test-model" },
+      { pool, mode: "LIVE", model: "test-model" },
       INPUT,
       {
         market_id: "mkt-1",
@@ -59,25 +59,21 @@ describe("pipeline step persistence", () => {
 
   it("MICRO_LIVE BUY writes snapshot + forecast + shadow_log", async () => {
     const { pool, statements } = capturePool();
-    const out = await persistStep(
-      { pool, mode: "MICRO_LIVE", model: "m" },
-      INPUT,
-      {
-        market_id: "mkt-1",
-        decision: "BUY",
-        reason: undefined,
-        p: 0.65,
-        size: 100,
-        fill: {
-          status: "FILLED",
-          filledSize: 100,
-          fillPrice: 0.55,
-          makerFee: 0,
-          takerFee: 1,
-          latencyMs: 50,
-        },
+    const out = await persistStep({ pool, mode: "LIVE", model: "m" }, INPUT, {
+      market_id: "mkt-1",
+      decision: "BUY",
+      reason: undefined,
+      p: 0.65,
+      size: 100,
+      fill: {
+        status: "FILLED",
+        filledSize: 100,
+        fillPrice: 0.55,
+        makerFee: 0,
+        takerFee: 1,
+        latencyMs: 50,
       },
-    );
+    });
     assert.deepEqual(out, {
       snapshot: true,
       forecast: true,
@@ -100,7 +96,7 @@ describe("pipeline step persistence", () => {
     const out = await persistStep(
       {
         pool,
-        mode: "MICRO_LIVE",
+        mode: "LIVE",
         onError: (table, err) => {
           errs.push({ table, message: err.message });
         },
@@ -125,7 +121,7 @@ describe("pipeline step persistence", () => {
     await persistStep(
       {
         pool,
-        mode: "MICRO_LIVE",
+        mode: "LIVE",
         getReasoning: () => ({
           rationale: "Flow favors YES.",
           factors: ["depth"],
@@ -168,7 +164,7 @@ describe("pipeline step persistence", () => {
     const out = await persistStep(
       {
         pool,
-        mode: "MICRO_LIVE",
+        mode: "LIVE",
         onError: (table, err) => {
           errs.push({ table, message: err.message });
         },
@@ -197,7 +193,7 @@ describe("pipeline step persistence", () => {
         return { rows: [] };
       },
     };
-    const hook = createStepPersistence({ pool: slowPool, mode: "MICRO_LIVE" });
+    const hook = createStepPersistence({ pool: slowPool, mode: "LIVE" });
     hook.emitStepComplete(
       { ...INPUT } as never,
       {
@@ -218,7 +214,7 @@ describe("pipeline step persistence", () => {
 
   it("createStepPersistence hook is fire-and-forget and never throws", async () => {
     const { pool, statements } = capturePool();
-    const hook = createStepPersistence({ pool, mode: "MICRO_LIVE" });
+    const hook = createStepPersistence({ pool, mode: "LIVE" });
     hook.emitStepComplete(
       { ...INPUT, forecastOverride: undefined } as never,
       {

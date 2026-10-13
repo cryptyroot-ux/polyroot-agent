@@ -57,14 +57,14 @@ describe("PgLiveGuardStore (durable loss latch)", () => {
   it("startup gate refuses without baseline evidence", () => {
     const missing = checkShadowBaselineRow(null);
     assert.equal(missing.ok, false);
-    if (!missing.ok) assert.equal(missing.code, "MICRO_LIVE_NOT_READY");
+    if (!missing.ok) assert.equal(missing.code, "BASELINE_NOT_MET");
 
     const growing = checkShadowBaselineRow({
       observed_days: "12.5",
       resolved_clusters: 40,
     });
     assert.equal(growing.ok, false);
-    if (!growing.ok) assert.equal(growing.code, "MICRO_LIVE_NOT_READY");
+    if (!growing.ok) assert.equal(growing.code, "BASELINE_NOT_MET");
 
     assert.deepEqual(
       checkShadowBaselineRow({ observed_days: 30, resolved_clusters: 100 }),

@@ -153,7 +153,7 @@ function makePipeline(opts: {
     sink: new FakeSink(),
     authority: fakeAuthority,
     chainId: 137,
-    mode: "MICRO_LIVE",
+    mode: "LIVE",
     permitTtlMs: 60_000,
   });
   const signer = new SignerVault({
@@ -179,10 +179,11 @@ function makePipeline(opts: {
   });
   const pipeline = createG4Pipeline({
     config: {
-      mode: "MICRO_LIVE",
+      mode: "LIVE",
       minEdgeAfterCost: 0.01,
       microLiveCapUsd: capUsd,
       liveLossCapPusd: lossCapUsd,
+      liveAdmission: { admitted: true },
     },
     kernel,
     signer,
@@ -231,7 +232,7 @@ describe("live enforcement (cap + loss latch wired into the order path)", () => 
     const { pipeline, adapter } = makePipeline({ capUsd: 0 });
     const res = await pipeline.processMarket(INPUT());
     assert.equal(res.decision, "NO_TRADE");
-    assert.match(res.reason ?? "", /MICRO_LIVE_CAP_UNCONFIGURED/);
+    assert.match(res.reason ?? "", /LIVE_CAP_UNCONFIGURED/);
     assert.equal(adapter.placeOrderCalls, 0);
   });
 

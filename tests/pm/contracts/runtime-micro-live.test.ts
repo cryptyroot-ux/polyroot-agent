@@ -181,7 +181,7 @@ describe("Runtime MICRO_LIVE — G4 pipeline with real wallet/venue adapter and 
       sink: new FakeSink(),
       authority: fakeAuthority,
       chainId: 137,
-      mode: "MICRO_LIVE",
+      mode: "LIVE",
       permitTtlMs: 60_000,
     });
     const signer = new SignerVault({
@@ -216,10 +216,11 @@ describe("Runtime MICRO_LIVE — G4 pipeline with real wallet/venue adapter and 
     };
     const pipeline = createG4Pipeline({
       config: {
-        mode: "MICRO_LIVE",
+        mode: "LIVE",
         minEdgeAfterCost: 0.01,
         microLiveCapUsd: cap,
         liveLossCapPusd: 1000,
+        liveAdmission: { admitted: true },
       },
       kernel,
       signer,

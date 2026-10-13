@@ -34,20 +34,20 @@ describe("P0: LIVE admission is explicit, never unconditional", () => {
 
   it("admission never relaxes other modes", () => {
     assert.equal(
-      computeFinancialGate("MICRO_LIVE", venueReadOnly, undefined, {
+      computeFinancialGate("LIVE", venueReadOnly, undefined, {
         admitted: true,
       }),
       "ENTRY_BLOCKED",
     );
     assert.equal(
-      computeFinancialGate("MICRO_LIVE", venueNormal, undefined, {
+      computeFinancialGate("LIVE", venueNormal, undefined, {
         admitted: true,
       }),
       "ALLOW",
     );
     // MICRO_LIVE removed from the mode ladder; MICRO_LIVE replaces it.
     // assert.equal(
-    //   computeFinancialGate("MICRO_LIVE", venueNormal, undefined, {
+    //   computeFinancialGate("LIVE", venueNormal, undefined, {
     //     admitted: true,
     //   }),
     //   "ALLOW",

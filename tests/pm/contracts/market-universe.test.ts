@@ -6,14 +6,14 @@ describe("explicit market universe", () => {
   it("MICRO_LIVE loops require a wired marketSource", async () => {
     // MICRO_LIVE without a marketSource throws LIVE_LOOP_UNWIRED
     await assert.rejects(
-      buildLoopInputs({ mode: "MICRO_LIVE" }, {}),
+      buildLoopInputs({ mode: "LIVE" }, {}),
       /LIVE_LOOP_UNWIRED/,
     );
   });
 
   it("MICRO_LIVE loops apply when marketSource is wired", async () => {
     const live = await buildLoopInputs(
-      { mode: "MICRO_LIVE" },
+      { mode: "LIVE" },
       {
         marketSource: {
           universe: () => ["777"],
@@ -26,7 +26,7 @@ describe("explicit market universe", () => {
 
   it("collects live inputs and skips priceless markets", async () => {
     const inputs = await buildLoopInputs(
-      { mode: "MICRO_LIVE" },
+      { mode: "LIVE" },
       {
         marketSource: {
           universe: () => ["111", "222", "333"],

@@ -19,14 +19,14 @@ describe("autonomy bounds", () => {
   it("rejects non-positive or non-finite loss caps", () => {
     assert.equal(parseBoundsEnv({}).lossCapPusd, undefined);
     assert.equal(
-      parseBoundsEnv({ POLYROOT_MICRO_LIVE_LOSS_CAP_USD: "-5" }).lossCapPusd,
+      parseBoundsEnv({ POLYROOT_LIVE_LOSS_CAP_USD: "-5" }).lossCapPusd,
       undefined,
     );
   });
 
   it("accepts an explicit owner loss cap", () => {
     assert.equal(
-      parseBoundsEnv({ POLYROOT_MICRO_LIVE_LOSS_CAP_USD: "50" }).lossCapPusd,
+      parseBoundsEnv({ POLYROOT_LIVE_LOSS_CAP_USD: "50" }).lossCapPusd,
       50,
     );
   });

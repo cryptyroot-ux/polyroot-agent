@@ -38,7 +38,7 @@ function fakePool() {
               halted: false,
               halted_at: null,
               realized_loss_pusd: 0,
-              runtime_mode: "MICRO_LIVE",
+              runtime_mode: "LIVE",
             },
           ],
         };
