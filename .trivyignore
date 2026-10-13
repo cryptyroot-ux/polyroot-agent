@@ -1,7 +1,27 @@
-# False positives from transitive dependencies with fixed versions
-# brace-expansion@5.0.12 (fixed) but Trivy reads lockfile range ^5.0.8 from minimatch
+# Trivy ignores — each entry must state WHY the finding is not a real risk.
+# Re-check these when the underlying package is upgraded; delete the entry once
+# Trivy stops reporting it.
+#
+#   trivy fs --severity HIGH,CRITICAL --exit-code 1 .
+#
+# Verify locally before trusting: `npm ls <pkg>` must show it is NOT installed
+# and `npm audit` must NOT report it. A package absent from the dependency tree
+# cannot be exploited.
+
+# undici — declared only as a devDependency of readable-stream (`^5.1.1`).
+# `npm ls undici` is empty and `npm audit` does not report it, so no undici is
+# shipped or reachable at runtime. Trivy still reads the root package.json
+# `overrides.undici` declaration and flags it.
+# CVE-2026-19534 (DoS via unrequested WebSocket subprotocol)
+CVE-2026-19534
+
+# brace-expansion — resolved to 5.0.12 (>= the 5.0.11 fix), but the lockfile
+# records minimatch's dependency range `^5.0.8`, which the advisory matches.
+# CVE-2026-102276 / CVE-2026-102278 (DoS via crafted brace patterns)
 CVE-2026-102276
 CVE-2026-102278
 
-# http-cache-semantics@4.3.0 (fixed) but Trivy scans lockfile
+# http-cache-semantics — pinned via overrides to 4.3.0 (the fix); Trivy reads
+# the pre-override range from the lockfile.
+# CVE-2026-93748 (info disclosure via max-stale)
 CVE-2026-93748
