@@ -6,9 +6,8 @@ then promote step by step. **Any failed gate = STOP, never bypass.**
 ## 0. Rules
 
 - STAGING = real PostgreSQL + real venue reads, **no orders, no money**.
-- SHADOW = live data, simulated fills, **zero financial I/O**.
-- MICRO_LIVE = real orders with a small explicit cap. Real money = real risk.
-- Only the owner promotes between stages (never the AI, never auto).
+- LIVE = real orders under an explicit capital cap. Real money = real risk.
+- Only the owner grants the promotion (never the AI, never auto).
 
 ## 1. Provision staging
 
@@ -58,17 +57,17 @@ See `docs/RUNBOOK_SHADOW_MICROLIVE.md` for the full runbook and evidence
 queries (`trade_intents`, `risk_decisions`, `balance_entries`,
 `shadow_baseline`: `observed_days`, `resolved_clusters`).
 
-## 5. MICRO_LIVE with a small cap (owner money, owner risk)
+## 5. Go live with a small cap (owner money, owner risk)
 
 1. Fund a dedicated wallet; keep signer, account, funder distinct.
-2. `polyroot setup` → MICRO_LIVE, capital **$50–100**, loss latch **5%**.
+2. `polyroot setup` → LIVE, capital **$50–100**, loss latch **5%**.
 3. `polyroot doctor --live` → all PASS.
 4. `polyroot run` → run 1–2 weeks. Review PnL, fills, fees, latch behavior.
 
-## 6. Promote to LIVE (owner sign-off only)
+## 6. Grant the promotion (owner sign-off only)
 
-- [ ] SHADOW baseline met (or explicit owner waiver with reason recorded)
-- [ ] MICRO_LIVE reviewed: fills match expectations, no stuck reservations
+- [ ] `polyroot shadow-baseline status` reviewed; owner accepts the evidence or records a waiver
+- [ ] First live run reviewed: fills match expectations, no stuck reservations
       (`SELECT count(*) FROM reservations WHERE status='ACTIVE'` returns to 0)
 - [ ] Loss latch drill done: breach halts, `polyroot guard reset` clears
 - [ ] Owner records the promotion decision (who, when, deployed SHA)

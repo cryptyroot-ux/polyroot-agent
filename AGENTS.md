@@ -15,8 +15,11 @@ Consequences for you:
 - Never give the model a path to sign, send, or size orders.
 - Never weaken a fail-closed branch into a guess. Uncertainty → `NO_TRADE`
   with a reason, always.
-- Never use mock/simulated data outside `PAPER` mode. Live-configured code
-  running on mock markets fabricates decisions — the codebase refuses this
+- LIVE requires an owner-signed promotion (`polyroot live-promote`); without
+  it the loop starts `FINANCIAL_BLOCKED`.
+- Never run on mock/simulated data. There is no PAPER or SHADOW mode: LIVE
+  is the only runtime mode, so any LIVE-configured code running on mock
+  markets fabricates decisions — the codebase refuses this
   (`LIVE_LOOP_UNWIRED`), and so must you.
 
 ## 2. Commands (run these, in this order)
@@ -80,12 +83,12 @@ forecast p → abstain unless 0.02 < p < 0.98 AND |p − 0.5| ≥ 0.02
 
 - Lower `minEdgeAfterCost` (or the spread add-on cap) to "get more trades".
   Fewer, better trades beat volume. Changes need backtest evidence + review.
-- Let any mode except PAPER touch mock data (`LIVE_LOOP_UNWIRED` exists
-  for a reason — keep it).
+- Never let the agent touch mock data (`LIVE_LOOP_UNWIRED` exists for a
+  reason — keep it). There is no non-live mode to fall back to.
 - Commit secrets: `.env*`, `keystore.json`, API keys, private keys.
   `.gitignore` covers them; `gitleaks` runs in CI. Never print secrets
   in logs, tests, or chat output.
-- Touch `MICRO_LIVE`/`LIVE` paths without running the FULL suite
+- Touch the LIVE path without running the FULL suite
   (`npm run test:unit`) plus `polyroot doctor --live` reasoning in the PR.
 
 ## 6. Workflow

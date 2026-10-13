@@ -23,9 +23,9 @@
 
 ---
 
-> **Status: v1.14.2-stable — PAPER → SHADOW → MICRO_LIVE → LIVE pipeline ready**
-> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 931 passing tests (919 contract + 12 property).
-> Default onboarding mode is `SHADOW`. Live trading requires explicit Autonomy Charter commissioning.
+> **Status: v1.14.2-stable — single LIVE runtime mode**
+> Production-ready with G4 autonomous pipeline, G5 infrastructure, 30+ AI providers in onboarding, and 972 passing tests (960 contract + 12 property).
+> `LIVE` is the only runtime mode. It trades real money and requires an owner-signed promotion (`polyroot live-promote`).
 
 > [!CAUTION]
 > **Trading involves substantial risk of loss. Nothing here is financial advice.**
@@ -100,7 +100,7 @@ Inside the console you only need four commands: `setup` (guided
 configuration — just press Enter for safe defaults), `logs` (watch what the
 agent is doing), `run` (start the agent), `exit` (back to terminal). Update
 any time with `polyroot update`. See `docs/STAGING_DEPLOY.md` for the full
-staging → SHADOW → MICRO_LIVE path.
+staging → LIVE path.
 
 ## Quick Start (Development)
 
@@ -148,11 +148,17 @@ polyroot wallet verify
 npm run migrate:latest
 ```
 
-### 6. Build & Run (PAPER Mode)
+### 6. Build & Run
 
 ```bash
 npm run build
-polyroot run         # Starts the agent in PAPER mode (see RUNTIME_MODE)
+polyroot run         # Starts the agent in LIVE mode (see RUNTIME_MODE)
+```
+
+`polyroot run` trades real money. Grant an owner-signed promotion first:
+
+```bash
+polyroot live-promote
 ```
 
 ### 7. Verify Installation
@@ -171,7 +177,7 @@ npm run lint && npm run typecheck
 ### 1. Server Requirements
 
 - **OS:** Linux (Ubuntu 22.04+ / Debian 12+)
-- **RAM:** ≥ 4 GB (8 GB recommended for SHADOW mode)
+- **RAM:** ≥ 4 GB (8 GB recommended)
 - **Disk:** ≥ 20 GB SSD (PostgreSQL + logs)
 - **Network:** Stable connection to Polygon RPC + Polymarket API
 
@@ -233,11 +239,11 @@ RPC_URL=https://polygon-rpc.com
 # Runtime
 NODE_ENV=production
 LOG_LEVEL=info
-# START WITH PAPER FOR VERIFICATION
-RUNTIME_MODE=PAPER
+# LIVE is the only runtime mode
+RUNTIME_MODE=LIVE
 
 # G4 Pipeline tuning (code constants in src/pm/runtime/src/main.ts, not env)
-# minEdgeAfterCost=0.03, SHADOW criteria, MICRO_LIVE capital cap
+# minEdgeAfterCost=0.03, capital cap
 
 # Observability (single port serves both endpoints)
 POLYROOT_METRICS_OWNER_KEY=your-owner-key-here
@@ -250,7 +256,7 @@ POLYROOT_METRICS_OWNER_KEY=your-owner-key-here
 # OPENAI_API_KEY=sk-...
 # OPENAI_BASE_URL=https://api.openai.com/v1
 
-# Live wallet identity (required for MICRO_LIVE/LIVE)
+# Live wallet identity (required for LIVE)
 # WALLET_ACCOUNT=0xYOUR_PROXY_ACCOUNT_HERE
 # WALLET_FUNDER=0xYOUR_FUNDER_HERE
 ```
@@ -292,7 +298,7 @@ Notes:
 > production signer — encrypted keystore or KMS/HSM-backed, never a raw key on disk
 > beyond initial setup — plus a distinct deposit-wallet account/funder triple (verify
 > with `npm start -- wallet verify`). The built-in placeholder signer and mock
-> venue are PAPER/SHADOW-only and the code refuses live operation with them
+> venue are non-production stubs and the code refuses live operation with them
 > (`REFUSE_LIVE_WITH_STUBS`).
 
 ---
@@ -306,8 +312,8 @@ Notes:
 | Wallet errors: invalid key      | Incorrect private key format          | Must be 0x-prefixed 64 hex bytes (32 bytes)                                                |
 | RPC timeout/failure             | Network or endpoint issue             | Test RPC URL with curl, verify Polygon Mainnet reachable                                   |
 | Metrics port in use             | Port already in use                   | Kill existing process on 9090 or set `POLYROOT_METRICS_PORT`                               |
-| MICRO_LIVE rejects orders       | Capital cap exceeded                  | Reduce intent size or raise the commissioned cap in code                                   |
-| SHADOW→MICRO promotion blocked  | Reality gap or slippage bias too high | Wait for more evidence, adjust tolerances                                                  |
+| Order rejected                  | Capital cap exceeded                  | Reduce intent size or raise the commissioned cap                                           |
+| Promotion blocked               | Reality gap or slippage bias too high | Wait for more evidence, adjust tolerances                                                  |
 | Gitleaks detects secrets        | Accidental credential in code/logs    | Remove secrets, run `git reset --hard`, add to `.gitleaksignore` if false positive         |
 | Observability metrics missing   | Metrics server not started            | Set `POLYROOT_METRICS_OWNER_KEY` (serves `:9090/metrics` + `/healthz`)                     |
 
@@ -365,13 +371,13 @@ See [`docs/PUBLIC_API.md`](docs/PUBLIC_API.md) for full API reference, runtime m
 | `RPC_URL`                            | Polygon RPC endpoint (HTTPS)                      | `https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY`             |
 | `NODE_ENV`                           | `development` \| `production`                     | `production`                                                    |
 | `LOG_LEVEL`                          | `debug` \| `info` \| `warn` \| `error`            | `info`                                                          |
-| `RUNTIME_MODE`                       | `PAPER` \| `SHADOW` \| `MICRO_LIVE` \| `LIVE`     | `PAPER`                                                         |
+| `RUNTIME_MODE`                       | `LIVE` \| `READ_ONLY`                             | `LIVE`                                                          |
 | `POLYROOT_METRICS_OWNER_KEY`         | Bearer key for `GET /metrics` (`/healthz` public) | _(unset = `/metrics` disabled)_                                 |
 | `POLYROOT_METRICS_PORT`              | Metrics + health port                             | `9090`                                                          |
 | `POLYROOT_FORECAST_PROVIDER`         | `openai` to enable, else abstain                  | `none`                                                          |
 | `POLYROOT_FORECAST_MODEL`            | Model name for the forecast provider              | _(required when enabled)_                                       |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | Credentials for OpenAI-compatible gateway         | _(required when enabled)_                                       |
-| `WALLET_ACCOUNT` / `WALLET_FUNDER`   | Distinct deposit-wallet addresses (live only)     | _(required for MICRO_LIVE/LIVE)_                                |
+| `WALLET_ACCOUNT` / `WALLET_FUNDER`   | Distinct deposit-wallet addresses (live only)     | _(required for LIVE)_                                           |
 
 ---
 

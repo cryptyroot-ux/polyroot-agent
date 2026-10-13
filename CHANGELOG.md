@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 💥 Changed
+
+- **LIVE is now the only runtime mode** — PAPER, SHADOW and MICRO_LIVE are gone
+  as selectable modes. `RUNTIME_MODE` accepts `LIVE` (and `READ_ONLY` while
+  the loop is fail-closed degraded). There is no longer a non-live mode to
+  trade without money
+- **The pre-live 30-day / 100-cluster observation gate no longer blocks
+  startup.** It is still collected and still reported by
+  `polyroot shadow-baseline status`, as advisory evidence rather than a
+  hard block. The old gate also made a fresh install impossible to start: the
+  counters were only ever filled by the resolution sync, which only runs
+  inside `startAgent`, which only ran after the gate passed
+- **Capital and loss caps move to `POLYROOT_LIVE_CAP_USD` /
+  `POLYROOT_LIVE_LOSS_CAP_USD`.** The old `POLYROOT_MICRO_LIVE_*` names are
+  still read as a fallback, so existing `.env` files keep working
+- `experiments.mode`, `live_guard_state.runtime_mode` and
+  `risk_policy.execution_mode` accept `LIVE` only — migration `0028` rewrites
+  existing rows. `experiments.mode` previously could not store `LIVE` at all
+- LIVE still requires an owner-signed promotion (`polyroot live-promote`).
+  Without one the loop starts `FINANCIAL_BLOCKED` and submits nothing
+
 ### ✨ Added
 
 - **`polyroot shadow-baseline status|refresh|freeze <git-sha> --rule <text>`** — operates the G5 prospective-observation baseline that gates MICRO_LIVE. `status` prints observed days, resolved clusters, preregistration and the frozen spec sha; `refresh` re-derives both counters; `freeze` registers the pre-live spec and refuses without a stopping rule. Previously nothing in production could write this row, so the MICRO_LIVE startup gate was unreachable

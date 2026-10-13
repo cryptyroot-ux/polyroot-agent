@@ -1,14 +1,15 @@
-# Runbook: G5 Baseline → MICRO_LIVE Small Cap
+# Runbook: Go Live
 
 > English. Exact commands; do not improvise the order.
 
 ## 0. Principles
 
-- Runtime modes are **MICRO_LIVE** and **LIVE** only. `SHADOW`/`PAPER` are
-  migration-table identifiers, not selectable modes.
-- Observation happens by *running the agent*: it records market decisions and
-  Gamma resolutions, and derives the G5 baseline counters from them.
-- MICRO_LIVE = real orders with an explicit cap. Real money = real risk.
+- **LIVE is the only runtime mode.** There is no PAPER or SHADOW to trade
+  without money. Every order is real.
+- LIVE requires an owner-signed promotion (`polyroot live-promote`). Without
+  one the loop starts `FINANCIAL_BLOCKED` and sends nothing.
+- Real money = real risk. Set a capital cap and a daily loss cap you can
+  afford to lose before the first run.
 - Any failed gate = STOP, never bypass.
 
 ## 1. Prerequisites
@@ -40,7 +41,7 @@ If `venue check` FAILs, stop here: fix connectivity first.
 
 ```bash
 polyroot setup
-# Choose MICRO_LIVE with a small capital cap. Market discovery defaults to
+# Choose LIVE with a capital cap you can afford to lose. Market discovery defaults to
 # Auto: the agent finds the most liquid markets itself (min 24h volume +
 # max spread guardrails). No manual token-ID pasting required.
 polyroot doctor                      # all checks must pass
@@ -48,7 +49,7 @@ polyroot doctor                      # all checks must pass
 
 Without a market universe (neither Auto nor curated IDs), the live modes
 refuse to start (`MARKET_UNIVERSE_MISSING`) — the loop never falls back to
-mock data when MICRO_LIVE/LIVE is configured.
+mock data when LIVE is configured.
 
 ## 4. Run and accumulate observation
 
@@ -96,7 +97,9 @@ FROM shadow_baseline
 WHERE id = '00000000-0000-0000-0000-000000000001';
 ```
 
-Promotion criteria observation → MICRO_LIVE (code: `g4-core.ts`, `micro-live-guard.ts`):
+The G5 observation baseline (code: `g4-core.ts`, `live-guard-store.ts`) is
+**advisory evidence, not a startup gate**. Check it to see how long the agent
+has been observing, then decide for yourself whether the evidence is enough:
 
 1. `polyroot shadow-baseline status` reports 30/30 observed days AND
    100/100 resolved clusters, `preregistered: true`, and a frozen spec sha.
@@ -113,7 +116,7 @@ polyroot shadow-baseline freeze <git-sha> --rule "<stopping rule text>"
 
 `--rule` is mandatory; the command refuses without it.
 
-## 6. Go-live MICRO_LIVE (small cap) — checklist
+## 6. Go live — checklist
 
 - [ ] DEDICATED test wallet (not the main wallet), 3 distinct addresses (signer/account/funder) — `polyroot wallet verify`, all PASS.
 - [ ] USDC funded + CTF approval done (manual, via Polymarket UI/cast).
@@ -125,7 +128,7 @@ polyroot shadow-baseline freeze <git-sha> --rule "<stopping rule text>"
 Start:
 
 ```bash
-polyroot setup     # choose MICRO_LIVE, small capital, 5% loss latch
+polyroot setup     # choose LIVE, small capital, 5% loss latch
 polyroot doctor --live   # every check must be ✅ PASS
 polyroot run
 ```
@@ -146,5 +149,5 @@ Kill criteria (stop when any one happens):
 2. **Signer = encrypted keystore or KMS/HSM** (keystore: `wallet seal` +
    `POLYROOT_KEYSTORE_JSON` + `POLYROOT_KEYSTORE_PASSPHRASE`; KMS/HSM:
    optional). Limit funds in the test wallet; assume keys can leak.
-3. **Full LIVE needs Autonomy Charter + G5 gates.** MICRO_LIVE is not a
-   shortcut to LIVE.
+3. **Grant the promotion.** `polyroot live-promote` issues the owner-signed
+   promotion the loop requires. Until then it is `FINANCIAL_BLOCKED`.
