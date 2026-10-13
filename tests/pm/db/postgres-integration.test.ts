@@ -375,7 +375,7 @@ describe("G4-G6 runtime PostgreSQL integration", { skip: !DB_OK }, () => {
       version: "0.1.0",
       description: "G4 integration baseline",
       preregisteredRule: "Stop if brier > 0.25 after 100 decisions",
-      mode: "PAPER",
+      mode: "LIVE",
     });
     assert.equal(exp.status, "PREREGISTERED");
 
