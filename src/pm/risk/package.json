@@ -24,7 +24,7 @@
   "dependencies": {
     "@polyroot/domain": "*",
     "decimal.js": "^10.4.3",
-    "pg": "^8.11.5",
+    "pg": "^8.23.1",
     "ulid": "^2.3.0",
     "zod": "^3.22.4"
   },
