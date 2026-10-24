@@ -25,3 +25,15 @@ CVE-2026-102278
 # the pre-override range from the lockfile.
 # CVE-2026-93748 (info disclosure via max-stale)
 CVE-2026-93748
+
+# zod 3.25.76 — CVE-2023-54404 describes Zod 4 `$ZodArray` / `handleArrayResult`
+# (one issue object per failing array element). Zod 3 does not contain that
+# parser. Trivy still matches 3.25.76 because the advisory range starts at 0
+# and lists the fix as 4.6.6, which is a Zod 4 release our packages cannot
+# take (`zod` ^3.22.4). The Zod 4 copies are only the nested installs under
+# `@polymarket/client` and `@polymarket/bindings`; `zod@^4.3.6` is overridden
+# to ^4.6.6 and the lockfile resolves 4.6.7, which is the version Trivy treats
+# as fixed. Delete this entry if `npm ls zod` shows a Zod 4 copy below 4.6.6,
+# or once Trivy stops flagging 3.25.76.
+# CVE-2023-54404 (DoS via unbounded array validation, Zod 4)
+CVE-2023-54404
