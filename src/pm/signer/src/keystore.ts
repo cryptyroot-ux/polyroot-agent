@@ -107,10 +107,44 @@ export function openKeystore(
 }
 
 /**
- * Resolve the wallet key for signing: sealed keystore first (when
- * configured), raw env key second, fail-closed when neither exists.
+ * Fail when a sealed keystore and a raw hex key are both set and they
+ * are not the same key. Identity derivation and the production signer
+ * both call `resolveWalletKey`; a mismatch would sign with the keystore
+ * while advertising the hex address. Matching keys are allowed. One
+ * source alone is allowed. The thrown message never includes key material.
+ */
+export function assertWalletKeyAlignment(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const sealedJson = env["POLYROOT_KEYSTORE_JSON"] ?? "";
+  const raw = env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"] ?? "";
+  if (!sealedJson || !raw) return;
+  const passphrase = env["POLYROOT_KEYSTORE_PASSPHRASE"] ?? "";
+  if (!passphrase) throw new Error("KEYSTORE_PASSPHRASE_MISSING");
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(sealedJson) as unknown;
+  } catch {
+    throw new Error("KEYSTORE_INVALID_ENVELOPE");
+  }
+  const opened = openKeystore(envelope as SealedKeystore, passphrase);
+  const normalized = normalizeKey(raw);
+  if (opened.toLowerCase() !== normalized.toLowerCase()) {
+    throw new Error(
+      "WALLET_KEY_DIVERGENCE: POLYROOT_KEYSTORE_JSON and PRIVATE_KEY_HEX/WALLET_PRIVATE_KEY open to different keys. Unset one of them so the signer and the derived wallet identity use the same key.",
+    );
+  }
+}
+
+/**
+ * Resolve the wallet key for signing and for address derivation.
+ * Sealed keystore first (when configured), raw env key second,
+ * fail-closed when neither exists. When both are set they must be the
+ * same key (`assertWalletKeyAlignment`); otherwise this throws before
+ * either path can proceed.
  */
 export function resolveWalletKey(env: NodeJS.ProcessEnv = process.env): string {
+  assertWalletKeyAlignment(env);
   const sealedJson = env["POLYROOT_KEYSTORE_JSON"] ?? "";
   if (sealedJson) {
     const passphrase = env["POLYROOT_KEYSTORE_PASSPHRASE"] ?? "";

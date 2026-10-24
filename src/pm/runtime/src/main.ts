@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import {
   SignerVault,
   deriveAddressFromPrivateKey,
+  resolveWalletKey,
   type CryptoSigner,
 } from "@polyroot/signer";
 import { PolymarketVenueAdapter } from "@polyroot/venue";
@@ -31,6 +32,7 @@ import {
 } from "@polyroot/venue";
 import { Executor } from "@polyroot/executor";
 import { createG4Pipeline } from "./g4-pipeline.js";
+import { queryDurableOpenOrders } from "./exposure-sync.js";
 import { ModeWatcher } from "./mode-watcher.js";
 import { DEFAULT_RISK_POLICY, type WalletIdentity } from "@polyroot/domain";
 import { Metrics } from "@polyroot/observability";
@@ -149,15 +151,17 @@ export function deterministicWalletId(signerAddress: string): string {
 }
 
 /**
- * Build the runtime WalletIdentity. Live modes derive the signer address
- * from the user's configured key and require distinct account/funder
- * addresses (WAL-03); PAPER/SHADOW keep the mock placeholder.
+ * Build the runtime WalletIdentity from the same key `resolveWalletKey`
+ * gives the production signer. Keystore wins when it is the only source.
+ * When both a keystore and a raw hex key are set they must open to the
+ * same key or this throws WALLET_KEY_DIVERGENCE before boot continues.
+ * Account and funder stay distinct from the signer (WAL-03).
  */
 export function buildWalletIdentity(
   mode: "LIVE",
   env: NodeJS.ProcessEnv = process.env,
 ): WalletIdentity {
-  const rawKey = env["PRIVATE_KEY_HEX"] ?? env["WALLET_PRIVATE_KEY"] ?? "";
+  const rawKey = resolveWalletKey(env);
   const signerAddress = deriveAddressFromPrivateKey(rawKey);
   const account = env["WALLET_ACCOUNT"] ?? "";
   const funder = env["WALLET_FUNDER"] ?? "";
@@ -191,13 +195,13 @@ export function buildWalletIdentity(
 export interface BootstrapAgentOptions {
   /**
    * Production signer (KMS, HSM, or encrypted keystore). REQUIRED for LIVE.
-   * When omitted, a PAPER/SHADOW-only placeholder signer is used that
-   * rejects unhashed requests and must never touch real funds.
+   * When omitted, the placeholder signer rejects unhashed requests and
+   * must never touch real funds. LIVE boot refuses that placeholder.
    */
   cryptoSigner?: CryptoSigner;
   /**
    * Real venue adapter. REQUIRED for LIVE.
-   * When omitted, a mock venue adapter is used (PAPER/SHADOW-only).
+   * When omitted, a mock venue adapter is installed and LIVE boot refuses it.
    */
   venueAdapter?: VenueAdapter;
   /**
@@ -339,14 +343,14 @@ export async function bootstrapAgent(
     mode: mode as "LIVE",
   });
 
-  // Fail-closed LIVE guard: placeholder signer + mock venue are PAPER/SHADOW-only.
-  // LIVE require explicitly injected production dependencies.
+  // Fail-closed LIVE guard: the placeholder signer and mock venue must
+  // never submit. LIVE requires the injected production dependencies.
   const isLive = mode === "LIVE";
   if (isLive && (!opts.cryptoSigner || !opts.venueAdapter)) {
     await pool.end().catch(() => undefined);
     throw new Error(
       "REFUSE_LIVE_WITH_STUBS: LIVE requires explicit cryptoSigner (keystore/KMS/HSM) " +
-        "and venueAdapter; the placeholder signer and mock venue are PAPER/SHADOW-only",
+        "and venueAdapter; the placeholder signer and mock venue cannot submit",
     );
   }
 
@@ -404,9 +408,8 @@ export async function bootstrapAgent(
   // allocation-free. Hydration is deliberately NOT eager here: bootstrapAgent
   // must validate config guards without touching the network (see
   // runtime-live-guard tests). The startup entry (startAgent) awaits
-  // hydrateSeen() before running the pipeline. Live modes fail closed when
-  // the DB is unreachable; PAPER/SHADOW (zero financial I/O) warn and
-  // continue with an empty mirror.
+  // hydrateSeen() before running the pipeline. LIVE fails closed when
+  // the DB is unreachable.
   const seenStore = new PgSeenStore(pool);
   const hydrateSeen = async (): Promise<void> => {
     try {
@@ -449,8 +452,7 @@ export async function bootstrapAgent(
     reservationManager,
   });
 
-  // 6. Wallet Identity: derived from the user's key on live modes,
-  // mock placeholder on PAPER/SHADOW (WAL-03 distinctness enforced).
+  // 6. Wallet identity from the same key the signer uses (WAL-03).
   const wallet: WalletIdentity = buildWalletIdentity(mode);
 
   // 7. Forecast provider from env (null = abstain, never a stub value).
@@ -478,7 +480,7 @@ export async function bootstrapAgent(
     console.log(`🤖 AI forecaster: ${model} via ${host}`);
   }
 
-  // 8. Market universe (fail-closed outside PAPER). Manual mode iterates
+  // 8. Market universe (fail-closed). Manual mode iterates
   // exactly the owner-curated CLOB token ids; auto mode lets the agent
   // discover the most liquid markets itself within owner guardrails —
   // never mock data either way.
@@ -849,6 +851,46 @@ export async function bootstrapAgent(
         emitStream("RESEARCH_INGEST", `Mode: ${from} → ${to} — ${reason}`),
     },
     kernel,
+    // Post-reserve aborts (cap, latch, sign failure, executor reject)
+    // must return the funder's cash now. ReservationManager.release is
+    // idempotent: a row the executor already settled comes back
+    // RESERVATION_NOT_ACTIVE and is left alone. Do not also call
+    // kernel.release — that would credit the same cash twice.
+    releaseReservation: async (reservationId: string) => {
+      const released = await reservationManager.release(
+        reservationId,
+        "CANCELLED",
+      );
+      if (!released.ok && released.code !== "RESERVATION_NOT_ACTIVE") {
+        console.error(
+          `[g4] reservation release failed for ${reservationId}: ${released.code} ${released.reason}`,
+        );
+      }
+    },
+    reconcileOpenOrders: async () => {
+      const open = await recoveryLedger.getUnresolved();
+      for (const order of open) {
+        try {
+          await executor.reconcile(order.orderId);
+        } catch (err) {
+          console.error(
+            `[g4] reconcile failed for ${order.orderId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    },
+    loadDurableOrders: async () => {
+      try {
+        return await queryDurableOpenOrders((text, params) =>
+          pool.query(text, params),
+        );
+      } catch (err) {
+        console.error(
+          `[g4] durable exposure query failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return null;
+      }
+    },
     signer,
     executor,
     wallet,

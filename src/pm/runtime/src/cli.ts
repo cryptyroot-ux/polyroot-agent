@@ -11,7 +11,13 @@ import {
   deriveAddressFromPrivateKey,
   sealPrivateKey,
   resolveWalletKey,
+  assertWalletKeyAlignment,
 } from "@polyroot/signer";
+import {
+  applyAttestedCredit,
+  assessFunderCash,
+  balancesFromRow,
+} from "@polyroot/risk";
 import { randomBytes } from "node:crypto";
 import {
   PgLiveGuardStore,
@@ -154,6 +160,9 @@ export function assertRuntimeEnv(
     throw new Error(
       "LIVE_ENV_INVALID: WALLET_ACCOUNT and WALLET_FUNDER must be distinct (WAL-03)",
     );
+  }
+  if (hasKeystore && hasRawKey) {
+    assertWalletKeyAlignment(env);
   }
 }
 
@@ -510,6 +519,8 @@ export function printHelp(): void {
     "  polyroot set-key         Store a provider API key (hidden prompt, never argv)\n" +
     "  polyroot live-promote [grant|list|revoke]  Owner-signed LIVE admission (terminal only)\n" +
     "  polyroot guard reset --loss <loss>   Unlock the loss latch\n" +
+    '  polyroot bankroll credit --amount <usd> --source "<where read>"\n' +
+    "                           Record owner-attested funder pUSD (not a chain read)\n" +
     "  polyroot mode <MODE>     Switch runtime mode (LIVE)\n" +
     "  polyroot mode            Show current runtime mode\n" +
     "  polyroot telegram setup          Wizard: hubungkan bot Telegram (tanpa edit file)\n" +
@@ -2927,6 +2938,32 @@ export async function startAgent(config: CLIConfig): Promise<void> {
     ...baseOpts,
     streamEnabled: !config.once,
   });
+  if (isLive) {
+    const funder = process.env["WALLET_FUNDER"] ?? "";
+    let verdict: ReturnType<typeof assessFunderCash>;
+    try {
+      const cash = await agent.pool.query(
+        `SELECT available_base, committed_base FROM balance_entries
+          WHERE account = $1 AND asset = 'pUSD'`,
+        [funder],
+      );
+      verdict = assessFunderCash(
+        balancesFromRow(cash.rows[0] as Record<string, unknown> | undefined),
+      );
+    } catch (err) {
+      verdict = {
+        ok: false,
+        code: "FUNDER_CASH_MISSING",
+        detail: `funder pUSD balance unreadable: ${(err as Error).message}. Refusing LIVE until the row can be read. Credit with \`polyroot bankroll credit\` after the database is up.`,
+      };
+    }
+    if (!verdict.ok) {
+      console.error(`\n⛔ ${verdict.code}: ${verdict.detail}\n`);
+      await agent.pool.end().catch(() => undefined);
+      closeSharedSession();
+      process.exit(1);
+    }
+  }
   const pipeline = agent.pipeline as unknown as {
     runContinuous: () => Promise<void>;
     processMarket: (input: {
@@ -5250,6 +5287,18 @@ async function runLiveDoctor(): Promise<void> {
       },
       metricsKeyPresent: async () =>
         Boolean(process.env["POLYROOT_METRICS_OWNER_KEY"]),
+      readFunderCash: async () => {
+        const funder = process.env["WALLET_FUNDER"] ?? "";
+        if (!funder) return null;
+        const res = await pool.query(
+          `SELECT available_base, committed_base FROM balance_entries
+            WHERE account = $1 AND asset = 'pUSD'`,
+          [funder],
+        );
+        return balancesFromRow(
+          res.rows[0] as Record<string, unknown> | undefined,
+        );
+      },
     });
     for (const c of result.checks) {
       console.log(`${c.ok ? "✅" : "❌"} ${c.name}: ${c.detail}`);
@@ -5307,8 +5356,16 @@ export function runWalletVerify(
   let rawKey: string;
   try {
     rawKey = resolveWalletKey(env);
-  } catch {
-    rawKey = "";
+  } catch (err) {
+    checks.push({
+      name: "key-present",
+      ok: false,
+      detail:
+        err instanceof Error
+          ? err.message
+          : "no wallet key: set POLYROOT_KEYSTORE_JSON + POLYROOT_KEYSTORE_PASSPHRASE, or PRIVATE_KEY_HEX (or WALLET_PRIVATE_KEY)",
+    });
+    return { ok: false, checks };
   }
   if (!rawKey) {
     checks.push({
@@ -5478,6 +5535,53 @@ export async function main(
       console.error(`❌ ${(err as Error).message}`);
       process.exit(1);
     }
+    return;
+  }
+  if (argv[0] === "bankroll" && argv[1] === "credit") {
+    const amountAt = argv.indexOf("--amount");
+    const sourceAt = argv.indexOf("--source");
+    const amountRaw = amountAt >= 0 ? argv[amountAt + 1] : undefined;
+    const sourceRaw = sourceAt >= 0 ? argv[sourceAt + 1] : undefined;
+    const amount = amountRaw && !amountRaw.startsWith("--") ? amountRaw : "";
+    const source = sourceRaw && !sourceRaw.startsWith("--") ? sourceRaw : "";
+    const dbUrl = process.env["DATABASE_URL"] ?? "";
+    const funder = process.env["WALLET_FUNDER"] ?? "";
+    if (!dbUrl || !funder || !amount || !source) {
+      console.error(
+        'Usage: polyroot bankroll credit --amount <usd> --source "<where you read the pUSD balance>"\n' +
+          "Requires DATABASE_URL and WALLET_FUNDER. This records an owner attestation in kernel_events. It does not read the chain, and it refuses to decrease an existing balance.",
+      );
+      process.exit(1);
+    }
+    const pool = new Pool({ connectionString: dbUrl });
+    const client = await pool.connect();
+    let exitCode = 0;
+    try {
+      await client.query("BEGIN");
+      const result = await applyAttestedCredit(client, {
+        account: funder,
+        amountUsd: amount,
+        source,
+      });
+      if (!result.ok) {
+        await client.query("ROLLBACK");
+        console.error(`FAIL bankroll-credit: ${result.code}: ${result.detail}`);
+        exitCode = 1;
+      } else {
+        await client.query("COMMIT");
+        console.log(
+          `PASS bankroll-credit: ${result.action} funder pUSD total ${result.totalBase.toString()} base units (owner attestation, not a chain read)`,
+        );
+      }
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      console.error(`FAIL bankroll-credit: ${(err as Error).message}`);
+      exitCode = 1;
+    } finally {
+      client.release();
+      await pool.end().catch(() => undefined);
+    }
+    if (exitCode !== 0) process.exit(exitCode);
     return;
   }
   if (argv[0] === "guard" && argv[1] === "reset") {

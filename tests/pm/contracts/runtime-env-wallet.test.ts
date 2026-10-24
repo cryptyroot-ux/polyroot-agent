@@ -5,7 +5,11 @@ import {
   buildWalletIdentity,
   deterministicWalletId,
 } from "@polyroot/runtime";
-import { deriveAddressFromPrivateKey } from "@polyroot/signer";
+import {
+  deriveAddressFromPrivateKey,
+  resolveWalletKey,
+  sealPrivateKey,
+} from "@polyroot/signer";
 
 const TEST_KEY =
   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -97,6 +101,67 @@ describe("wallet identity derivation", () => {
           WALLET_FUNDER: "0x2222222222222222222222222222222222222222",
         }),
       /three distinct addresses/,
+    );
+  });
+
+  it("uses the keystore key for identity and refuses a divergent raw key", () => {
+    const passphrase = "test-passphrase";
+    const sealed = JSON.stringify(sealPrivateKey(TEST_KEY, passphrase));
+    const other = JSON.stringify(sealPrivateKey(OTHER_KEY, passphrase));
+    const account = "0x1111111111111111111111111111111111111111";
+    const funder = "0x2222222222222222222222222222222222222222";
+    const addr = deriveAddressFromPrivateKey(TEST_KEY);
+
+    const keystoreOnly = buildWalletIdentity("LIVE", {
+      POLYROOT_KEYSTORE_JSON: sealed,
+      POLYROOT_KEYSTORE_PASSPHRASE: passphrase,
+      WALLET_ACCOUNT: account,
+      WALLET_FUNDER: funder,
+    });
+    assert.equal(keystoreOnly.signer_address, addr);
+
+    const bothMatch = buildWalletIdentity("LIVE", {
+      POLYROOT_KEYSTORE_JSON: sealed,
+      POLYROOT_KEYSTORE_PASSPHRASE: passphrase,
+      WALLET_PRIVATE_KEY: TEST_KEY,
+      WALLET_ACCOUNT: account,
+      WALLET_FUNDER: funder,
+    });
+    assert.equal(bothMatch.signer_address, addr);
+    assert.equal(
+      resolveWalletKey({
+        POLYROOT_KEYSTORE_JSON: sealed,
+        POLYROOT_KEYSTORE_PASSPHRASE: passphrase,
+        WALLET_PRIVATE_KEY: TEST_KEY,
+      }).toLowerCase(),
+      `0x${TEST_KEY}`.toLowerCase(),
+    );
+
+    assert.throws(
+      () =>
+        buildWalletIdentity("LIVE", {
+          POLYROOT_KEYSTORE_JSON: other,
+          POLYROOT_KEYSTORE_PASSPHRASE: passphrase,
+          WALLET_PRIVATE_KEY: TEST_KEY,
+          WALLET_ACCOUNT: account,
+          WALLET_FUNDER: funder,
+        }),
+      (err: Error) => {
+        assert.match(err.message, /WALLET_KEY_DIVERGENCE/);
+        assert.doesNotMatch(err.message, /[0-9a-f]{64}/i);
+        return true;
+      },
+    );
+    assert.throws(
+      () =>
+        assertRuntimeEnv("LIVE", {
+          POLYROOT_KEYSTORE_JSON: other,
+          POLYROOT_KEYSTORE_PASSPHRASE: passphrase,
+          PRIVATE_KEY_HEX: TEST_KEY,
+          WALLET_ACCOUNT: account,
+          WALLET_FUNDER: funder,
+        }),
+      /WALLET_KEY_DIVERGENCE/,
     );
   });
 });

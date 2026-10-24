@@ -49,14 +49,12 @@ export class PgBalanceStore implements BalanceStore {
       `SELECT account, asset, available_base, committed_base FROM balance_entries WHERE account = $1 AND asset = $2`,
       [account, asset],
     );
-    if (result.rowCount === 0) {
-      await this.pool.query(
-        `INSERT INTO balance_entries (account, asset, available_base, committed_base) VALUES ($1, $2, 0, 0) ON CONFLICT DO NOTHING`,
-        [account, asset],
-      );
-      return { account, asset, availableBase: 0n, committedBase: 0n };
-    }
     const row = result.rows[0];
+    if (result.rowCount === 0 || row === undefined) {
+      throw new Error(
+        `BALANCE_ROW_MISSING: account=${account} asset=${asset} — no balance row exists. Credit funder pUSD with \`polyroot bankroll credit\` before LIVE; refusing to insert a zero balance.`,
+      );
+    }
     return {
       account,
       asset,

@@ -98,6 +98,17 @@ export interface LifecycleEvent {
 }
 
 /**
+ * True only when the venue adapter's reason proves the TCP connection
+ * never opened. Timeouts and connection resets are not that proof:
+ * the request may already have been written.
+ */
+export function provedNothingSent(reason: string | undefined): boolean {
+  if (!reason) return false;
+  if (/ETIMEDOUT|ECONNRESET|timeout/i.test(reason)) return false;
+  return /ENOTFOUND|ECONNREFUSED/i.test(reason);
+}
+
+/**
  * Given a current tracked state and a fresh outcome from the venue, produce
  * the next lifecycle state. This is the no-blind-retry core: an infinite
  * `UNKNOWN`/`SUBMITTING` loop is impossible because `SUBMISSION_UNKNOWN` never
@@ -470,10 +481,50 @@ export class Executor {
     const res: SubmitOutcome = await this.deps.adapter.placeOrder(order);
 
     if (!res.ok) {
-      // P0-9: distinguish "definitely not sent" from "submission unknown"
+      // P0-9: distinguish "definitely not sent" from "submission unknown".
+      // The adapter labels several network errors DEFINITELY_NOT_SENT,
+      // including timeouts. A timeout or reset is not proof the request
+      // never left the host, so those stay NEEDS_RECONCILIATION and keep
+      // the reservation. Only a connect failure (ENOTFOUND / ECONNREFUSED,
+      // and not a timeout) releases and does not book exposure.
+      if (res.code === "DEFINITELY_NOT_SENT" && provedNothingSent(res.reason)) {
+        const rejected = orderLifecycleNext(
+          "SUBMITTING",
+          "DEFINITIVE_REJECT",
+        ).state;
+        this.deps.seen.add(order.order_id, rejected);
+        await this.deps.recoveryLedger.updateState(order.order_id, rejected);
+        await this.deps.recoveryLedger.resolve(order.order_id, true, {
+          success: false,
+          order_id: order.order_id,
+          order_status: "REJECTED",
+          error: res.reason,
+          timestamp: this.deps.now(),
+        });
+        if (this.deps.reservationManager && permit.reservation_ids) {
+          for (const resId of permit.reservation_ids) {
+            await this.deps.reservationManager
+              .release(resId, "REJECTED")
+              .catch((err: unknown) =>
+                console.error(
+                  `[executor] reservation release failed for ${resId}: ${(err as Error).message}`,
+                ),
+              );
+          }
+        }
+        await this.deps.leaseStore.releaseExecutorLease(
+          this.deps.walletId,
+          this.deps.holder,
+        );
+        return {
+          outcome: "PERMIT_INVALID",
+          code: "NOT_SENT",
+          reason: `request never reached the venue: ${res.reason}`,
+        };
+      }
       if (res.code === "DEFINITELY_NOT_SENT") {
-        // Request never reached the venue → safe to retry.
-        // P0-Audit: Release lease on DEFINITELY_NOT_SENT so lock is not stranded
+        // Timeout, reset, or an unclassified network error. Keep the
+        // reservation and the unknown state. Do not retry the submit.
         await this.deps.leaseStore.releaseExecutorLease(
           this.deps.walletId,
           this.deps.holder,

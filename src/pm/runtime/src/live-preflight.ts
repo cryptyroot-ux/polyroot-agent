@@ -6,6 +6,7 @@
  * and an actionable detail. This is evidence, not a promotion — passing
  * preflight does not authorize trading (owner sign-off still required).
  */
+import { assessFunderCash, type FunderCashBalances } from "@polyroot/risk";
 import { LIVE_CAP_ENV, LIVE_LOSS_CAP_ENV } from "./autonomy-bounds.js";
 
 export interface PreflightCheck {
@@ -31,6 +32,13 @@ export interface LivePreflightDeps {
   venueCredsPresent: () => Promise<boolean>;
   fetchBook: (marketId: string) => Promise<{ bid: number; ask: number } | null>;
   metricsKeyPresent: () => Promise<boolean>;
+  /**
+   * Funder pUSD row. Absent dep skips the check (unit fixtures that
+   * predate it). Production `doctor --live` always passes it. `null`
+   * means no row — that fails. A zero row fails. This check does not
+   * insert a balance.
+   */
+  readFunderCash?: () => Promise<FunderCashBalances | null>;
 }
 
 const REQUIRED_TABLES = [
@@ -275,6 +283,30 @@ export async function runLivePreflight(
         `unknown-order check failed: ${(err as Error).message}`,
       ),
     );
+  }
+
+  // 11. Funder cash. Optional dep so older fixtures stay green; the
+  // doctor CLI always supplies it. Missing or zero refuses LIVE.
+  if (deps.readFunderCash) {
+    try {
+      const entry = await deps.readFunderCash();
+      const verdict = assessFunderCash(entry);
+      checks.push(
+        verdict.ok
+          ? pass(
+              "funder-cash",
+              `funder pUSD present (${verdict.totalBase.toString()} base units, available+committed)`,
+            )
+          : fail("funder-cash", verdict.detail),
+      );
+    } catch (err) {
+      checks.push(
+        fail(
+          "funder-cash",
+          `funder cash check failed: ${(err as Error).message}`,
+        ),
+      );
+    }
   }
 
   return { ok: checks.every((c) => c.ok), checks };

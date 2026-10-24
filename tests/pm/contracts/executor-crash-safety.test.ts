@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { Executor, type OrderLifecycleState } from "@polyroot/executor";
+import {
+  Executor,
+  provedNothingSent,
+  type OrderLifecycleState,
+} from "@polyroot/executor";
 import type { VenueAdapter, SubmitOutcome } from "@polyroot/venue";
 import type {
   ExecutionPermit,
@@ -17,7 +21,7 @@ import {
 
 class FakeAdapter implements VenueAdapter {
   mode: VenueMode = "NORMAL";
-  placeOrderFn: (o: SignedOrder) => Promise<SubmitOutcome> = async (o) => ({
+  placeOrderFn: (_o: SignedOrder) => Promise<SubmitOutcome> = async (_o) => ({
     ok: true,
     result: {
       success: true,
@@ -232,5 +236,57 @@ describe("Executor — crash safety: SUBMITTING state (PM-EXE-07)", () => {
     assert.equal(preSubmitState, "SUBMITTING");
     assert.equal(result.state, "SUBMISSION_UNKNOWN");
     assert.equal(result.outcome, "NEEDS_RECONCILIATION");
+  });
+
+  it("releases only when DEFINITELY_NOT_SENT proves the connection never opened", async () => {
+    assert.equal(
+      provedNothingSent(
+        "network error before send: connect ECONNREFUSED 10.0.0.1:443",
+      ),
+      true,
+    );
+    assert.equal(
+      provedNothingSent("getaddrinfo ENOTFOUND clob.polymarket.com"),
+      true,
+    );
+    assert.equal(
+      provedNothingSent("network timeout before venue received request"),
+      false,
+    );
+    assert.equal(provedNothingSent("read ECONNRESET"), false);
+    assert.equal(provedNothingSent("fetch failed"), false);
+
+    const released: string[] = [];
+    const adapter = new FakeAdapter();
+    const { deps, recoveryLedger } = makeDeps(adapter);
+    const executor = new Executor({
+      ...deps,
+      reservationManager: {
+        release: async (id: string) => {
+          released.push(id);
+          return { ok: true, code: "RELEASED", reason: "released" };
+        },
+      } as unknown as ConstructorParameters<
+        typeof Executor
+      >[0]["reservationManager"],
+    });
+    adapter.placeOrderFn = async () => ({
+      ok: false,
+      code: "DEFINITELY_NOT_SENT",
+      reason: "network error before send: connect ECONNREFUSED 127.0.0.1:443",
+    });
+    const permit = makePermit();
+    const result = await executor.submit(
+      makeSignedOrder("ord_unsent", permit.permit_id),
+      permit,
+    );
+    assert.equal(result.outcome, "PERMIT_INVALID");
+    if (result.outcome === "PERMIT_INVALID") {
+      assert.equal(result.code, "NOT_SENT");
+    }
+    assert.deepEqual(released, ["res_1"]);
+    const row = await recoveryLedger.get("ord_unsent");
+    assert.equal(row?.resolved, true);
+    assert.equal(row?.state, "DEFINITIVE_REJECT");
   });
 });
