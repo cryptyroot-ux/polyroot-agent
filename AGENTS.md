@@ -98,3 +98,11 @@ forecast p → abstain unless 0.02 < p < 0.98 AND |p − 0.5| ≥ 0.02
 - Small, reviewable steps. Update CHANGELOG.md for user-visible changes.
 - After finishing: `git status` clean, branch pushed, PR description states
   evidence (test counts, not adjectives).
+
+## Cursor Cloud specific instructions
+
+- Login shells resolve Node.js 24 from `/usr/local/bin`. `package.json` requires `>=24`. Run `npm ci` and `npm run build` before `npm run test:unit`; contract tests import workspace `dist`.
+- PostgreSQL 16 is local and started on boot. Boot ensures databases `polyroot_dev` and `polyroot_test` (user `postgres`, password `postgres`) and runs `npm run migrate:latest` against both. Contract tests use `postgresql://postgres:postgres@127.0.0.1:5432/polyroot_test`.
+- Port 5432 belongs to that local server. `npm run ci` is the full gate (typecheck, lint, unit tests, build).
+- `polyroot run` and `polyroot doctor --live` need owner secrets this environment does not provide. Verify the stack with `npm run ci` and `npm run migrate:status`.
+- The sibling checkout `Alphatom_MT5` is tested with `make test` (g++ C++17 and Python 3). It does not use Postgres.
