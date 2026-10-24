@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- **LIVE submits were invisible to exposure and session PnL.** `executeG4Step` left `fill` unset, so the portfolio tracker and `currentPortfolioExposureUsd` stayed at 0 and the loss latch (which reads `-totalPnl`) never saw a live fill. A successful submit now books venue `filled_size` when the executor returns it, otherwise the reserved limit notional. Pipeline metrics are emitted after every step. Unfilled ACKs move exposure only — realized PnL stays 0 until a fill is known. The in-memory tracker still resets on process restart; durable cash remains in the kernel.
+- **Reservations leaked on post-reserve refusals.** Cap, loss-latch, sign-failure, and executor-reject paths called `validateAndReserve` and then returned `NO_TRADE` without `release`. Those paths now release promptly. Production uses `ReservationManager.release`, which is idempotent when the row is already terminal. `NEEDS_RECONCILIATION` is not released (the order may have reached the venue).
+- **Submitted orders were logged as `execution failed`.** `SUBMITTED` no longer carries that reason. `NEEDS_RECONCILIATION` says to reconcile.
+- **Install defaults advertised `RUNTIME_MODE=PAPER`.** Compose, `.env.example`, `scripts/install.sh`, and the staging guide now match the CLI, which accepts `LIVE` only. `shadow-fund` is documented as removed. The LIVE loop's wired edge floor is **0.01** (`bootstrapAgent`); **0.03** remains the fallback when that override is absent. This change does not lower the floor.
+
 - **Build was red on `main`** — `smart-money-feed.ts` referenced `flows`, `tokenId` and `f` outside their scope (5 × TS2304), failing `@polyroot/venue#build` and skipping every downstream CI job. Restored the token-flow aggregation; build is 13/13 again
 - **`smart-money-arb` test died on a calendar** — its fixtures pinned `timestamp: 1790602268` against a 7-day lookback, so the test failed deterministically from 2026-10-05. Fixtures are now wall-clock independent
 - **Telegram setup dispatch test failed ~40% of runs** — the prompt feeder matched cumulative output, closed stdin while the child was still in its 12s API call, and the child died with `ERR_USE_AFTER_CLOSE`

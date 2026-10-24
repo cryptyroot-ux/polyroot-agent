@@ -32,6 +32,8 @@ import {
   resolveEdgeFloor,
   type StepFunds,
 } from "./g4-core.js";
+import { PositionTracker } from "@polyroot/strategy";
+import { accountAfterStep, exposureForStep } from "./live-accounting.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -61,6 +63,8 @@ export class G4AutonomousLoop {
   private readonly config: Required<G4LoopConfig>;
   private readonly deps: G4LoopDeps;
   private readonly metrics: G4LoopMetrics;
+  /** Same submit-time exposure ledger as G4Pipeline. */
+  private readonly tracker = new PositionTracker();
   private running = false;
   private stopFn?: () => void;
 
@@ -102,26 +106,29 @@ export class G4AutonomousLoop {
 
   /** Run one iteration of the autonomous loop for a single market. */
   async step(input: G4LoopInput): Promise<G4LoopResult> {
-    const result = await executeG4Step(input, {
-      config: this.config,
-      deps: this.deps,
-    });
+    const tracked = exposureForStep(
+      this.tracker,
+      input.market_id,
+      input.currentPortfolioExposureUsd,
+      input.currentMarketExposureUsd,
+    );
+    const result = await executeG4Step(
+      {
+        ...input,
+        currentPortfolioExposureUsd: tracked.currentPortfolioExposureUsd,
+        currentMarketExposureUsd: tracked.currentMarketExposureUsd,
+      },
+      {
+        config: this.config,
+        deps: this.deps,
+      },
+    );
 
     // Single step-complete emission point (see G4Pipeline.processMarket).
     this.deps.observability?.emitStepComplete?.(input, result);
 
-    // Update metrics
-    this.metrics.totalOrders++;
-    if (
-      result.fill &&
-      (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")
-    ) {
-      this.metrics.filledOrders++;
-    }
-    this.metrics.totalPnl += result.pnl ?? 0;
-    if (result.fill) {
-      this.metrics.totalFees += result.fill.makerFee + result.fill.takerFee;
-    }
+    accountAfterStep(this.tracker, this.metrics, input.market_id, result);
+    this.deps.observability?.emitMetrics?.({ ...this.metrics });
 
     return result;
   }

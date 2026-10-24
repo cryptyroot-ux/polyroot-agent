@@ -37,6 +37,7 @@ import {
   type RankedMarket,
 } from "@polyroot/strategy";
 import { AUTONOMY_BOUNDS } from "./autonomy-bounds.js";
+import { accountAfterStep, exposureForStep } from "./live-accounting.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -69,7 +70,10 @@ export class G4Pipeline {
   private degradedLogged = false;
   /** Previous-pass scores for autonomous per-pass market selection. */
   private readonly scoreMemory = new Map<string, RankedMarket>();
-  /** Open filled notional per token (freed only by settlement). */
+  /**
+   * Open exposure per token: venue fill notional, or the reserved limit
+   * notional when the ACK has no fill yet. Freed only by settlement.
+   */
   private readonly tracker = new PositionTracker();
 
   constructor(config: G4PipelineConfig, deps: G4PipelineDeps) {
@@ -158,7 +162,7 @@ export class G4Pipeline {
     }
   }
 
-  /** Current open filled notional (operator/test introspection). */
+  /** Current open exposure in USD (fills plus unfilled reserved submits). */
   openExposureUsd(): number {
     return this.tracker.total();
   }
@@ -205,27 +209,33 @@ export class G4Pipeline {
 
   /** Run one iteration of the pipeline for a single market. */
   async processMarket(input: G4PipelineInput): Promise<G4PipelineResult> {
-    const result = await executeG4Step(input, {
-      config: this.config,
-      deps: this.deps,
-    });
+    const tracked = exposureForStep(
+      this.tracker,
+      input.market_id,
+      input.currentPortfolioExposureUsd,
+      input.currentMarketExposureUsd,
+    );
+    const result = await executeG4Step(
+      {
+        ...input,
+        currentPortfolioExposureUsd: tracked.currentPortfolioExposureUsd,
+        currentMarketExposureUsd: tracked.currentMarketExposureUsd,
+      },
+      {
+        config: this.config,
+        deps: this.deps,
+      },
+    );
 
     // Single step-complete emission point: covers every exit path
     // (abstains, gates, fills) exactly once for persistence observers.
     this.deps.observability?.emitStepComplete?.(input, result);
 
-    // Update metrics
-    this.metrics.totalOrders++;
-    if (
-      result.fill &&
-      (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")
-    ) {
-      this.metrics.filledOrders++;
-    }
-    this.metrics.totalPnl += result.pnl ?? 0;
-    if (result.fill) {
-      this.metrics.totalFees += result.fill.makerFee + result.fill.takerFee;
-    }
+    // Book exposure + session PnL, then publish the snapshot. The loss
+    // latch and Kelly bankroll read the shared metrics counter, which
+    // only moves when this hook runs.
+    accountAfterStep(this.tracker, this.metrics, input.market_id, result);
+    this.deps.observability?.emitMetrics?.({ ...this.metrics });
 
     return result;
   }
@@ -333,19 +343,8 @@ export class G4Pipeline {
             score: scoreOpportunity(result.edge, result.p),
             scoredAtMs: Date.now(),
           });
-          if (
-            result.fill &&
-            (result.fill.status === "FILLED" ||
-              result.fill.status === "PARTIAL") &&
-            Number.isFinite(result.fill.fillPrice) &&
-            Number.isFinite(result.size ?? NaN) &&
-            (result.size ?? 0) > 0
-          ) {
-            this.tracker.add(
-              loopInput.market_id,
-              result.fill.fillPrice * (result.size as number),
-            );
-          }
+          // Exposure is booked inside processMarket (fills and unfilled
+          // submits). Do not add it again here.
 
           let funds = undefined as StepFunds | undefined;
           try {

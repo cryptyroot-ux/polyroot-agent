@@ -141,7 +141,7 @@ print_next_steps() {
   echo -e "${BLUE}First run will launch interactive onboarding:${NC}"
   echo "  1. Choose AI provider & model (OpenAI, 9Router, Ollama, etc.)"
   echo "  2. Create new wallet or import existing (keystore encrypted)"
-  echo "  3. Select mode: PAPER (safe) or LIVE (real money)"
+  echo "  3. Runtime mode is LIVE only. Orders stay blocked until \`polyroot doctor --live\` passes and you run \`polyroot live-promote\`."
   echo
   echo -e "${BLUE}Config stored in:${NC} ~/.polyroot/.env (auto-generated)"
   echo -e "${BLUE}Wallet keystore:${NC} ~/.polyroot/keystore.json (encrypted, 600 perms)"

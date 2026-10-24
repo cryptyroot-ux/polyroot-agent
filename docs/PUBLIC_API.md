@@ -80,11 +80,11 @@ All configuration is via environment variables (`.env`) or programmatic `Runtime
 | `POLYMARKET_API_SECRET` | CLOB API secret | Yes (LIVE/MICRO) |
 | `POLYMARKET_API_PASSPHRASE` | CLOB API passphrase | Yes (LIVE/MICRO) |
 | `POLYROOT_LIVE_LOSS_CAP_USD` | Owner loss cap (pUSD); submit refused + latch engages without it | Yes (LIVE/MICRO) |
-| `POLYROOT_LIVE_CAP_USD` | Exposure cap override (USD) | No (default `500`) |
-| `POLYROOT_MARKET_IDS` | Owner-curated CLOB token ids, comma-separated | Yes (SHADOW/LIVE/MICRO; PAPER uses mock) |
+| `POLYROOT_LIVE_CAP_USD` | Exposure cap override (USD) | No (unset uses code default `1000`) |
+| `POLYROOT_MARKET_IDS` | Owner-curated CLOB token ids, comma-separated | No when discovery is Auto; required if discovery is off |
 | `POLYROOT_KEYSTORE_JSON` | Sealed key envelope (`wallet seal`) — preferred over raw key | No (either keystore or raw key) |
 | `POLYROOT_KEYSTORE_PASSPHRASE` | Keystore passphrase (required with keystore) | No |
-| `RUNTIME_MODE` | `LIVE` | No (default `PAPER`) |
+| `RUNTIME_MODE` | `LIVE` | Yes. The CLI accepts `LIVE` only. Unset `parseArgs` also defaults to `LIVE`. |
 
 Live enforcement, in order before every submission: admission
 (`LIVE_LOOP_UNWIRED`), exposure cap (`LIVE_CAP_UNCONFIGURED` /
@@ -137,7 +137,7 @@ RPC_URL=https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY
 # Runtime
 NODE_ENV=production
 LOG_LEVEL=info
-RUNTIME_MODE=PAPER
+RUNTIME_MODE=LIVE
 
 # G4 pipeline tuning lives in code (src/pm/runtime/src/main.ts), not env.
 
@@ -361,9 +361,10 @@ npm start -- wallet verify
 npm start -- venue check --asset <clob-token-id>
 ```
 
-SHADOW mode uses the public client (no private key or API credentials);
-LIVE build the authenticated secure client. See
-`docs/RUNBOOK_SHADOW_MICROLIVE.md` for the 30-day LIVE path.
+LIVE uses the authenticated venue client. There is no PAPER or SHADOW
+command (`shadow-fund` was removed with those modes). Readiness is
+`polyroot doctor --live`, then owner admission via `polyroot live-promote`.
+See `docs/RUNBOOK_LIVE_GO_LIVE.md`.
 
 ---
 

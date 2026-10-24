@@ -26,12 +26,13 @@ services:
       target: runtime
     container_name: polyroot-agent
     command:
-      ["node", "src/pm/runtime/dist/cli.js", "--mode", "${RUNTIME_MODE:-PAPER}"]
+      ["node", "src/pm/runtime/dist/cli.js", "--mode", "${RUNTIME_MODE:-LIVE}"]
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/polyroot_dev
       KMS_KEY_ID: ${KMS_KEY_ID:-local-dev-key}
-      RUNTIME_MODE: ${RUNTIME_MODE:-PAPER}
+      # CLI accepts LIVE only. PAPER/SHADOW/MICRO_LIVE are rejected at boot.
+      RUNTIME_MODE: ${RUNTIME_MODE:-LIVE}
       WALLET_PRIVATE_KEY: ${WALLET_PRIVATE_KEY:-}
       WALLET_ADDRESS: ${WALLET_ADDRESS:-}
       WALLET_ACCOUNT: ${WALLET_ACCOUNT:-}

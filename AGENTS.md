@@ -59,8 +59,12 @@ Prettier governs formatting: run `npx prettier --write` on every file you touch.
 forecast p → abstain unless 0.02 < p < 0.98 AND |p − 0.5| ≥ 0.02
          → edge_after_fees = best_side(p − price) − taker_fee
          → TRADE only if edge_after_fees > adaptive floor
-            floor = minEdgeAfterCost (default 0.03)
+            floor = minEdgeAfterCost
                   + min(spread × 0.5, 0.05)   // adverse-selection add-on
+            The LIVE loop wires minEdgeAfterCost = 0.01
+            (`bootstrapAgent` in src/pm/runtime/src/main.ts).
+            0.03 remains the fallback when that override is absent
+            (`resolveEdgeFloor`, `DEFAULT_RISK_POLICY.min_edge_after_cost`).
          → sizeIntent → validateAndReserve → buildSignedOrder → executor
 ```
 

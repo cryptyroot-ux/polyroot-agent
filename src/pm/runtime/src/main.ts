@@ -149,9 +149,10 @@ export function deterministicWalletId(signerAddress: string): string {
 }
 
 /**
- * Build the runtime WalletIdentity. Live modes derive the signer address
- * from the user's configured key and require distinct account/funder
- * addresses (WAL-03); PAPER/SHADOW keep the mock placeholder.
+ * Build the runtime WalletIdentity. Derives the signer address from
+ * PRIVATE_KEY_HEX or WALLET_PRIVATE_KEY and requires distinct
+ * account/funder addresses (WAL-03). The production signer can also open
+ * the keystore via resolveWalletKey; this function does not.
  */
 export function buildWalletIdentity(
   mode: "LIVE",
@@ -849,6 +850,22 @@ export async function bootstrapAgent(
         emitStream("RESEARCH_INGEST", `Mode: ${from} → ${to} — ${reason}`),
     },
     kernel,
+    // Post-reserve aborts (cap, latch, sign failure, executor reject)
+    // must return the funder's cash now. ReservationManager.release is
+    // idempotent: a row the executor already settled comes back
+    // RESERVATION_NOT_ACTIVE and is left alone. Do not also call
+    // kernel.release — that would credit the same cash twice.
+    releaseReservation: async (reservationId: string) => {
+      const released = await reservationManager.release(
+        reservationId,
+        "CANCELLED",
+      );
+      if (!released.ok && released.code !== "RESERVATION_NOT_ACTIVE") {
+        console.error(
+          `[g4] reservation release failed for ${reservationId}: ${released.code} ${released.reason}`,
+        );
+      }
+    },
     signer,
     executor,
     wallet,
