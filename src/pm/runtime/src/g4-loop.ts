@@ -7,9 +7,7 @@
  * The loop integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.
  *
- * Modes:
- * - MICRO-LIVE: real wallet, explicit cap, real fills
- * - LIVE: full autonomy (requires Autonomy Charter gate)
+ * LIVE only. Owner promotion is required before the gate allows submits.
  */
 
 import type {
@@ -34,6 +32,7 @@ import {
 } from "./g4-core.js";
 import { PositionTracker } from "@polyroot/strategy";
 import { accountAfterStep, exposureForStep } from "./live-accounting.js";
+import { syncDurableExposure, type ExposureBook } from "./exposure-sync.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -55,9 +54,7 @@ export type G4LoopMetrics = G4CoreMetrics;
  * The loop integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.
  *
- * Modes:
- * - MICRO-LIVE: real wallet, explicit cap, real fills
- * - LIVE: full autonomy (requires Autonomy Charter gate)
+ * LIVE only. Owner promotion is required before the gate allows submits.
  */
 export class G4AutonomousLoop {
   private readonly config: Required<G4LoopConfig>;
@@ -65,6 +62,11 @@ export class G4AutonomousLoop {
   private readonly metrics: G4LoopMetrics;
   /** Same submit-time exposure ledger as G4Pipeline. */
   private readonly tracker = new PositionTracker();
+  private readonly exposureBook: ExposureBook = {
+    bookedFillShares: new Map(),
+    baselined: false,
+    sawStep: false,
+  };
   private running = false;
   private stopFn?: () => void;
 
@@ -128,6 +130,21 @@ export class G4AutonomousLoop {
     this.deps.observability?.emitStepComplete?.(input, result);
 
     accountAfterStep(this.tracker, this.metrics, input.market_id, result);
+    if (
+      result.orderId &&
+      result.fill &&
+      Number.isFinite(result.fill.filledSize) &&
+      result.fill.filledSize > 0
+    ) {
+      const prev = this.exposureBook.bookedFillShares.get(result.orderId) ?? 0;
+      if (result.fill.filledSize > prev) {
+        this.exposureBook.bookedFillShares.set(
+          result.orderId,
+          result.fill.filledSize,
+        );
+      }
+    }
+    this.exposureBook.sawStep = true;
     this.deps.observability?.emitMetrics?.({ ...this.metrics });
 
     return result;
@@ -163,9 +180,14 @@ export class G4AutonomousLoop {
 
     while (this.running) {
       try {
-        // PAPER replays the mock fixture; every other mode iterates the
-        // wired market universe (buildLoopInputs throws rather than
-        // fabricating mock markets when live-configured).
+        await syncDurableExposure(
+          this.deps,
+          this.exposureBook,
+          this.tracker,
+          this.metrics,
+        );
+        // Live modes iterate the wired market universe. buildLoopInputs
+        // throws rather than fabricating mock markets.
         const inputs = await buildLoopInputs(this.config, this.deps);
         if (inputs.length === 0) {
           console.log("⏭️  No live markets with prices this pass.");

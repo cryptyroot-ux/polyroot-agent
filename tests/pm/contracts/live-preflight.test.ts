@@ -184,6 +184,41 @@ describe("doctor --live preflight", () => {
     assert.match(stale.detail, /ord_stuck/);
   });
 
+  it("refuses LIVE when the funder pUSD row is missing or zero", async () => {
+    const missing = await runLivePreflight(
+      greenDeps({ readFunderCash: async () => null }),
+    );
+    assert.equal(missing.ok, false);
+    const missingCheck = missing.checks.find((c) => c.name === "funder-cash");
+    assert.ok(missingCheck && !missingCheck.ok);
+    assert.match(missingCheck.detail, /bankroll credit/);
+
+    const zero = await runLivePreflight(
+      greenDeps({
+        readFunderCash: async () => ({
+          availableBase: 0n,
+          committedBase: 0n,
+        }),
+      }),
+    );
+    assert.equal(zero.ok, false);
+    assert.ok(failedCheckNames(zero).includes("funder-cash"));
+  });
+
+  it("passes funder-cash when available+committed is positive", async () => {
+    const result = await runLivePreflight(
+      greenDeps({
+        readFunderCash: async () => ({
+          availableBase: 50_000_000n,
+          committedBase: 0n,
+        }),
+      }),
+    );
+    assert.equal(result.ok, true);
+    const check = result.checks.find((c) => c.name === "funder-cash");
+    assert.ok(check && check.ok);
+  });
+
   it("passes when only resting LIVE/PARTIAL orders are in flight", async () => {
     // Resting and partial orders are normal business — the stale query only
     // matches indeterminate states, so greenDeps (empty rows) passes.

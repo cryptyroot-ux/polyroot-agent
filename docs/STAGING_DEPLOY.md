@@ -33,10 +33,15 @@ polyroot setup     # guided: LIVE, caps, markets (Auto default), wallet, API
 polyroot status    # confirm Mode, Wallet, Loss Cap
 ```
 
-There is no play-bankroll command. The money kernel does not credit
-on-chain cash by itself; a new database starts `balance_entries` at
-`(0, 0)` until available funds are posted out of band. `INSUFFICIENT_FUNDS`
-on the first reserve is that gap, not a mode bug.
+The kernel does not insert a `(0, 0)` balance and does not read pUSD
+off the chain. `polyroot doctor --live` and `polyroot run` refuse until
+the funder row has positive available+committed. Record an owner
+attestation (the source text is where you read the figure; it is not a
+chain proof, and a decrease is refused):
+
+```bash
+polyroot bankroll credit --amount 50.00 --source "polymarket portfolio 2026-10-24"
+```
 
 ## 3. Prove readiness (hard gate)
 
@@ -45,8 +50,9 @@ polyroot doctor --live
 ```
 
 All checks must pass (db, schema, bounds, universe, wallet, venue creds,
-venue read, metrics key, loss latch, stale unknowns). Any failure = fix
-it first. A PASS proves infrastructure, **not** permission to trade.
+venue read, metrics key, loss latch, stale unknowns, funder cash). Any
+failure = fix it first. A PASS proves infrastructure, **not** permission
+to trade.
 
 ## 4. Blocked loop (no orders until promotion)
 

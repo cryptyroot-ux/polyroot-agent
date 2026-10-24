@@ -24,6 +24,7 @@ import {
   submitExposureUsd,
 } from "./live-accounting.js";
 import type { ModeWatcher } from "./mode-watcher.js";
+import type { DurableOpenOrder } from "./exposure-sync.js";
 import {
   collectLiveInputs,
   type LiveMarketInput,
@@ -99,6 +100,17 @@ export interface G4CoreDeps {
    * MoneyKernel.release of the permit cash (in-memory tests).
    */
   releaseReservation?: (reservationId: string) => Promise<void>;
+  /**
+   * Venue reconcile for unresolved recovery-ledger rows. Best-effort:
+   * a failure keeps the in-memory tracker.
+   */
+  reconcileOpenOrders?: () => Promise<void>;
+  /**
+   * Durable open orders (recovery ledger + reservations). `null` means
+   * the read failed and the tracker must be left alone. `[]` means the
+   * read succeeded and nothing is open.
+   */
+  loadDurableOrders?: () => Promise<DurableOpenOrder[] | null>;
   /** Signer Vault for signing orders. */
   signer: SignerVault;
   /** Executor for submitting orders. */
@@ -557,6 +569,8 @@ export interface CreateG4CoreOptions {
   leaseEpoch: () => number;
   now: () => Date;
   releaseReservation?: (reservationId: string) => Promise<void>;
+  reconcileOpenOrders?: () => Promise<void>;
+  loadDurableOrders?: () => Promise<DurableOpenOrder[] | null>;
   forecast: (market: {
     market_id: string;
     bid: number;
@@ -601,6 +615,12 @@ export function createG4Core(options: CreateG4CoreOptions) {
     now: options.now,
     ...(options.releaseReservation
       ? { releaseReservation: options.releaseReservation }
+      : {}),
+    ...(options.reconcileOpenOrders
+      ? { reconcileOpenOrders: options.reconcileOpenOrders }
+      : {}),
+    ...(options.loadDurableOrders
+      ? { loadDurableOrders: options.loadDurableOrders }
       : {}),
     ...(options.observability ? { observability: options.observability } : {}),
     ...(options.liveGuard ? { liveGuard: options.liveGuard } : {}),

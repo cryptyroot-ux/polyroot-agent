@@ -7,9 +7,9 @@
  * - exposure: cash that is reserved or filled, so the next cap check cannot
  *   see a zero portfolio after a successful submit
  * - session PnL: mark-to-model only when `filled_size > 0`. An unfilled
- *   resting order books exposure and pnl 0. Settlement (and any later
- *   reconcile fill) is still outside this step — that residual gap is
- *   intentional, not a mock fill.
+ *   resting order books exposure and pnl 0. Later fills and cancels
+ *   adjust the tracker in `exposure-sync.ts` (durable snapshot). This
+ *   step does not invent a fill the ACK did not report.
  *
  * Formulas (also written into `forecasts.lineage` by step persistence):
  * - exposure FILLED  = fillPrice * filledSize

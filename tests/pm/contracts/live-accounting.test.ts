@@ -31,6 +31,7 @@ import {
   releaseUnsubmittedReservation,
   sessionPnlFromFill,
   submitExposureUsd,
+  type DurableOpenOrder,
   type LiveGuardDeps,
 } from "@polyroot/runtime";
 
@@ -97,6 +98,7 @@ function makePipeline(opts: {
   ack?: Partial<OrderResult>;
   signerThrows?: boolean;
   wireRelease?: boolean;
+  loadDurableOrders?: () => Promise<DurableOpenOrder[] | null>;
 }) {
   const balance = new FakeBalanceStore(STARTING_CASH);
   const reserved = new Map<string, bigint>();
@@ -239,6 +241,9 @@ function makePipeline(opts: {
             await balance.releaseFunds("0xFUNDER", "pUSD", cash);
           },
         }),
+    ...(opts.loadDurableOrders
+      ? { loadDurableOrders: opts.loadDurableOrders }
+      : {}),
   });
   return {
     pipeline,
@@ -377,5 +382,31 @@ describe("live submit accounting", () => {
       fill,
     });
     assert.ok(pnl < 4 * (0.65 - 0.4));
+  });
+
+  it("restores durable exposure before the next cap check", async () => {
+    const open: DurableOpenOrder = {
+      marketId: "mkt_open",
+      orderId: "ord_restored",
+      limitPrice: 0.55,
+      orderSize: 10,
+      filledShares: 0,
+      filledCashUsd: 0,
+      remainingReservedUsd: 6,
+      reservationKnown: true,
+      terminal: false,
+    };
+    const { pipeline, adapter } = makePipeline({
+      capUsd: 8,
+      loadDurableOrders: async () => [open],
+    });
+    await pipeline.syncOpenExposure();
+    assert.equal(pipeline.openExposureUsd(), 6);
+    assert.equal(pipeline.getMetrics().totalPnl, 0);
+    const second = await pipeline.processMarket(book("mkt_b"));
+    assert.equal(second.decision, "NO_TRADE");
+    assert.match(second.reason ?? "", /EXPOSURE_CAP_EXCEEDED/);
+    assert.equal(adapter.placeOrderCalls, 0);
+    assert.equal(pipeline.openExposureUsd(), 6);
   });
 });

@@ -95,8 +95,9 @@ export function equityBankroll(capUsd: number, sessionPnlUsd: number): number {
  * in the loop, so nothing here ever "sells to free capital". Pure ledger.
  *
  * Callers book submit-time exposure (venue fill notional, or the limit
- * notional when the ACK has no fill yet). A restart starts this map at
- * empty; durable committed cash still lives in the money kernel.
+ * notional when the ACK has no fill yet). `replaceAll` is the restart
+ * and reconcile path: the durable snapshot replaces this map instead of
+ * adding on top of it. An empty snapshot means nothing is open.
  */
 export class PositionTracker {
   private readonly open = new Map<string, number>();
@@ -105,6 +106,21 @@ export class PositionTracker {
   add(tokenId: string, notionalUsd: number): void {
     if (!tokenId || !Number.isFinite(notionalUsd) || notionalUsd <= 0) return;
     this.open.set(tokenId, (this.open.get(tokenId) ?? 0) + notionalUsd);
+  }
+
+  /**
+   * Replace the whole book with a durable snapshot. Non-positive or
+   * non-finite notionals are dropped. Call this after reconcile, not
+   * in addition to `add` for the same orders.
+   */
+  replaceAll(entries: Iterable<readonly [string, number]>): void {
+    this.open.clear();
+    for (const [tokenId, notionalUsd] of entries) {
+      if (!tokenId || !Number.isFinite(notionalUsd) || notionalUsd <= 0) {
+        continue;
+      }
+      this.open.set(tokenId, notionalUsd);
+    }
   }
 
   /**

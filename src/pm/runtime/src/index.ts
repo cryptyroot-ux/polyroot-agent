@@ -54,6 +54,7 @@ export {
 } from "./g4-pipeline.js";
 export * from "./g4-core.js";
 export * from "./live-accounting.js";
+export * from "./exposure-sync.js";
 export * from "./reality-gap.js";
 export * from "./micro-live-guard.js";
 export * from "./resolution-sync.js";

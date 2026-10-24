@@ -389,6 +389,7 @@ export {
   sealPrivateKey,
   openKeystore,
   resolveWalletKey,
+  assertWalletKeyAlignment,
   type SealedKeystore,
 } from "./keystore.js";
 
