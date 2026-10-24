@@ -4,9 +4,9 @@
  * The G4 pipeline orchestrates the complete autonomous trading flow:
  *   INTELLIGENCE → STRATEGY → ORCHESTRATOR → EXECUTOR → VENUE
  *
- * Modes:
- * - LIVE: Real wallet, explicit cap, real fills
- * - LIVE: Full autonomy (requires Autonomy Charter gate)
+ * Mode: LIVE only. Real wallet, explicit cap, real fills. Full
+ * autonomy still requires an owner-signed promotion; without it the
+ * financial gate stays FINANCIAL_BLOCKED.
  *
  * The pipeline enforces the financial gate at every step (PR-GOV-06, PR-EXE-01).
  */
@@ -37,6 +37,8 @@ import {
   type RankedMarket,
 } from "@polyroot/strategy";
 import { AUTONOMY_BOUNDS } from "./autonomy-bounds.js";
+import { accountAfterStep, exposureForStep } from "./live-accounting.js";
+import { syncDurableExposure, type ExposureBook } from "./exposure-sync.js";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
@@ -56,9 +58,7 @@ export interface G4PipelineMetrics extends G4CoreMetrics {}
  * The pipeline integrates: Intelligence → Strategy → Risk Gate → Order Builder →
  * Executor → Signer Vault → Venue → Recovery → Reconciliation → Metrics.
  *
- * Modes:
- * - MICRO-LIVE: real wallet, explicit cap, real fills
- * - LIVE: full autonomy (requires Autonomy Charter gate)
+ * LIVE only. Owner promotion is required before the gate allows submits.
  */
 export class G4Pipeline {
   private readonly config: Required<G4PipelineConfig>;
@@ -69,8 +69,21 @@ export class G4Pipeline {
   private degradedLogged = false;
   /** Previous-pass scores for autonomous per-pass market selection. */
   private readonly scoreMemory = new Map<string, RankedMarket>();
-  /** Open filled notional per token (freed only by settlement). */
+  /**
+   * Open exposure per token: venue fill notional, or the reserved limit
+   * notional when the ACK has no fill yet. Freed only by settlement.
+   */
   private readonly tracker = new PositionTracker();
+  /**
+   * Shares already folded into session PnL, plus whether this process
+   * has snapshotted durable exposure. A cold start restores exposure
+   * without replaying historical mark-to-model PnL.
+   */
+  private readonly exposureBook: ExposureBook = {
+    bookedFillShares: new Map(),
+    baselined: false,
+    sawStep: false,
+  };
 
   constructor(config: G4PipelineConfig, deps: G4PipelineDeps) {
     const defaults = getDefaultModeConfig(config.mode, config);
@@ -158,9 +171,22 @@ export class G4Pipeline {
     }
   }
 
-  /** Current open filled notional (operator/test introspection). */
+  /** Current open exposure in USD (fills plus unfilled reserved submits). */
   openExposureUsd(): number {
     return this.tracker.total();
+  }
+
+  /**
+   * Poll unresolved orders, then replace the tracker from the durable
+   * snapshot. A failed or null load leaves the in-memory book in place.
+   */
+  async syncOpenExposure(): Promise<void> {
+    await syncDurableExposure(
+      this.deps,
+      this.exposureBook,
+      this.tracker,
+      this.metrics,
+    );
   }
 
   /**
@@ -205,27 +231,48 @@ export class G4Pipeline {
 
   /** Run one iteration of the pipeline for a single market. */
   async processMarket(input: G4PipelineInput): Promise<G4PipelineResult> {
-    const result = await executeG4Step(input, {
-      config: this.config,
-      deps: this.deps,
-    });
+    const tracked = exposureForStep(
+      this.tracker,
+      input.market_id,
+      input.currentPortfolioExposureUsd,
+      input.currentMarketExposureUsd,
+    );
+    const result = await executeG4Step(
+      {
+        ...input,
+        currentPortfolioExposureUsd: tracked.currentPortfolioExposureUsd,
+        currentMarketExposureUsd: tracked.currentMarketExposureUsd,
+      },
+      {
+        config: this.config,
+        deps: this.deps,
+      },
+    );
 
     // Single step-complete emission point: covers every exit path
     // (abstains, gates, fills) exactly once for persistence observers.
     this.deps.observability?.emitStepComplete?.(input, result);
 
-    // Update metrics
-    this.metrics.totalOrders++;
+    // Book exposure + session PnL, then publish the snapshot. The loss
+    // latch and Kelly bankroll read the shared metrics counter, which
+    // only moves when this hook runs.
+    accountAfterStep(this.tracker, this.metrics, input.market_id, result);
     if (
+      result.orderId &&
       result.fill &&
-      (result.fill.status === "FILLED" || result.fill.status === "PARTIAL")
+      Number.isFinite(result.fill.filledSize) &&
+      result.fill.filledSize > 0
     ) {
-      this.metrics.filledOrders++;
+      const prev = this.exposureBook.bookedFillShares.get(result.orderId) ?? 0;
+      if (result.fill.filledSize > prev) {
+        this.exposureBook.bookedFillShares.set(
+          result.orderId,
+          result.fill.filledSize,
+        );
+      }
     }
-    this.metrics.totalPnl += result.pnl ?? 0;
-    if (result.fill) {
-      this.metrics.totalFees += result.fill.makerFee + result.fill.takerFee;
-    }
+    this.exposureBook.sawStep = true;
+    this.deps.observability?.emitMetrics?.({ ...this.metrics });
 
     return result;
   }
@@ -267,8 +314,10 @@ export class G4Pipeline {
           await new Promise((resolve) => setTimeout(resolve, 5000));
           continue;
         }
-        // Portfolio autonomy: settle, gate on full book, then let the
-        // allocator choose HOW MANY (and which) markets this pass gets.
+        // Restore durable exposure before the full-book check so a
+        // restart cannot treat an open reservation as an empty portfolio.
+        // Settlement then drops tokens the resolver already closed.
+        await this.syncOpenExposure();
         await this.syncSettlements();
         const cap = this.portfolioCapUsd();
         if (this.tracker.total() >= cap) {
@@ -333,19 +382,8 @@ export class G4Pipeline {
             score: scoreOpportunity(result.edge, result.p),
             scoredAtMs: Date.now(),
           });
-          if (
-            result.fill &&
-            (result.fill.status === "FILLED" ||
-              result.fill.status === "PARTIAL") &&
-            Number.isFinite(result.fill.fillPrice) &&
-            Number.isFinite(result.size ?? NaN) &&
-            (result.size ?? 0) > 0
-          ) {
-            this.tracker.add(
-              loopInput.market_id,
-              result.fill.fillPrice * (result.size as number),
-            );
-          }
+          // Exposure is booked inside processMarket (fills and unfilled
+          // submits). Do not add it again here.
 
           let funds = undefined as StepFunds | undefined;
           try {

@@ -44,22 +44,24 @@ interface TradeIntent {
 
 ## Runtime Modes
 
-### PAPER (Default)
 ### LIVE
-- Real `VenueAdapter` submission to Polymarket.
-- Enforces `POLYROOT_LIVE_CAP_USD` (default 500 USDC) and
-  `POLYROOT_LIVE_LOSS_CAP_USD`.
+- The only runtime mode. Real `VenueAdapter` submission to Polymarket.
+- Enforces `POLYROOT_LIVE_CAP_USD` (unset uses `1000` USD from
+  `AUTONOMY_BOUNDS.CAPITAL_CAP_USD`) and `POLYROOT_LIVE_LOSS_CAP_USD`.
+- The wired edge floor in `bootstrapAgent` is `minEdgeAfterCost: 0.01`.
+  `0.03` is only the fallback when that override is absent.
 - Requires injected `CryptoSigner` and `VenueAdapter` at bootstrap.
 - Requires an owner-signed promotion; without it the loop is
   `FINANCIAL_BLOCKED` and submits nothing.
+- Requires a positive funder pUSD row (`polyroot bankroll credit` records
+  an owner attestation; the process never inserts a zero balance).
 - Requires **Autonomy Charter** commissioning (out-of-band legal artifact).
-- All G5 promotion gates must pass (`Phase 24 G5`).
 
 **Transitions:**
 ```
 LIVE
 ```
-Invalid transitions (e.g., `PAPER → LIVE`) are rejected at bootstrap.
+`PAPER`, `SHADOW`, and `MICRO_LIVE` are rejected by the CLI.
 
 ---
 
@@ -72,19 +74,19 @@ All configuration is via environment variables (`.env`) or programmatic `Runtime
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `WALLET_PRIVATE_KEY` | Deposit wallet private key (0x-prefixed) | Yes (LIVE/MICRO) |
-| `WALLET_ADDRESS` | Derived wallet address (0x-prefixed) | Yes (LIVE/MICRO) |
-| `CHAIN_ID` | Polygon = 137 | Yes (LIVE/MICRO) |
-| `RPC_URL` | Polygon RPC endpoint (HTTPS) | Yes (LIVE/MICRO) |
-| `POLYMARKET_API_KEY` | CLOB API key (reuse mode; never derived implicitly) | Yes (LIVE/MICRO) |
-| `POLYMARKET_API_SECRET` | CLOB API secret | Yes (LIVE/MICRO) |
-| `POLYMARKET_API_PASSPHRASE` | CLOB API passphrase | Yes (LIVE/MICRO) |
-| `POLYROOT_LIVE_LOSS_CAP_USD` | Owner loss cap (pUSD); submit refused + latch engages without it | Yes (LIVE/MICRO) |
-| `POLYROOT_LIVE_CAP_USD` | Exposure cap override (USD) | No (default `500`) |
-| `POLYROOT_MARKET_IDS` | Owner-curated CLOB token ids, comma-separated | Yes (SHADOW/LIVE/MICRO; PAPER uses mock) |
+| `WALLET_PRIVATE_KEY` | Deposit wallet private key (0x-prefixed). Same key as the keystore when both are set | Yes (LIVE), or use the keystore |
+| `WALLET_ADDRESS` | Derived wallet address (0x-prefixed) | Yes (LIVE) |
+| `CHAIN_ID` | Polygon = 137 | Yes (LIVE) |
+| `RPC_URL` | Polygon RPC endpoint (HTTPS) | Yes (LIVE) |
+| `POLYMARKET_API_KEY` | CLOB API key (reuse mode; never derived implicitly) | Yes (LIVE) |
+| `POLYMARKET_API_SECRET` | CLOB API secret | Yes (LIVE) |
+| `POLYMARKET_API_PASSPHRASE` | CLOB API passphrase | Yes (LIVE) |
+| `POLYROOT_LIVE_LOSS_CAP_USD` | Owner loss cap (pUSD); submit refused + latch engages without it | Yes (LIVE) |
+| `POLYROOT_LIVE_CAP_USD` | Exposure cap override (USD) | No (unset uses code default `1000`) |
+| `POLYROOT_MARKET_IDS` | Owner-curated CLOB token ids, comma-separated | No when discovery is Auto; required if discovery is off |
 | `POLYROOT_KEYSTORE_JSON` | Sealed key envelope (`wallet seal`) — preferred over raw key | No (either keystore or raw key) |
 | `POLYROOT_KEYSTORE_PASSPHRASE` | Keystore passphrase (required with keystore) | No |
-| `RUNTIME_MODE` | `LIVE` | No (default `PAPER`) |
+| `RUNTIME_MODE` | `LIVE` | Yes. The CLI accepts `LIVE` only. Unset `parseArgs` also defaults to `LIVE`. |
 
 Live enforcement, in order before every submission: admission
 (`LIVE_LOOP_UNWIRED`), exposure cap (`LIVE_CAP_UNCONFIGURED` /
@@ -137,7 +139,7 @@ RPC_URL=https://polygon-mainnet.g.alchemy.com/v2/YOUR_KEY
 # Runtime
 NODE_ENV=production
 LOG_LEVEL=info
-RUNTIME_MODE=PAPER
+RUNTIME_MODE=LIVE
 
 # G4 pipeline tuning lives in code (src/pm/runtime/src/main.ts), not env.
 
@@ -289,7 +291,7 @@ Secrets (private keys, tokens) are automatically redacted.
 ## Deployment Modes
 
 ### Development
-- `npm start` runs the agent CLI (`src/pm/runtime/src/cli.ts`, PAPER by default).
+- `npm start` runs the agent CLI (`src/pm/runtime/src/cli.ts`). `RUNTIME_MODE` accepts `LIVE` only.
 - `npm run dev` runs workspace watch mode (turbo).
 - `docker compose up -d postgres` starts local PostgreSQL; verify with
   `npm start -- wallet verify` (no agent started, no network).
@@ -298,7 +300,7 @@ Secrets (private keys, tokens) are automatically redacted.
 `docker-compose.prod.yml` runs exactly two services — no redis, no gateway,
 no Helm chart exists in this repo:
 - `postgres` (postgres:16-alpine, health-gated).
-- `agent` (the runtime CLI, `RUNTIME_MODE` default `PAPER`,
+- `agent` (the runtime CLI, `RUNTIME_MODE` default `LIVE`,
   `/metrics` + `/healthz` on `127.0.0.1:9090`).
 
 ---
@@ -328,7 +330,7 @@ interface PolyrootError {
 | `SIGNER_UNAVAILABLE` | 503 | Yes | CryptoSigner not ready. |
 | `PERMIT_EXPIRED` | 409 | No | Reservation permit expired. |
 | `LEASE_EPOCH_MISMATCH` | 409 | No | Executor lease epoch stale. |
-| `REALITY_GAP_EXCEEDED` | 409 | No | SHADOW→MICRO promotion blocked. |
+| `REALITY_GAP_EXCEEDED` | 409 | No | Advisory observation gap. It does not authorize a non-LIVE mode. |
 | `AUTONOMY_CHARTER_REQUIRED` | 403 | No | LIVE mode requires charter. |
 | `RATE_LIMIT_EXCEEDED` | 429 | Yes | API rate limit exceeded. |
 
@@ -361,9 +363,10 @@ npm start -- wallet verify
 npm start -- venue check --asset <clob-token-id>
 ```
 
-SHADOW mode uses the public client (no private key or API credentials);
-LIVE build the authenticated secure client. See
-`docs/RUNBOOK_SHADOW_MICROLIVE.md` for the 30-day LIVE path.
+LIVE uses the authenticated venue client. There is no PAPER or SHADOW
+command (`shadow-fund` was removed with those modes). Readiness is
+`polyroot doctor --live`, then owner admission via `polyroot live-promote`.
+See `docs/RUNBOOK_LIVE_GO_LIVE.md`.
 
 ---
 

@@ -32,14 +32,31 @@ describe("encrypted keystore (scrypt + AES-256-GCM)", () => {
     );
   });
 
-  it("factory prefers keystore over raw key, fails closed without passphrase", () => {
+  it("aligns keystore with a matching raw key and fails closed otherwise", () => {
     const sealed = sealPrivateKey(KEY, PASS);
-    const resolved = resolveWalletKey({
-      POLYROOT_KEYSTORE_JSON: JSON.stringify(sealed),
-      POLYROOT_KEYSTORE_PASSPHRASE: PASS,
-      WALLET_PRIVATE_KEY: "0x" + "9".repeat(64),
-    });
-    assert.equal(resolved, KEY);
+    const other = "0x" + "9".repeat(64);
+    assert.equal(
+      resolveWalletKey({
+        POLYROOT_KEYSTORE_JSON: JSON.stringify(sealed),
+        POLYROOT_KEYSTORE_PASSPHRASE: PASS,
+        WALLET_PRIVATE_KEY: KEY,
+      }),
+      KEY,
+    );
+    assert.throws(
+      () =>
+        resolveWalletKey({
+          POLYROOT_KEYSTORE_JSON: JSON.stringify(sealed),
+          POLYROOT_KEYSTORE_PASSPHRASE: PASS,
+          WALLET_PRIVATE_KEY: other,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /WALLET_KEY_DIVERGENCE/);
+        assert.doesNotMatch(err.message, /[0-9a-f]{64}/i);
+        return true;
+      },
+    );
     assert.throws(
       () =>
         resolveWalletKey({
@@ -47,10 +64,7 @@ describe("encrypted keystore (scrypt + AES-256-GCM)", () => {
         }),
       /KEYSTORE_PASSPHRASE_MISSING/,
     );
-    assert.equal(
-      resolveWalletKey({ WALLET_PRIVATE_KEY: "0x" + "9".repeat(64) }),
-      "0x" + "9".repeat(64),
-    );
+    assert.equal(resolveWalletKey({ WALLET_PRIVATE_KEY: other }), other);
     assert.throws(() => resolveWalletKey({}), /PRIVATE_KEY_HEX/);
   });
 });

@@ -16,7 +16,15 @@ import type { MoneyKernel } from "@polyroot/risk";
 import type { SignerVault } from "@polyroot/signer";
 import type { Executor } from "@polyroot/executor";
 import { evaluateLossGuard, type LossGuardState } from "./micro-live-guard.js";
+import {
+  deriveLiveFill,
+  liveStepReason,
+  releaseUnsubmittedReservation,
+  sessionPnlFromFill,
+  submitExposureUsd,
+} from "./live-accounting.js";
 import type { ModeWatcher } from "./mode-watcher.js";
+import type { DurableOpenOrder } from "./exposure-sync.js";
 import {
   collectLiveInputs,
   type LiveMarketInput,
@@ -86,6 +94,23 @@ export interface G4CoreDeps {
   ) => number;
   /** Money Kernel for reservations & permits. */
   kernel: MoneyKernel;
+  /**
+   * Release a reservation that will not be submitted. Production wires
+   * ReservationManager.release (balance + row, idempotent). Absent →
+   * MoneyKernel.release of the permit cash (in-memory tests).
+   */
+  releaseReservation?: (reservationId: string) => Promise<void>;
+  /**
+   * Venue reconcile for unresolved recovery-ledger rows. Best-effort:
+   * a failure keeps the in-memory tracker.
+   */
+  reconcileOpenOrders?: () => Promise<void>;
+  /**
+   * Durable open orders (recovery ledger + reservations). `null` means
+   * the read failed and the tracker must be left alone. `[]` means the
+   * read succeeded and nothing is open.
+   */
+  loadDurableOrders?: () => Promise<DurableOpenOrder[] | null>;
   /** Signer Vault for signing orders. */
   signer: SignerVault;
   /** Executor for submitting orders. */
@@ -212,8 +237,19 @@ export interface G4CoreResult {
         makerFee: number;
         takerFee: number;
         latencyMs: number;
+        /**
+         * `venue` = OrderResult.fee_paid. `theta` = filledSize·Θ·p·(1−p),
+         * Θ=0.05, used only when the ACK omits a fee. See live-accounting.ts.
+         */
+        feeModel?: "venue" | "theta";
       }
     | undefined;
+  /**
+   * Submit-time exposure (USD) booked into the portfolio tracker.
+   * Present on SUBMITTED and NEEDS_RECONCILIATION. Formula in
+   * `submitExposureUsd` / forecasts.lineage.
+   */
+  reservedExposureUsd?: number;
   pnl?: number;
   /** For real execution. */
   orderId?: string | undefined;
@@ -532,6 +568,9 @@ export interface CreateG4CoreOptions {
   venueMode: () => VenueMode;
   leaseEpoch: () => number;
   now: () => Date;
+  releaseReservation?: (reservationId: string) => Promise<void>;
+  reconcileOpenOrders?: () => Promise<void>;
+  loadDurableOrders?: () => Promise<DurableOpenOrder[] | null>;
   forecast: (market: {
     market_id: string;
     bid: number;
@@ -574,6 +613,15 @@ export function createG4Core(options: CreateG4CoreOptions) {
     venueMode: options.venueMode,
     leaseEpoch: options.leaseEpoch,
     now: options.now,
+    ...(options.releaseReservation
+      ? { releaseReservation: options.releaseReservation }
+      : {}),
+    ...(options.reconcileOpenOrders
+      ? { reconcileOpenOrders: options.reconcileOpenOrders }
+      : {}),
+    ...(options.loadDurableOrders
+      ? { loadDurableOrders: options.loadDurableOrders }
+      : {}),
     ...(options.observability ? { observability: options.observability } : {}),
     ...(options.liveGuard ? { liveGuard: options.liveGuard } : {}),
     ...(options.marketSource ? { marketSource: options.marketSource } : {}),
@@ -910,33 +958,46 @@ export async function executeG4Step(
     };
   }
 
-  // 6. Build signed order
-  const built = await buildSignedOrder(
-    {
-      intent: {
-        schema_version: "1.1",
-        intent_id: crypto.randomUUID(),
-        dedupe_key: `${market_id}_${Date.now()}`,
-        purpose: "ENTRY",
-        market_id,
-        side: intentSide,
-        desired_qty: size,
-        limit_price: edge.reference_price ?? ask,
-        created_at: now,
-        evidence_ids: [],
-        forecast_refs: [],
-        status: "CREATED",
-        expiration_sec: 300,
+  // 6. Build signed order. A throw here is before any venue call, so the
+  // reservation must come back immediately (same as a typed sign refusal).
+  let built: Awaited<ReturnType<typeof buildSignedOrder>>;
+  try {
+    built = await buildSignedOrder(
+      {
+        intent: {
+          schema_version: "1.1",
+          intent_id: crypto.randomUUID(),
+          dedupe_key: `${market_id}_${Date.now()}`,
+          purpose: "ENTRY",
+          market_id,
+          side: intentSide,
+          desired_qty: size,
+          limit_price: edge.reference_price ?? ask,
+          created_at: now,
+          evidence_ids: [],
+          forecast_refs: [],
+          status: "CREATED",
+          expiration_sec: 300,
+        },
+        permit: gateResult.permit,
+        wallet: deps.wallet,
+        venueMode: deps.venueMode(),
+        now,
       },
-      permit: gateResult.permit,
-      wallet: deps.wallet,
-      venueMode: deps.venueMode(),
-      now,
-    },
-    deps.signer,
-  );
+      deps.signer,
+    );
+  } catch (err) {
+    await releaseUnsubmittedReservation(deps, gateResult.permit);
+    const message = err instanceof Error ? err.message : "signing failed";
+    return {
+      market_id,
+      decision: "NO_TRADE",
+      reason: `SIGN_FAILED: ${message}`,
+    };
+  }
 
   if (!built.ok) {
+    await releaseUnsubmittedReservation(deps, gateResult.permit);
     return {
       market_id,
       decision: "NO_TRADE",
@@ -957,27 +1018,33 @@ export async function executeG4Step(
     decision: "NO_TRADE",
     reason,
   });
+  // Every refusal below already holds a reservation. Release it before
+  // returning so the funder is not stuck until the permit TTL.
+  const abortReserved = async (reason: string): Promise<G4CoreResult> => {
+    await releaseUnsubmittedReservation(deps, gateResult.permit);
+    return noTrade(reason);
+  };
   const cap = config.microLiveCapUsd;
   if (cap === undefined || !Number.isFinite(cap) || cap <= 0) {
-    return noTrade(
+    return abortReserved(
       "LIVE_CAP_UNCONFIGURED: live modes require a finite positive capital cap",
     );
   }
   const notional = size * built.order.price;
   const exposure = currentPortfolioExposureUsd ?? 0;
   if (exposure + notional > cap) {
-    return noTrade(
+    return abortReserved(
       `EXPOSURE_CAP_EXCEEDED: exposure ${exposure} + notional ${notional} exceeds cap ${cap}`,
     );
   }
   const lossCap = config.liveLossCapPusd;
   if (lossCap === undefined || !Number.isFinite(lossCap) || lossCap <= 0) {
-    return noTrade(
+    return abortReserved(
       "LOSS_CAP_UNCONFIGURED: live modes require a finite positive liveLossCapPusd",
     );
   }
   if (!deps.liveGuard) {
-    return noTrade(
+    return abortReserved(
       "LIVE_GUARD_UNWIRED: live modes require a wired liveGuard (durable latch + realized-loss reader)",
     );
   }
@@ -991,7 +1058,7 @@ export async function executeG4Step(
   });
   await deps.liveGuard.saveLatch(latch.state);
   if (latch.halted) {
-    return noTrade(`${latch.code}: ${latch.reason}`);
+    return abortReserved(`${latch.code}: ${latch.reason}`);
   }
   // Submit to executor
   const submitted = await deps.executor.submit(built.order, gateResult.permit);
@@ -999,9 +1066,13 @@ export async function executeG4Step(
     orderId = built.order.order_id;
     permitId = gateResult.permit.permit_id;
     outcome = "SUBMITTED";
+    fill = deriveLiveFill(built.order, submitted.result);
   } else if (submitted.outcome === "NEEDS_RECONCILIATION") {
+    orderId = submitted.orderId;
+    permitId = gateResult.permit.permit_id;
     outcome = "NEEDS_RECONCILIATION";
   } else {
+    await releaseUnsubmittedReservation(deps, gateResult.permit);
     return {
       market_id,
       decision: "NO_TRADE",
@@ -1026,26 +1097,29 @@ export async function executeG4Step(
     decision = intentSide;
   }
 
-  // Calculate PnL
-  const fairDiff =
-    evalSide === "NO" && fill
-      ? 1 - p - fill.fillPrice
-      : p - (fill?.fillPrice ?? 0.5);
-  const pnl = fill
-    ? fill.status === "FILLED" || fill.status === "PARTIAL"
-      ? fill.filledSize * fairDiff - (fill.makerFee + fill.takerFee)
-      : 0
-    : 0;
+  // Session PnL only from a real venue fill. Unfilled submits stay at 0
+  // so the loss latch does not treat a resting order as settled profit
+  // or loss. Exposure for that order is `reservedExposureUsd` below.
+  const pnl = fill ? sessionPnlFromFill({ p, quotedSide: evalSide, fill }) : 0;
+  const exposureBooked =
+    outcome === "SUBMITTED" || outcome === "NEEDS_RECONCILIATION"
+      ? submitExposureUsd({
+          orderSize: built.order.size,
+          limitPrice: built.order.price,
+          ...(fill ? { fill } : {}),
+        })
+      : 0;
 
   const res: G4CoreResult = {
     market_id,
     decision,
-    reason: fill ? undefined : "execution failed",
-    fill,
+    reason: outcome ? liveStepReason(outcome) : "execution failed",
+    ...(fill ? { fill } : {}),
     pnl,
-    orderId,
-    permitId,
-    outcome,
+    ...(orderId ? { orderId } : {}),
+    ...(permitId ? { permitId } : {}),
+    ...(outcome ? { outcome } : {}),
+    ...(exposureBooked > 0 ? { reservedExposureUsd: exposureBooked } : {}),
     p,
     size,
     edge: edge.edge_after_fees ?? edge.edge,

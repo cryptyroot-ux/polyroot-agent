@@ -36,7 +36,11 @@ export interface StepPersistenceDeps {
   mode: G4Mode;
   /** Model label for forecast rows (env POLYROOT_FORECAST_MODEL or unknown). */
   model?: string | undefined;
-  /** Base edge floor the loop enforces (default 0.03, mirrors core default). */
+  /**
+   * Base edge floor the loop enforces. The LIVE bootstrap passes 0.01
+   * (the wired floor). Omitted → 0.03, matching resolveEdgeFloor's
+   * fallback when config.minEdgeAfterCost is unset.
+   */
   baseMinEdge?: number | undefined;
   /** Latest stated AI reasoning per market (best-effort, may be absent). */
   getReasoning?: ((marketId: string) => StepReasoning | undefined) | undefined;
@@ -90,7 +94,14 @@ export async function persistStep(
   input: Pick<G4CoreInput, "market_id" | "bid" | "ask">,
   result: Pick<
     G4CoreResult,
-    "market_id" | "decision" | "reason" | "p" | "size" | "fill"
+    | "market_id"
+    | "decision"
+    | "reason"
+    | "p"
+    | "size"
+    | "fill"
+    | "outcome"
+    | "reservedExposureUsd"
   >,
 ): Promise<PersistedStep> {
   const out: PersistedStep = {
@@ -146,6 +157,33 @@ export async function persistStep(
     if (reasoning && reasoning.factors.length > 0) {
       lineage["factors"] = reasoning.factors;
     }
+    // Submit-time accounting. Formulas live next to the numbers so a
+    // later reader can see which exposure/PnL definition produced them.
+    if (result.fill) {
+      lineage["liveFill"] = {
+        status: result.fill.status,
+        filledSize: result.fill.filledSize,
+        fillPrice: result.fill.fillPrice,
+        makerFee: result.fill.makerFee,
+        takerFee: result.fill.takerFee,
+        ...(result.fill.feeModel ? { feeModel: result.fill.feeModel } : {}),
+      };
+      lineage["pnlFormula"] =
+        "filledSize * (p - fillPrice) - makerFee - takerFee; NO uses (1 - p - fillPrice). Unfilled submits book pnl 0.";
+      lineage["feeFormula"] =
+        result.fill.feeModel === "theta"
+          ? "filledSize * 0.05 * price * (1 - price) when the ACK omits fee_paid"
+          : "venue OrderResult.fee_paid";
+    }
+    if (
+      typeof result.reservedExposureUsd === "number" &&
+      Number.isFinite(result.reservedExposureUsd)
+    ) {
+      lineage["reservedExposureUsd"] = result.reservedExposureUsd;
+      lineage["exposureFormula"] =
+        "FILLED: fillPrice*filledSize; PARTIAL: that plus limit*(size-filled); no fill yet: limit*size";
+    }
+    if (result.outcome) lineage["outcome"] = result.outcome;
     out.forecast = await tryInsert(
       deps,
       "forecasts",

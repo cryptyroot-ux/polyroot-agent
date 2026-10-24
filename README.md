@@ -243,7 +243,7 @@ LOG_LEVEL=info
 RUNTIME_MODE=LIVE
 
 # G4 Pipeline tuning (code constants in src/pm/runtime/src/main.ts, not env)
-# minEdgeAfterCost=0.03, capital cap
+# LIVE loop wires minEdgeAfterCost=0.01. Unset config falls back to 0.03.
 
 # Observability (single port serves both endpoints)
 POLYROOT_METRICS_OWNER_KEY=your-owner-key-here

@@ -90,17 +90,37 @@ export function equityBankroll(capUsd: number, sessionPnlUsd: number): number {
 }
 
 /**
- * Open-position tracker: notional USD resting in fills. Positions leave
+ * Open-exposure tracker: notional USD reserved or filled. Positions leave
  * only via settlement (resolution/redeem feed) — there is no exit engine
  * in the loop, so nothing here ever "sells to free capital". Pure ledger.
+ *
+ * Callers book submit-time exposure (venue fill notional, or the limit
+ * notional when the ACK has no fill yet). `replaceAll` is the restart
+ * and reconcile path: the durable snapshot replaces this map instead of
+ * adding on top of it. An empty snapshot means nothing is open.
  */
 export class PositionTracker {
   private readonly open = new Map<string, number>();
 
-  /** Record a fill (accumulates per token). Ignores garbage silently. */
+  /** Record exposure (accumulates per token). Ignores garbage silently. */
   add(tokenId: string, notionalUsd: number): void {
     if (!tokenId || !Number.isFinite(notionalUsd) || notionalUsd <= 0) return;
     this.open.set(tokenId, (this.open.get(tokenId) ?? 0) + notionalUsd);
+  }
+
+  /**
+   * Replace the whole book with a durable snapshot. Non-positive or
+   * non-finite notionals are dropped. Call this after reconcile, not
+   * in addition to `add` for the same orders.
+   */
+  replaceAll(entries: Iterable<readonly [string, number]>): void {
+    this.open.clear();
+    for (const [tokenId, notionalUsd] of entries) {
+      if (!tokenId || !Number.isFinite(notionalUsd) || notionalUsd <= 0) {
+        continue;
+      }
+      this.open.set(tokenId, notionalUsd);
+    }
   }
 
   /**
@@ -119,6 +139,12 @@ export class PositionTracker {
       }
     }
     return { reclaimedUsd, count };
+  }
+
+  /** Open notional for one token. No row means no exposure (0). */
+  exposureOf(tokenId: string): number {
+    const v = this.open.get(tokenId);
+    return v ?? 0;
   }
 
   total(): number {

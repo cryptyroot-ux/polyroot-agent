@@ -42,6 +42,21 @@ export * from "./money-kernel.js";
 // PostgreSQL implementations for MoneyKernel ports
 export * from "./money-kernel-pg.js";
 
+// Funder pUSD presence + owner-attested credit (never invents a zero row)
+export {
+  assessFunderCash,
+  applyAttestedCredit,
+  balancesFromRow,
+  parseBaseUnits,
+  planAttestedCredit,
+  usdToBase,
+  type AttestedCreditResult,
+  type CashQuery,
+  type CreditPlan,
+  type FunderCashAssessment,
+  type FunderCashBalances,
+} from "./funder-cash.js";
+
 // Kill switch + reduction paths (PM-RISK-05/06)
 export * from "./kill-switch.js";
 
